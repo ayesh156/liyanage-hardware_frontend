@@ -1,0 +1,692 @@
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useTheme } from '../contexts/ThemeContext';
+import { useTranslation } from 'react-i18next';
+import {
+  Search, Package, AlertTriangle, XCircle, CheckCircle,
+  Filter, RefreshCw, SortAsc, SortDesc, DollarSign, Hash,
+  Edit3, Trash2, Pencil, ChevronLeft, ChevronRight,
+  ChevronsLeft, ChevronsRight, ChevronDown, X,
+} from 'lucide-react';
+import { toast } from 'react-toastify';
+import api from '../lib/api';
+import { useCatalog } from '../contexts/CatalogContext';
+import SortButton from '../components/ui/SortButton';
+import { InventoryProduct } from '../types';
+import { CellPopover } from './CellPopover';
+import { ProductFormModal } from './ProductFormModal';
+import { DeleteConfirmationModal } from './modals/DeleteConfirmationModal';
+
+function deriveStatus(storeQty: number): InventoryProduct['status'] {
+  if (storeQty === 0) return 'Out of Stock';
+  if (storeQty <= 10) return 'Low Stock';
+  return 'Available';
+}
+
+const editableNumericFields = ['cost', 'lastPrice', 'salesPrice', 'displayPrice', 'storeQty'] as const;
+const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100];
+
+interface CellEditState { itemId: string; field: string; rect: DOMRect; }
+
+const columns: { key: keyof InventoryProduct | null; label: string; align: 'left' | 'right' | 'center'; editable: boolean }[] = [
+  { key: 'searchKey',       label: 'Search Key',        align: 'left',   editable: false },
+  { key: 'name',            label: 'Name',              align: 'left',   editable: false },
+  { key: 'productCategory', label: 'Product Category',  align: 'left',   editable: false },
+  { key: 'barcode',         label: 'Barcode',           align: 'left',   editable: false },
+  { key: 'cost',            label: 'Cost[0]',           align: 'right',  editable: true },
+  { key: 'lastPrice',       label: 'Last Price[1]',    align: 'right',  editable: true },
+  { key: 'salesPrice',      label: 'Sales Price[3]',    align: 'right',  editable: true },
+  { key: 'displayPrice',    label: 'Display Price[4]',  align: 'right',  editable: true },
+  { key: 'storeQty',        label: 'Store Qty',          align: 'right',  editable: true },
+  { key: null,              label: 'Sales Type',          align: 'left',   editable: false },
+  { key: null,              label: 'Status',              align: 'center', editable: false },
+  { key: null,              label: 'Actions',             align: 'center', editable: false },
+];
+
+const statusConfig: Record<string, { bg: string; text: string; border: string; icon: React.ReactNode }> = {
+  Available:      { bg: 'bg-green-500/10', text: 'text-green-400', border: 'border-green-500/20', icon: <CheckCircle className="w-3 h-3" /> },
+  'Low Stock':    { bg: 'bg-yellow-500/10', text: 'text-yellow-400', border: 'border-yellow-500/20', icon: <AlertTriangle className="w-3 h-3" /> },
+  'Out of Stock': { bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/20', icon: <XCircle className="w-3 h-3" /> },
+  Discontinued:   { bg: 'bg-gray-500/10', text: 'text-gray-400', border: 'border-gray-500/20', icon: <XCircle className="w-3 h-3" /> },
+};
+
+const formatPrice = (price: number) => `Rs. ${price.toLocaleString()}`;
+
+// ── Searchable Combobox (glassmorphism, dark-theme) ──
+interface SearchableSelectProps {
+  options: string[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  isDark: boolean;
+  allLabel?: string;
+}
+
+const SearchableSelect: React.FC<SearchableSelectProps> = ({ options, value, onChange, placeholder, isDark, allLabel = 'All' }) => {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return options;
+    return options.filter((o) => o.toLowerCase().includes(search.toLowerCase()));
+  }, [search, options]);
+
+  const displayValue = value === 'all' ? allLabel : value;
+
+  useEffect(() => {
+    if (!open) setSearch('');
+  }, [open]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button type="button" onClick={() => setOpen(!open)}
+        className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs border rounded-lg transition-all ${
+          isDark ? 'bg-slate-800 border-slate-700 text-white hover:border-slate-600' : 'bg-white border-slate-200 text-slate-900 hover:border-slate-300'
+        }`}>
+        <span className="truncate">{displayValue}</span>
+        <ChevronDown className={`w-3 h-3 ml-1 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''} ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
+      </button>
+      {open && (
+        <div className={`absolute left-0 top-full mt-0.5 w-full min-w-[180px] rounded-lg border shadow-2xl z-50 overflow-hidden backdrop-blur-md ${
+          isDark ? 'bg-slate-800/95 border-slate-700/50' : 'bg-white/95 border-slate-200'
+        }`}>
+          <div className="relative border-b border-slate-700/30">
+            <input ref={inputRef} type="text" value={search}
+              onChange={(e) => setSearch(e.target.value)} placeholder={placeholder || 'Search...'}
+              className={`w-full px-2.5 py-1.5 text-xs border-0 focus:outline-none focus:ring-0 ${
+                isDark ? 'bg-slate-800/50 text-white placeholder:text-slate-500' : 'bg-white text-slate-900 placeholder:text-slate-400'
+              }`}
+              autoFocus
+            />
+            {search.length > 0 && (
+              <button onClick={() => setSearch('')}
+                className={`absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded ${isDark ? 'text-slate-500 hover:text-white' : 'text-slate-400 hover:text-slate-700'}`}>
+                <X className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+          <div className="max-h-40 overflow-y-auto">
+            <button onClick={() => { onChange('all'); setOpen(false); }}
+              className={`w-full text-left px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                value === 'all' ? 'bg-orange-500/20 text-orange-400' : isDark ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'
+              }`}>{allLabel}</button>
+            {filtered.map((opt) => (
+              <button key={opt} onClick={() => { onChange(opt); setOpen(false); }}
+                className={`w-full text-left px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  opt === value ? 'bg-orange-500/20 text-orange-400' : isDark ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'
+                }`}>{opt}</button>
+            ))}
+            {filtered.length === 0 && (
+              <div className={`px-2.5 py-1.5 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>No results</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Inline numeric input ──
+interface InlineNumberInputProps {
+  value: number; onSave: (value: number) => void; onCancel: () => void; isDark: boolean;
+}
+const InlineNumberInput: React.FC<InlineNumberInputProps> = ({ value, onSave, onCancel, isDark }) => {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [editValue, setEditValue] = useState(String(value));
+  useEffect(() => { inputRef.current?.focus(); inputRef.current?.select(); }, []);
+  const commit = () => { const num = parseFloat(editValue); if (!isNaN(num)) onSave(num); else onCancel(); };
+  return (
+    <input ref={inputRef} type="number" value={editValue} step="0.01" min="0"
+      onChange={(e) => {
+        const val = e.target.value;
+        const parsed = val.startsWith('0') && val.length > 1 ? val.replace(/^0+/, '') : val;
+        setEditValue(parsed);
+      }}
+      onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') onCancel(); }}
+      onBlur={commit}
+      className={`w-full px-2 py-0.5 text-[11px] font-mono rounded border focus:outline-none focus:ring-1 focus:ring-amber-500 ${
+        isDark ? 'bg-slate-950/80 border-amber-500 text-white' : 'bg-white border-amber-500 text-slate-900'
+      }`}
+      onClick={(e) => e.stopPropagation()}
+    />
+  );
+};
+
+// ── Inline text input ──
+interface InlineTextInputProps {
+  value: string; onSave: (value: string) => void; onCancel: () => void; isDark: boolean;
+}
+const InlineTextInput: React.FC<InlineTextInputProps> = ({ value, onSave, onCancel, isDark }) => {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [editValue, setEditValue] = useState(value);
+  useEffect(() => { inputRef.current?.focus(); inputRef.current?.select(); }, []);
+  const commit = () => { if (editValue.trim().length > 0) onSave(editValue.trim()); else onCancel(); };
+  return (
+    <input ref={inputRef} type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)}
+      onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') onCancel(); }} onBlur={commit}
+      className={`w-full px-2 py-0.5 text-[11px] rounded border focus:outline-none focus:ring-1 focus:ring-amber-500 ${
+        isDark ? 'bg-slate-950/90 border-amber-500 text-white' : 'bg-white border-amber-500 text-slate-900'
+      }`} onClick={(e) => e.stopPropagation()}
+    />
+  );
+};
+
+import { categoryNames } from '../data/mockData';
+const INLINE_CATEGORIES = categoryNames;
+
+interface InlineCategorySelectProps {
+  value: string; onSave: (value: string) => void; onCancel: () => void; isDark: boolean;
+}
+const InlineCategorySelect: React.FC<InlineCategorySelectProps> = ({ value, onSave, onCancel, isDark }) => {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [search, setSearch] = useState(value);
+  const [open, setOpen] = useState(true);
+  const filtered = useMemo(() => {
+    if (!search.trim()) return INLINE_CATEGORIES;
+    return INLINE_CATEGORIES.filter((c) => c.toLowerCase().includes(search.toLowerCase()));
+  }, [search]);
+  useEffect(() => { inputRef.current?.focus(); inputRef.current?.select(); }, []);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) onCancel();
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onCancel]);
+  return (
+    <div ref={containerRef} className="relative w-full" onClick={(e) => e.stopPropagation()}>
+      <input ref={inputRef} type="text" value={search} onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
+        onKeyDown={(e) => { if (e.key === 'Escape') onCancel(); if (e.key === 'Enter' && filtered.length === 1) onSave(filtered[0]); }}
+        placeholder="Search category..."
+        className={`w-full px-2 py-0.5 text-[11px] rounded border focus:outline-none focus:ring-1 focus:ring-amber-500 ${
+          isDark ? 'bg-slate-950/90 border-amber-500 text-white placeholder:text-slate-500' : 'bg-white border-amber-500 text-slate-900 placeholder:text-slate-400'
+        }`}
+      />
+      {open && filtered.length > 0 && (
+        <div className={`absolute left-0 top-full mt-1 w-full max-h-36 overflow-y-auto rounded-md border shadow-xl z-50 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+          {filtered.map((cat) => (
+            <button key={cat} onMouseDown={(e) => e.preventDefault()} onClick={() => { onSave(cat); setOpen(false); }}
+              className={`w-full text-left px-2 py-1 text-[11px] font-medium transition-colors ${
+                cat === value ? 'bg-orange-500/20 text-orange-400' : isDark ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-700 hover:bg-slate-100'
+              }`}>{cat}</button>
+          ))}
+        </div>
+      )}
+      {open && filtered.length === 0 && (
+        <div className={`absolute left-0 top-full mt-1 w-full rounded-md border shadow-xl z-50 px-2 py-1.5 text-[10px] ${isDark ? 'bg-slate-800 border-slate-700 text-slate-400' : 'bg-white border-slate-200 text-slate-500'}`}>
+          No matching categories
+        </div>
+      )}
+    </div>
+  );
+};
+
+interface ProductTableProps {
+  items: InventoryProduct[];
+  setItems?: React.Dispatch<React.SetStateAction<InventoryProduct[]>>;
+  onDelete?: (id: string) => void;
+}
+
+export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onDelete }) => {
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
+  const { updateInventoryItem, refreshInventory } = useCatalog();
+
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [sortField, setSortField] = useState<keyof InventoryProduct>('searchKey');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  const [cellEdit, setCellEdit] = useState<CellEditState | null>(null);
+  const [rowEditItem, setRowEditItem] = useState<InventoryProduct | null>(null);
+  const [inlineEdit, setInlineEdit] = useState<{ itemId: string; field: string } | null>(null);
+
+  const { t } = useTranslation();
+
+  const fieldLabels: Record<string, string> = {
+    cost: t('products.costTitle'), lastPrice: t('products.lastPriceTitle'), salesPrice: t('products.salesPriceTitle'),
+    displayPrice: t('products.displayPriceTitle'), storeQty: t('products.storeQtyTitle'),
+    searchKey: t('products.searchKey'), name: t('common.name'),
+  };
+
+  const categories = useMemo(() => {
+    const cats = new Set<string>();
+    items.forEach((i) => cats.add(i.productCategory));
+    return Array.from(cats).sort();
+  }, [items]);
+
+  const filteredItems = useMemo(() => {
+    let result = [...items];
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter((i) => i.searchKey.toLowerCase().includes(q) || i.name.toLowerCase().includes(q) || i.productCategory.toLowerCase().includes(q));
+    }
+    if (categoryFilter !== 'all') result = result.filter((i) => i.productCategory === categoryFilter);
+    if (statusFilter !== 'all') result = result.filter((i) => i.status === statusFilter);
+    result.sort((a, b) => {
+      const aVal = a[sortField], bVal = b[sortField];
+      if (typeof aVal === 'number' && typeof bVal === 'number') return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+      return sortDir === 'asc' ? String(aVal).toLowerCase().localeCompare(String(bVal).toLowerCase()) : String(bVal).toLowerCase().localeCompare(String(aVal).toLowerCase());
+    });
+    return result;
+  }, [items, searchQuery, categoryFilter, statusFilter, sortField, sortDir]);
+
+  const totalPages = Math.ceil(filteredItems.length / rowsPerPage);
+  const paginatedItems = useMemo(() => {
+    const start = (currentPage - 1) * rowsPerPage;
+    return filteredItems.slice(start, start + rowsPerPage);
+  }, [filteredItems, currentPage, rowsPerPage]);
+
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, categoryFilter, statusFilter, rowsPerPage]);
+
+  const hasActiveFilters = searchQuery || categoryFilter !== 'all' || statusFilter !== 'all';
+  const clearFilters = () => { setSearchQuery(''); setCategoryFilter('all'); setStatusFilter('all'); };
+  const SortIcon = sortDir === 'asc' ? SortAsc : SortDesc;
+
+  const handleSort = (field: keyof InventoryProduct) => {
+    if (sortField === field) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortField(field); setSortDir('asc'); }
+  };
+
+  const [deleteTarget, setDeleteTarget] = useState<InventoryProduct | null>(null);
+  
+  const handleDeleteProduct = useCallback((id: string) => {
+    if (onDelete) {
+      onDelete(id);
+    } else if (setItems) {
+      setItems((prev) => prev.filter((i) => i.id !== id));
+    }
+  }, [onDelete, setItems]);
+
+  const patchBackend = useCallback(async (itemId: string, field: string, value: string | number) => {
+    try {
+      // Ensure numeric values are actual Number types for Prisma type validation
+      const payload = { [field]: typeof value === 'number' ? Number(value) : value };
+      await api.patch(`/products/${itemId}`, payload);
+      const product = items.find(i => i.id === itemId);
+      const productName = product?.name || product?.searchKey || itemId;
+      toast.success(`Product "${productName}" - ${field.toUpperCase()} updated successfully.`, {
+        position: 'top-right',
+        autoClose: 2500,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
+    } catch {
+      // Silent fail — local state already updated
+    }
+  }, [items]);
+
+  const updateCatalogState = useCallback((itemId: string, field: string, value: string | number) => {
+    // Update global CatalogContext state so the UI rerenders without crashing
+    const patchData: Partial<InventoryProduct> = { [field]: value };
+    if (field === 'storeQty') {
+      patchData.status = deriveStatus(value as number);
+    }
+    if (typeof updateInventoryItem === 'function') {
+      updateInventoryItem(itemId, patchData);
+    }
+  }, [updateInventoryItem]);
+
+  const handleCellSave = useCallback((itemId: string, field: string, value: string | number) => {
+    const product = items.find(i => i.id === itemId);
+    if (product) {
+      const originalValue = product[field as keyof InventoryProduct] as string | number;
+      // Strict equality check — skip save & toast if value hasn't changed
+      if (String(originalValue) === String(value) || Number(originalValue) === Number(value)) {
+        setCellEdit(null);
+        return;
+      }
+    }
+    updateCatalogState(itemId, field, value);
+    setCellEdit(null);
+    patchBackend(itemId, field, value);
+  }, [items, updateCatalogState, patchBackend]);
+
+  const handleInlineSave = useCallback((itemId: string, field: string, value: string | number) => {
+    const product = items.find(i => i.id === itemId);
+    if (product) {
+      const originalValue = product[field as keyof InventoryProduct] as string | number;
+      // Strict equality check — skip save & toast if value hasn't changed
+      if (String(originalValue) === String(value) || Number(originalValue) === Number(value)) {
+        setInlineEdit(null);
+        return;
+      }
+    }
+    updateCatalogState(itemId, field, value);
+    setInlineEdit(null);
+    patchBackend(itemId, field, value);
+  }, [items, updateCatalogState, patchBackend]);
+
+  const openCellEdit = useCallback((itemId: string, field: string, e: React.MouseEvent) => {
+    setRowEditItem(null);
+    setInlineEdit({ itemId, field });
+    setCellEdit({ itemId, field, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() });
+  }, []);
+
+  const openRowEdit = useCallback((item: InventoryProduct) => {
+    setCellEdit(null);
+    setInlineEdit(null);
+    setRowEditItem(item);
+  }, []);
+
+  const cellEditItem = cellEdit ? items.find((i) => i.id === cellEdit.itemId) : null;
+  const cellEditValue = cellEdit && cellEditItem ? (cellEditItem[cellEdit.field as keyof InventoryProduct] as string | number) : undefined;
+
+  const renderCellValue = (item: InventoryProduct, field: keyof InventoryProduct) => {
+    const val = item[field];
+    if (typeof val === 'number') {
+      if (field === 'storeQty') return val.toLocaleString();
+      return formatPrice(val);
+    }
+    return val;
+  };
+
+  const getCellColor = (item: InventoryProduct, field: string): string => {
+    if (field === 'storeQty') {
+      if (item.storeQty <= 20) return isDark ? 'text-red-400' : 'text-red-600';
+      if (item.storeQty <= 50) return isDark ? 'text-yellow-400' : 'text-yellow-600';
+      return isDark ? 'text-white' : 'text-slate-900';
+    }
+    switch (field) {
+      case 'cost': case 'lastPrice': return isDark ? 'text-slate-300' : 'text-slate-700';
+      case 'salesPrice': return isDark ? 'text-cyan-400' : 'text-cyan-600';
+      case 'displayPrice': return isDark ? 'text-green-400' : 'text-green-600';
+      default: return isDark ? 'text-white' : 'text-slate-900';
+    }
+  };
+
+  const startItem = (currentPage - 1) * rowsPerPage + 1;
+  const endItem = Math.min(currentPage * rowsPerPage, filteredItems.length);
+
+  return (
+    <div className="space-y-4">
+      {cellEdit && cellEditItem && cellEditValue !== undefined && (
+        <CellPopover value={cellEditValue} fieldLabel={fieldLabels[cellEdit.field] || cellEdit.field}
+          type={cellEdit.field === 'productCategory' ? 'category' : editableNumericFields.includes(cellEdit.field as any) ? 'number' : 'text'}
+          anchorRect={cellEdit.rect} onSave={(val) => handleCellSave(cellEdit.itemId, cellEdit.field, val)} onClose={() => setCellEdit(null)} />
+      )}
+
+      {/* ── BALANCED HORIZONTAL TOOLBAR with permanently visible filters ── */}
+      <div className={`p-4 rounded-lg border ${isDark ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}>
+        <div className="flex items-center gap-4">
+          <div className="relative flex-1 max-w-xl">
+            <Search className={`absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
+            <input type="text" placeholder={t('products.searchPlaceholder')} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+              className={`w-full pl-8 pr-9 py-2 text-xs border rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500/50 focus:border-orange-500/50 transition-all ${isDark ? 'bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-200'}`} />
+            {searchQuery.length > 0 && (
+              <button onClick={() => setSearchQuery('')}
+                className={`absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded transition-colors ${isDark ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-200'}`}>
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          <div className="relative min-w-[200px] w-64">
+            <SearchableSelect options={categories} value={categoryFilter} onChange={(v) => setCategoryFilter(v)} placeholder="Search category..." isDark={isDark} allLabel={t('filters.allCategories')} />
+            {categoryFilter !== 'all' && (
+              <button onClick={() => setCategoryFilter('all')}
+                className={`absolute -right-2 -top-2 z-10 w-4 h-4 rounded-full flex items-center justify-center transition-colors shadow-sm ${
+                  isDark ? 'bg-slate-700 text-slate-300 hover:bg-slate-600 border border-slate-600' : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-300'
+                }`} title="Reset category filter">
+                <X className="w-2.5 h-2.5" />
+              </button>
+            )}
+          </div>
+          <div className="relative min-w-[180px] w-52">
+            <SearchableSelect options={['Available', 'Low Stock', 'Out of Stock']} value={statusFilter} onChange={(v) => setStatusFilter(v)} placeholder="Search status..." isDark={isDark} allLabel={t('filters.allStatus')} />
+            {statusFilter !== 'all' && (
+              <button onClick={() => setStatusFilter('all')}
+                className={`absolute -right-2 -top-2 z-10 w-4 h-4 rounded-full flex items-center justify-center transition-colors shadow-sm ${
+                  isDark ? 'bg-slate-700 text-slate-300 hover:bg-slate-600 border border-slate-600' : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-300'
+                }`} title="Reset status filter">
+                <X className="w-2.5 h-2.5" />
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2 ml-auto">
+            <SortButton currentSortOrder={sortDir} onSortToggle={() => handleSort(sortField)} />
+            {hasActiveFilters && <button onClick={clearFilters} className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${isDark ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'}`}><RefreshCw className="w-3 h-3" /></button>}
+            <span className={`text-[10px] font-medium whitespace-nowrap ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{t('products.itemsCount', { count: filteredItems.length })}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── MAIN TABLE ── */}
+      <div className={`rounded-lg border overflow-hidden ${isDark ? 'bg-slate-900/95 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1300px]">
+            <thead className={isDark ? 'bg-slate-800/80' : 'bg-slate-50'}>
+              <tr>
+                {columns.map((col, i) => (
+                  <th key={i}
+                    className={`px-2 py-2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'} ${isDark ? 'text-slate-400' : 'text-slate-500'} ${col.key ? 'cursor-pointer select-none hover:text-orange-400 transition-colors' : ''}`}
+                    onClick={() => col.key && handleSort(col.key as keyof InventoryProduct)}>
+          <div className={`flex items-center gap-1 ${col.align === 'right' ? 'justify-end' : col.align === 'center' ? 'justify-center' : ''}`}>
+                      {(() => {
+                        const labelMap: Record<string, string> = {
+                          'Search Key': t('productTable.searchKey'),
+                          'Name': t('productTable.name'),
+                          'Product Category': t('productTable.category'),
+                          'Barcode': t('productTable.barcode'),
+                          'Cost[0]': t('productTable.cost'),
+                          'Last Price[1]': t('productTable.lastPrice'),
+                          'Sales Price[3]': t('productTable.salesPrice'),
+                          'Display Price[4]': t('productTable.displayPrice'),
+                          'Store Qty': t('productTable.storeQty'),
+                          'Sales Type': t('productTable.salesType'),
+                          'Status': t('productTable.status'),
+                          'Actions': t('productTable.actions'),
+                        };
+                        return labelMap[col.label] || col.label;
+                      })()}
+                      {col.key && sortField === col.key && <SortIcon className="w-3 h-3 flex-shrink-0" />}
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className={`divide-y ${isDark ? 'divide-slate-700/40' : 'divide-slate-200'}`}>
+              {paginatedItems.map((item) => {
+                const st = statusConfig[item.status] || statusConfig['Out of Stock'];
+                return (
+                  <tr key={item.id} className={`transition-colors ${isDark ? 'hover:bg-slate-700/25' : 'hover:bg-slate-50'}`}>
+                    {(() => {
+                      const field = 'searchKey';
+                      const isEditing = inlineEdit?.itemId === item.id && inlineEdit?.field === field;
+                      return (
+                        <td className="px-2 py-1.5 relative group cursor-pointer" onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
+                          {isEditing ? (
+                            <InlineTextInput value={item.searchKey} isDark={isDark} onSave={(val) => handleInlineSave(item.id, field, val)} onCancel={() => setInlineEdit(null)} />
+                          ) : (
+                            <span className={`text-[11px] font-mono font-semibold ${isDark ? 'text-indigo-400' : 'text-indigo-600'} hover:text-orange-400 transition-colors`}>{item.searchKey}</span>
+                          )}
+                        </td>
+                      );
+                    })()}
+
+                    {(() => {
+                      const field = 'name';
+                      const isEditing = inlineEdit?.itemId === item.id && inlineEdit?.field === field;
+                      return (
+                        <td className="px-2 py-1.5 relative group cursor-pointer" onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
+                          {isEditing ? (
+                            <InlineTextInput value={item.name} isDark={isDark} onSave={(val) => handleInlineSave(item.id, field, val)} onCancel={() => setInlineEdit(null)} />
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}>
+                                <Package className={`w-2.5 h-2.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
+                              </div>
+                              <span className={`text-[11px] font-medium leading-tight ${isDark ? 'text-white' : 'text-slate-900'} hover:text-orange-400 transition-colors`}>{item.name}</span>
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })()}
+
+                    {(() => {
+                      const field = 'productCategory';
+                      const isEditing = inlineEdit?.itemId === item.id && inlineEdit?.field === field;
+                      return (
+                        <td className="px-2 py-1.5 relative group cursor-pointer" onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
+                          {isEditing ? (
+                            <InlineCategorySelect value={item.productCategory} isDark={isDark} onSave={(val) => handleInlineSave(item.id, field, val)} onCancel={() => setInlineEdit(null)} />
+                          ) : (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20 hover:bg-purple-500/20 transition-colors cursor-pointer">{item.productCategory}</span>
+                          )}
+                        </td>
+                      );
+                    })()}
+
+                    {/* Barcode cell */}
+                    <td className="px-2 py-1.5">
+                      <span className={`text-[10px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        {item.barcode || '—'}
+                      </span>
+                    </td>
+
+                    {(['cost', 'lastPrice', 'salesPrice', 'displayPrice'] as const).map((field) => {
+                      const isEditing = inlineEdit?.itemId === item.id && inlineEdit?.field === field;
+                      return (
+                        <td key={field} className={`px-2 py-1.5 text-right relative group cursor-pointer`} onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
+                          {isEditing ? (
+                            <InlineNumberInput value={item[field] as number} isDark={isDark} onSave={(val) => handleInlineSave(item.id, field, val)} onCancel={() => setInlineEdit(null)} />
+                          ) : (
+                            <>
+                              <span className={`text-[11px] font-mono ${field === 'displayPrice' || field === 'salesPrice' ? 'font-bold' : ''} ${getCellColor(item, field)} hover:text-orange-400 transition-colors`}>{renderCellValue(item, field)}</span>
+                              <span className={`absolute -right-0.5 top-0.5 w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity ${isDark ? 'text-slate-500' : 'text-slate-400'}`}><Pencil className="w-2.5 h-2.5" /></span>
+                            </>
+                          )}
+                        </td>
+                      );
+                    })}
+
+                    {(() => {
+                      const field = 'storeQty';
+                      const isEditing = inlineEdit?.itemId === item.id && inlineEdit?.field === field;
+                      return (
+                        <td className="px-2 py-1.5 text-right relative group cursor-pointer" onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
+                          {isEditing ? (
+                            <InlineNumberInput value={item.storeQty} isDark={isDark} onSave={(val) => handleInlineSave(item.id, field, val)} onCancel={() => setInlineEdit(null)} />
+                          ) : (
+                            <>
+                              <span className={`text-[11px] font-mono font-bold ${getCellColor(item, 'storeQty')} hover:text-orange-400 transition-colors`}>{item.storeQty.toLocaleString()}</span>
+                              <span className={`absolute -right-0.5 top-0.5 w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity ${isDark ? 'text-slate-500' : 'text-slate-400'}`}><Pencil className="w-2.5 h-2.5" /></span>
+                            </>
+                          )}
+                        </td>
+                      );
+                    })()}
+
+                    <td className="px-2 py-1.5">
+                      <span className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{item.salesType}</span>
+                    </td>
+
+                    <td className="px-2 py-1.5 text-center">
+                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-medium ${st.bg} ${st.text} ${st.border} border`}>
+                        {st.icon}<span>{item.status}</span>
+                      </span>
+                    </td>
+
+                    <td className="px-2 py-1.5 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => openRowEdit(item)}
+                          className={`p-1.5 rounded-lg transition-all hover:scale-110 active:scale-90 ${isDark ? 'text-slate-400 hover:text-orange-400 hover:bg-orange-500/15' : 'text-slate-500 hover:text-orange-600 hover:bg-orange-50'}`} title="Edit full row">
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button onClick={() => setDeleteTarget(item)}
+                          className={`p-1.5 rounded-lg transition-all hover:scale-110 active:scale-90 ${isDark ? 'text-slate-400 hover:text-rose-500 hover:bg-rose-500/15' : 'text-slate-500 hover:text-rose-600 hover:bg-rose-50'}`} title="Delete item">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* ── ADVANCED PAGINATION ── */}
+        <div className={`flex items-center justify-between px-4 py-2.5 border-t ${isDark ? 'border-slate-700/40' : 'border-slate-200'}`}>
+          <div className="flex items-center gap-3">
+            <span className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              Showing {startItem}-{endItem} of {filteredItems.length}
+            </span>
+            <div className={`flex items-center gap-1.5 text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              <span>Rows:</span>
+              <select value={rowsPerPage} onChange={(e) => setRowsPerPage(Number(e.target.value))}
+                className={`px-1.5 py-0.5 text-[10px] border rounded transition-colors focus:outline-none focus:ring-1 focus:ring-orange-500/50 ${
+                  isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+                }`}>
+                {ROWS_PER_PAGE_OPTIONS.map((n) => (<option key={n} value={n}>{n}</option>))}
+              </select>
+            </div>
+          </div>
+          <div className="flex items-center gap-0.5">
+            <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1}
+              className={`p-1.5 rounded transition-colors disabled:opacity-30 ${isDark ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'}`} title="First page">
+              <ChevronsLeft className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1}
+              className={`p-1.5 rounded transition-colors disabled:opacity-30 ${isDark ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'}`} title="Previous page">
+              <ChevronLeft className="w-3.5 h-3.5" />
+            </button>
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              const start = Math.max(1, Math.min(currentPage - 2, totalPages - 4));
+              const page = start + i;
+              if (page > totalPages) return null;
+              return (
+                <button key={page} onClick={() => setCurrentPage(page)}
+                  className={`w-7 h-7 text-[10px] font-semibold rounded transition-all ${
+                    page === currentPage
+                      ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20'
+                      : isDark ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-600 hover:bg-slate-100'
+                  }`}>{page}</button>
+              );
+            })}
+            <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
+              className={`p-1.5 rounded transition-colors disabled:opacity-30 ${isDark ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'}`} title="Next page">
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages}
+              className={`p-1.5 rounded transition-colors disabled:opacity-30 ${isDark ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'}`} title="Last page">
+              <ChevronsRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {rowEditItem && (
+        <ProductFormModal
+          isOpen={!!rowEditItem}
+          onClose={() => setRowEditItem(null)}
+          mode="edit"
+          initialData={rowEditItem}
+        />
+      )}
+      <DeleteConfirmationModal
+        isOpen={!!deleteTarget}
+        title={t('products.deleteTitle')}
+        message={t('products.deleteMessage')}
+        itemName={deleteTarget?.name}
+        onConfirm={() => {
+          if (deleteTarget) handleDeleteProduct(deleteTarget.id);
+          setDeleteTarget(null);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
+    </div>
+  );
+};
