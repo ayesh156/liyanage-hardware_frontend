@@ -4,6 +4,7 @@ import { InventoryProduct } from '../types/index';
 import { mockCategories, linkedCatalogItems } from '../data/mockData';
 import { CatalogItem } from '../data/mockData';
 import api from '../lib/api';
+import { useAuth } from './AuthContext';
 
 // ── Local fallback when API is unavailable ──
 let localInventoryItems: InventoryProduct[] = [];
@@ -37,6 +38,7 @@ export const useCatalog = (): CatalogContextValue => {
 };
 
 export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated, token, isInitializing } = useAuth();
   const [categories, setCategories] = useState<Category[]>(() => mockCategories);
   const [inventoryItems, setInventoryItems] = useState<InventoryProduct[]>([]);
   const [isInventoryLoading, setIsInventoryLoading] = useState(true);
@@ -93,10 +95,18 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, []);
 
-  // Load inventory on mount
+  // Load inventory on mount ONLY when authenticated
   useEffect(() => {
+    // ARCHITECTURAL GUARD: Do NOT fire the 2000-item product fetch
+    // while the user is on the public /login page. This was causing
+    // CORS preflight failures and unauthorized API calls inflating
+    // the server load at the gateway.
+    // The data is only needed after a successful sign-in.
+    if (isInitializing) return;
+    if (!isAuthenticated || !token) return;
+
     fetchInventory();
-  }, [fetchInventory]);
+  }, [fetchInventory, isAuthenticated, token, isInitializing]);
 
   // ── Category CRUD ──
   const addCategory = useCallback((data: Partial<Category>): Category => {
