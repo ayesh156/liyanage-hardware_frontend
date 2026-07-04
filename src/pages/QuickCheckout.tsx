@@ -2388,23 +2388,19 @@ export const QuickCheckout: React.FC = () => {
                             <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isDark ? 'bg-slate-700' : 'bg-white'}`}>
                               <Package className={`w-4 h-4 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
                             </div>
-                            <div className="flex-1 min-w-0">
-                              <p className={`text-xs font-medium truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                                {isSinhala ? (flatProduct.product.nameAlt || flatProduct.displayName) : flatProduct.displayName}
-                              </p>
-                              <div className="flex items-center gap-1.5 mt-0.5">
-                                <span className={`text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                                  {flatProduct.displaySku}
-                                </span>
-                                <span className={`text-[9px] px-1 py-0.5 rounded ${
-                                  flatProduct.stock > 10 
-                                    ? 'bg-emerald-500/10 text-emerald-500' 
-                                    : flatProduct.stock > 0 
-                                      ? 'bg-amber-500/10 text-amber-500' 
-                                      : 'bg-red-500/10 text-red-500'
-                                }`}>
-                                  {flatProduct.stock}
-                                </span>
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <span className="inline-flex min-w-[2.75rem] items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-sm font-bold text-emerald-400">
+                                {flatProduct.stock}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <p className={`truncate text-xs font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                  {isSinhala ? (flatProduct.product.nameAlt || flatProduct.displayName) : flatProduct.displayName}
+                                </p>
+                                <div className="mt-0.5 flex items-center gap-1.5">
+                                  <span className={`text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                                    {flatProduct.displaySku}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                             <div className="text-right">
@@ -3328,23 +3324,19 @@ export const QuickCheckout: React.FC = () => {
                                         }`}>
                                           <Package className={`w-3.5 h-3.5 ${isFocusedRow ? (isDark ? 'text-white' : 'text-amber-900') : isDark ? 'text-slate-400' : 'text-slate-500'}`} />
                                         </div>
-                                        <div className="flex-1 min-w-0">
-                                          <p className={`text-[11px] font-semibold truncate ${isFocusedRow ? (isDark ? 'text-white' : 'text-amber-900') : isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-                                            {isSinhala ? (item.nameSinhala || item.nameSi || item.name) : item.name}
-                                          </p>
-                                          <div className="flex items-center gap-1.5 mt-0.5">
-                                            <span className={`text-[8px] font-mono ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                                              {item.searchKey}
-                                            </span>
-                                            <span className={`text-[8px] px-1 py-0.5 rounded-full ${
-                                              item.storeQty > 10 
-                                                ? 'bg-emerald-500/10 text-emerald-500' 
-                                                : item.storeQty > 0 
-                                                  ? 'bg-amber-500/10 text-amber-500' 
-                                                  : 'bg-red-500/10 text-red-500'
-                                            }`}>
-                                              {item.storeQty}
-                                            </span>
+                                        <div className="flex flex-1 items-center gap-2 min-w-0">
+                                          <span className="inline-flex min-w-[2.35rem] items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[11px] font-bold text-emerald-400">
+                                            {item.storeQty}
+                                          </span>
+                                          <div className="min-w-0 flex-1">
+                                            <p className={`truncate text-[11px] font-semibold ${isFocusedRow ? (isDark ? 'text-white' : 'text-amber-900') : isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                                              {isSinhala ? (item.nameSinhala || item.nameSi || item.name) : item.name}
+                                            </p>
+                                            <div className="mt-0.5 flex items-center gap-1.5">
+                                              <span className={`text-[8px] font-mono ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                                                {item.searchKey}
+                                              </span>
+                                            </div>
                                           </div>
                                         </div>
                                         <div className="text-right flex-shrink-0 flex items-center gap-2">
