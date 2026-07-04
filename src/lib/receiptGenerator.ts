@@ -52,6 +52,10 @@ export const generateReceiptHTML = (
       const lineTotal = salesPrice * item.quantity;
       const showStrikethrough = salesPrice < displayPrice;
 
+       // CONDITIONAL SUPPRESSION: If salesPrice > displayPrice, render dash instead of numeric display price
+      const showDisplayPriceSuppressed = salesPrice > displayPrice;
+      const displayPriceDisplay = showDisplayPriceSuppressed ? '-' : displayPrice.toLocaleString('en-US', { minimumFractionDigits: 2 });
+
       // Display quantity with up to 3 decimal places (e.g., 0.5, 0.125, 1.5)
       const displayQty = Number(item.quantity) % 1 === 0
         ? Number(item.quantity).toString()
@@ -61,7 +65,7 @@ export const generateReceiptHTML = (
         <div style="font-weight:800;font-size:12px;color:#000;margin-bottom:2px;word-break:break-word;">${displayName}</div>
         <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700;font-family:'Courier New',monospace;color:#000;width:100%;">
           <span style="width:15%;text-align:left;flex-shrink:0;">${displayQty}</span>
-          <span style="width:25%;text-align:right;${showStrikethrough ? 'text-decoration:line-through;' : ''}color:#000;opacity:0.6;flex-shrink:0;">${displayPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+          <span style="width:25%;text-align:right;${showStrikethrough ? 'text-decoration:line-through;' : ''}color:#000;opacity:0.6;flex-shrink:0;">${displayPriceDisplay}</span>
           <span style="width:25%;text-align:right;font-weight:800;color:#000;flex-shrink:0;">${salesPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
           <span style="width:35%;text-align:right;font-weight:900;color:#000;flex-shrink:0;">${lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
         </div>

@@ -2524,10 +2524,20 @@ export const QuickCheckout: React.FC = () => {
                           </>
                         )}
                       </div>
+                      {/* DISPLAY — displayPrice */}
+                      {/* CASHIER COLUMN RULE: If salesPrice > displayPrice, keep the numeric value visible
+                          but apply line-through + muted opacity so the cashier can audit the baseline
+                          rate while visually flagging it as overridden. */}
                       <div className="text-right truncate">
-                        <span className={`text-sm font-bold font-mono ${isDark ? 'text-cyan-400' : 'text-cyan-600'}`}>
-                          {Number(item.displayPrice || 0).toFixed(2)}
-                        </span>
+                        {Number(item.salesPrice || item.ourPrice || 0) > Number(item.displayPrice || 0) ? (
+                          <span className={`text-sm font-mono line-through opacity-40 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                            {Number(item.displayPrice || 0).toFixed(2)}
+                          </span>
+                        ) : (
+                          <span className={`text-sm font-bold font-mono ${isDark ? 'text-cyan-400' : 'text-cyan-600'}`}>
+                            {Number(item.displayPrice || 0).toFixed(2)}
+                          </span>
+                        )}
                       </div>
                       <div className="text-center truncate">
                         <span className={`text-sm font-mono font-semibold ${item.storeQty !== undefined && item.storeQty < 10 ? 'text-amber-500 font-bold animate-pulse' : isDark ? 'text-slate-400' : 'text-slate-500'}`}>
