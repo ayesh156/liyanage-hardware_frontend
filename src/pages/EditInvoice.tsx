@@ -3,8 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
 import { useIsMobile } from '../hooks/use-mobile';
-import { mockInvoices, mockCustomers, mockProducts } from '../data/mockData';
-import { Customer, Product, Invoice, InvoiceItem } from '../types/index';
+import api from '../lib/api';
+import { Invoice, InvoiceItem } from '../types/index';
+import { toast } from 'react-toastify';
 import {
   FileText, User, Package, CheckCircle, ArrowLeft, UserX, CreditCard,
   AlertTriangle, Building2, Phone, DollarSign, Receipt, Calendar,
@@ -21,6 +22,25 @@ interface ExtendedInvoiceItem extends InvoiceItem {
   isQuickAdd?: boolean;
 }
 
+interface CustomerOption {
+  id: string;
+  name: string;
+  nameSi?: string;
+  customerType: string;
+}
+
+interface ProductOption {
+  id: string;
+  name: string;
+  nameSi?: string;
+  sku: string;
+  category: string;
+  stock: number;
+  retailPrice: number;
+  wholesalePrice: number;
+  price: number;
+}
+
 export const EditInvoice: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const { t, i18n } = useTranslation();
@@ -29,13 +49,12 @@ export const EditInvoice: React.FC = () => {
   const isMobile = useIsMobile();
   const isSinhala = i18n.language === 'si';
   
-  const [customers] = useState<Customer[]>(mockCustomers);
-  const [products] = useState<Product[]>(mockProducts);
+  const [customers, setCustomers] = useState<CustomerOption[]>([]);
+  const [products, setProducts] = useState<ProductOption[]>([]);
+  const [loadingInvoice, setLoadingInvoice] = useState(true);
+  const [invoiceNotFound, setInvoiceNotFound] = useState(false);
 
-  // Find the invoice being edited
-  const originalInvoice = useMemo(() => {
-    return mockInvoices.find(inv => inv.id === id) || null;
-  }, [id]);
+  const [originalInvoice, setOriginalInvoice] = useState<Invoice | null>(null);
 
   // State - populated from original invoice
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
@@ -63,41 +82,95 @@ export const EditInvoice: React.FC = () => {
   const [quickAddName, setQuickAddName] = useState('');
   const [quickAddPrice, setQuickAddPrice] = useState<number>(0);
   const [quickAddQty, setQuickAddQty] = useState<number>(1);
+  const [saving, setSaving] = useState(false);
 
-  // Initialize form with invoice data
+  // ── Fetch invoice from live API ──
   useEffect(() => {
-    if (originalInvoice) {
-      setSelectedCustomer(originalInvoice.customerId);
-      setIsWalkIn(originalInvoice.customerId === 'walk-in');
-      setIssueDate(originalInvoice.issueDate);
-      setDueDate(originalInvoice.dueDate);
-      setDiscount(originalInvoice.discountValue || originalInvoice.discount || 0);
-      setDiscountType(originalInvoice.discountType || 'none');
-      setEnableTax(originalInvoice.enableTax || false);
-      setTaxRate(originalInvoice.taxRate || 15);
-      setPaymentMethod(originalInvoice.paymentMethod || 'cash');
-      setStatus(originalInvoice.status);
-      setNotes(originalInvoice.notes || '');
-      
-      // Convert items to extended format
-      const extendedItems: ExtendedInvoiceItem[] = originalInvoice.items.map(item => {
-        const extItem = item as any;
-        return {
+    const fetchData = async () => {
+      try {
+        setLoadingInvoice(true);
+        // Fetch invoice detail by ID
+        const invoiceResponse = await api.get<any>(`/invoices/${id}`);
+        const invoice: Invoice = invoiceResponse?.data || invoiceResponse;
+        
+        if (!invoice || !invoice.id) {
+          setInvoiceNotFound(true);
+          setLoadingInvoice(false);
+          return;
+        }
+
+        setOriginalInvoice(invoice);
+
+        // Fetch customers for dropdown
+        try {
+          const custResponse = await api.get<any[]>('/customers', { perPage: 500 }, true) as any;
+          const custData = custResponse?.data || custResponse || [];
+          setCustomers(Array.isArray(custData) ? custData.map((c: any) => ({
+            id: c.id || '',
+            name: c.name || c.customerName || '',
+            nameSi: c.nameSi,
+            customerType: c.customerType || 'regular',
+          })) : []);
+        } catch {
+          setCustomers([]);
+        }
+
+        // Fetch products for adding items
+        try {
+          const prodResponse = await api.get<any[]>('/products', { perPage: 500 }, true) as any;
+          const prodData = prodResponse?.data || prodResponse || [];
+          setProducts(Array.isArray(prodData) ? prodData.map((p: any) => ({
+            id: p.id || '',
+            name: p.name || p.searchKey || '',
+            nameSi: p.nameSi,
+            sku: p.barcode || p.searchKey || '',
+            category: p.productCategory || '',
+            stock: p.storeQty || 0,
+            retailPrice: Number(p.salesPrice) || Number(p.displayPrice) || 0,
+            wholesalePrice: Number(p.lastPrice) || Number(p.displayPrice) || 0,
+            price: Number(p.salesPrice) || 0,
+          })) : []);
+        } catch {
+          setProducts([]);
+        }
+
+        // Initialize form with invoice data
+        setSelectedCustomer(invoice.customerId || '');
+        setIsWalkIn(!invoice.customerId || invoice.customerId === 'walk-in');
+        setIssueDate(invoice.issueDate || '');
+        setDueDate(invoice.dueDate || '');
+        setDiscount(invoice.discountValue || invoice.discount || 0);
+        setDiscountType((invoice.discountType as any) || 'none');
+        setEnableTax(invoice.enableTax || false);
+        setTaxRate(invoice.taxRate || 15);
+        setPaymentMethod((invoice.paymentMethod as any) || 'cash');
+        setStatus(invoice.status || 'pending');
+        setNotes(invoice.notes || '');
+        
+        // Convert items to extended format
+        const extendedItems: ExtendedInvoiceItem[] = (invoice.items || []).map((item: any) => ({
           ...item,
-          originalPrice: extItem.originalPrice || item.unitPrice,
-          discountType: extItem.discountType || null,
-          discountValue: extItem.discountValue || 0,
-          isCustomPrice: extItem.isCustomPrice || false,
-          isQuickAdd: extItem.isQuickAdd || false
-        };
-      });
-      setItems(extendedItems);
-    }
-  }, [originalInvoice]);
+          originalPrice: item.originalPrice || item.unitPrice,
+          discountType: item.discountType || null,
+          discountValue: item.discountValue || 0,
+          isCustomPrice: item.isCustomPrice || false,
+          isQuickAdd: item.isQuickAdd || !item.productId
+        }));
+        setItems(extendedItems);
+      } catch (err: any) {
+        console.error('[EditInvoice] Failed to fetch invoice:', err);
+        setInvoiceNotFound(true);
+      } finally {
+        setLoadingInvoice(false);
+      }
+    };
+
+    if (id) fetchData();
+  }, [id]);
 
   const currentCustomer = useMemo(() => {
     if (isWalkIn) return null;
-    return customers.find(c => c.id === selectedCustomer);
+    return customers.find(c => c.id === selectedCustomer) || null;
   }, [selectedCustomer, isWalkIn, customers]);
 
   const filteredProducts = useMemo(() => {
@@ -111,12 +184,11 @@ export const EditInvoice: React.FC = () => {
   }, [productSearch, products]);
 
   const selectedProduct = useMemo(() => {
-    return products.find(p => p.id === selectedProductId);
+    return products.find(p => p.id === selectedProductId) || null;
   }, [selectedProductId, products]);
 
   // Calculate product price based on mode and customer type
-  const getProductPrice = (product: Product | undefined): number => {
-    if (!product) return 0;
+  const getProductPrice = (product: ProductOption): number => {
     if (priceMode === 'custom') return customPrice;
     if (priceMode === 'retail') return product.retailPrice;
     if (priceMode === 'wholesale') return product.wholesalePrice;
@@ -185,7 +257,6 @@ export const EditInvoice: React.FC = () => {
 
     setItems([...items, newItem]);
     
-    // Reset quick add form
     setQuickAddName('');
     setQuickAddPrice(0);
     setQuickAddQty(1);
@@ -218,45 +289,72 @@ export const EditInvoice: React.FC = () => {
   const tax = enableTax ? afterDiscount * (taxRate / 100) : 0;
   const total = afterDiscount + tax;
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (items.length === 0) {
-      alert('Please add at least one item');
+      toast.error('Please add at least one item');
       return;
     }
 
-    const updatedInvoice: Invoice = {
-      ...originalInvoice!,
-      customerId: isWalkIn ? 'walk-in' : selectedCustomer,
-      customerName: isWalkIn ? 'Walk-in Customer' : (currentCustomer?.name || ''),
-      items: items.map(item => ({
-        id: item.id,
-        productId: item.productId,
-        productName: item.productName,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        total: item.total
-      })),
-      subtotal,
-      discount: discountType !== 'none' ? parseFloat(discountAmount.toFixed(2)) : 0,
-      discountType,
-      discountValue: discount,
-      enableTax,
-      taxRate: enableTax ? taxRate : 0,
-      tax: parseFloat(tax.toFixed(2)),
-      total: parseFloat(total.toFixed(2)),
-      issueDate,
-      dueDate,
-      status,
-      paymentMethod,
-      notes
-    };
+    setSaving(true);
+    try {
+      const payload = {
+        customerId: isWalkIn ? '' : selectedCustomer,
+        customerName: isWalkIn ? 'Walk-in Customer' : (currentCustomer?.name || ''),
+        items: items.map(item => ({
+          id: item.id,
+          productId: item.productId === 'quick-add' ? '' : item.productId,
+          productName: item.productName,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          total: item.total
+        })),
+        subtotal: parseFloat(subtotal.toFixed(2)),
+        discount: discountType !== 'none' ? parseFloat(discountAmount.toFixed(2)) : 0,
+        discountType,
+        discountValue: discount,
+        enableTax,
+        taxRate: enableTax ? taxRate : null,
+        tax: parseFloat(tax.toFixed(2)),
+        total: parseFloat(total.toFixed(2)),
+        issueDate,
+        dueDate,
+        status,
+        paymentMethod,
+        notes
+      };
 
-    console.log('Updated Invoice:', updatedInvoice);
-    alert('Invoice updated successfully!');
-    navigate(`/invoices/${id}`);
+      await api.put(`/invoices/${id}`, payload);
+      toast.success('Invoice updated successfully!');
+      navigate(`/invoices/${id}`);
+    } catch (err: any) {
+      console.error('[EditInvoice] Failed to update:', err);
+      toast.error(err?.message || 'Failed to update invoice');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  if (!originalInvoice) {
+  // Loading state
+  if (loadingInvoice) {
+    return (
+      <div className={`min-h-screen flex items-center justify-center ${
+        theme === 'dark' ? 'bg-slate-900' : 'bg-slate-50'
+      }`}>
+        <div className="text-center">
+          <div className={`w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center ${
+            theme === 'dark' ? 'bg-blue-500/20' : 'bg-blue-100'
+          }`}>
+            <FileText className="w-10 h-10 text-blue-500 animate-pulse" />
+          </div>
+          <h2 className={`text-2xl font-bold mb-2 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+            Loading Invoice...
+          </h2>
+        </div>
+      </div>
+    );
+  }
+
+  if (invoiceNotFound || !originalInvoice) {
     return (
       <div className={`min-h-screen flex items-center justify-center ${
         theme === 'dark' ? 'bg-slate-900' : 'bg-slate-50'
@@ -271,7 +369,7 @@ export const EditInvoice: React.FC = () => {
             Invoice Not Found
           </h2>
           <p className={`mb-6 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-            The invoice you're trying to edit doesn't exist.
+            The invoice you're trying to edit doesn't exist or could not be loaded.
           </p>
           <button
             onClick={() => navigate('/invoices')}
@@ -335,11 +433,11 @@ export const EditInvoice: React.FC = () => {
             </button>
             <button
               onClick={handleSave}
-              disabled={items.length === 0}
+              disabled={items.length === 0 || saving}
               className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-medium transition-all shadow-lg shadow-emerald-500/20"
             >
               <Save className="w-5 h-5" />
-              {t('invoice.saveChanges')}
+              {saving ? 'Saving...' : t('invoice.saveChanges')}
             </button>
           </div>
         </div>
@@ -361,7 +459,7 @@ export const EditInvoice: React.FC = () => {
                   Customer
                 </h3>
                 <p className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-                  {isWalkIn ? 'Walk-in sale' : (isSinhala && currentCustomer?.nameSi ? currentCustomer.nameSi : currentCustomer?.name) || 'Select customer'}
+                  {(isSinhala && currentCustomer?.nameSi ? currentCustomer.nameSi : currentCustomer?.name) || 'Walk-in Customer'}
                 </p>
               </div>
             </div>
@@ -592,9 +690,9 @@ export const EditInvoice: React.FC = () => {
                             : theme === 'dark' ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
                         }`}
                       >
-                        Retail: Rs. {(selectedProduct.retailPrice || selectedProduct.price || 0).toLocaleString()}
+                        Retail: Rs. {(selectedProduct.retailPrice).toLocaleString()}
                       </button>
-                      {selectedProduct.wholesalePrice && (
+                      {selectedProduct.wholesalePrice > 0 && (
                         <button
                           onClick={() => setPriceMode('wholesale')}
                           className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
@@ -1040,7 +1138,6 @@ export const EditInvoice: React.FC = () => {
 
         {/* Right Panel - Preview & Summary */}
         <div className="space-y-6">
-          {/* Summary Card */}
           <div className={`p-6 rounded-2xl border sticky top-6 ${
             theme === 'dark' ? 'bg-gradient-to-br from-slate-800/50 to-slate-900/50 border-slate-700' : 'bg-gradient-to-br from-white to-slate-50 border-slate-200 shadow-xl'
           }`}>
@@ -1077,7 +1174,6 @@ export const EditInvoice: React.FC = () => {
                 {t('invoice.overallDiscount')}
               </label>
               <div className="space-y-3">
-                {/* Discount Type Selection */}
                 <div className="grid grid-cols-3 gap-2">
                   {[
                     { value: 'none', label: t('invoice.none') },
@@ -1100,7 +1196,6 @@ export const EditInvoice: React.FC = () => {
                     </button>
                   ))}
                 </div>
-                {/* Discount Value Input */}
                 {discountType !== 'none' && (
                   <div className="flex items-center gap-3">
                     <input
@@ -1146,7 +1241,6 @@ export const EditInvoice: React.FC = () => {
                 {t('invoice.taxSettings')}
               </label>
               <div className="space-y-3">
-                {/* Enable Tax Toggle */}
                 <label className="flex items-center gap-3 cursor-pointer">
                   <div className="relative">
                     <input
@@ -1167,7 +1261,6 @@ export const EditInvoice: React.FC = () => {
                     {t('invoice.addTax')}
                   </span>
                 </label>
-                {/* Tax Rate Input */}
                 {enableTax && (
                   <div className="flex items-center gap-3">
                     <input
@@ -1232,11 +1325,11 @@ export const EditInvoice: React.FC = () => {
 
               <button
                 onClick={handleSave}
-                disabled={items.length === 0}
+                disabled={items.length === 0 || saving}
                 className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-all shadow-xl shadow-emerald-500/30"
               >
                 <Save className="w-6 h-6" />
-                {t('invoice.saveChanges')}
+                {saving ? 'Saving...' : t('invoice.saveChanges')}
               </button>
             </div>
           </div>

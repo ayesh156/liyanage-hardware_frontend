@@ -20,6 +20,8 @@ export interface ThermalReceiptPreviewProps {
   customer?: Customer | null;
   invoiceNumber?: string;
   language?: 'en' | 'si';
+  /** Dynamically rendered cashier's full name from logged-in user */
+  cashierName?: string;
 }
 
 const ThermalReceiptPreview: React.FC<ThermalReceiptPreviewProps> = memo(({
@@ -32,6 +34,7 @@ const ThermalReceiptPreview: React.FC<ThermalReceiptPreviewProps> = memo(({
   customer,
   invoiceNumber = 'PREVIEW',
   language = 'si',
+  cashierName = 'Admin User',
 }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const { theme } = useTheme();
@@ -70,7 +73,7 @@ const ThermalReceiptPreview: React.FC<ThermalReceiptPreviewProps> = memo(({
       paymentMethod,
     };
 
-    const html = generateReceiptHTML(previewInvoice, customer ?? null, language);
+    const html = generateReceiptHTML(previewInvoice, customer ?? null, language, cashierName);
 
     const iframe = iframeRef.current;
     if (!iframe) return;
@@ -91,7 +94,7 @@ const ThermalReceiptPreview: React.FC<ThermalReceiptPreviewProps> = memo(({
     };
     iframe.onload = resize;
     setTimeout(resize, 200);
-  }, [items, discount, receivedAmount, paymentMethod, subtotal, total, customer, invoiceNumber, language]);
+  }, [items, discount, receivedAmount, paymentMethod, subtotal, total, customer, invoiceNumber, language, cashierName]);
 
   return (
     <div className={`${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-700'} border-2 shadow-lg rounded-xl p-4 flex flex-col gap-3`}>
@@ -109,7 +112,7 @@ const ThermalReceiptPreview: React.FC<ThermalReceiptPreviewProps> = memo(({
         <iframe
           ref={iframeRef}
           title="receipt-preview"
-          sandbox="allow-same-origin"
+          sandbox="allow-scripts allow-same-origin allow-modals"
           scrolling="no"
           style={{
             width: '100%',

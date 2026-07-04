@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Customer, Product, Invoice, InvoiceItem } from '../../types/index';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { ChevronLeft, ChevronRight, Plus, Trash2, Search, FileText, User, Package, Calendar, CheckCircle } from 'lucide-react';
 import { printInvoice } from './PrintInvoiceModal';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
@@ -32,6 +33,7 @@ export const InvoiceWizardModal: React.FC<InvoiceWizardModalProps> = ({
 }) => {
   const { t } = useTranslation();
   const { theme } = useTheme();
+  const { user: currentUser } = useAuth();
   const [step, setStep] = useState<Step>(1);
   const [selectedCustomer, setSelectedCustomer] = useState<string>('');
   const [customerSearch, setCustomerSearch] = useState<string>('');
@@ -140,7 +142,7 @@ export const InvoiceWizardModal: React.FC<InvoiceWizardModalProps> = ({
     const createdInv = onCreateInvoice(invoice);
     
     // Print directly without preview modal
-    printInvoice(createdInv, customer).then(() => {
+    printInvoice(createdInv, customer, 'en', currentUser?.name || 'Admin User').then(() => {
       handleClose();
     }).catch(() => {
       handleClose();

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import { mockInvoices, mockCustomers, mockProducts } from '../data/mockData';
 import { Invoice, Customer, InvoiceItem } from '../types/index';
 import { printInvoice } from '../components/modals/PrintInvoiceModal';
@@ -26,6 +27,7 @@ export const ViewInvoice: React.FC = () => {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const { theme } = useTheme();
+  const { user: currentUser } = useAuth();
   const isSinhala = i18n.language === 'si';
 
   const [showActions, setShowActions] = useState(false);
@@ -195,7 +197,7 @@ export const ViewInvoice: React.FC = () => {
             <button
               onClick={() => {
                 if (invoice && customer) {
-                  printInvoice(invoice, customer).catch(() => {});
+                  printInvoice(invoice, customer, 'en', currentUser?.name || 'Admin User').catch(() => {});
                 }
               }}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium transition-all ${

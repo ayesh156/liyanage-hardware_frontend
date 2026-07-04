@@ -16,11 +16,15 @@ export interface Customer {
 export interface Category {
   id: string;
   name: string;
-  nameAlt?: string;
+  nameSinhala?: string;
   icon?: string;
   description?: string;
   usageCount?: number;
   parentId?: string;
+  sortOrder: number;
+  showInQuickInvoice: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface SizeOption {
@@ -112,6 +116,7 @@ export interface InventoryProduct {
   searchKey: string;
   name: string;
   nameSi?: string;       // Sinhala title (e.g., "ACL බහු-වයර් කේබලය")
+  nameSinhala?: string;  // Unified Sinhala name field
   productCategory: string;
   categoryId?: string;
   categorySi?: string;   // Sinhala category name (e.g., "ACL කේබල්")

@@ -3,16 +3,17 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from 'react-i18next';
 import { useIsMobile } from '../hooks/use-mobile';
 import { useCatalog } from '../contexts/CatalogContext';
-import { mockCategories, inventoryItems, linkedCatalogItems } from '../data/mockData';
+import { useAuth } from '../contexts/AuthContext';
 import { Category } from '../types/index';
 import { CategoryFormModal } from '../components/modals/CategoryFormModal';
 import { DeleteConfirmationModal } from '../components/modals/DeleteConfirmationModal';
 import { CellPopover } from '../components/CellPopover';
+import { DisplaySettingsModal } from '../components/modals/DisplaySettingsModal';
 import { 
   Plus, Search, Edit2, Trash2, FolderTree, Package, Layers, Tag,
-  RefreshCw, Pencil, X,
+  RefreshCw, Pencil, X, Eye, EyeOff, Settings2,
   ChevronLeft, ChevronRight as ChevronRightIcon,
-  ChevronsLeft, ChevronsRight
+  ChevronsLeft, ChevronsRight, GripVertical
 } from 'lucide-react';
 import SortButton from '../components/ui/SortButton';
 
@@ -24,45 +25,57 @@ export const Categories: React.FC = () => {
   const isMobile = useIsMobile();
   const isDark = theme === 'dark';
 
-  const [categories, setCategories] = useState<Category[]>(mockCategories);
+  const { 
+    categories, 
+    inventoryItems, 
+    addCategory, 
+    updateCategory, 
+    patchCategory,
+    deleteCategory,
+    refreshCategories,
+    isCategoriesLoading,
+  } = useCatalog();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [isFormModalOpen, setIsFormModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDisplaySettingsOpen, setIsDisplaySettingsOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(25);
 
-  // ── Cell Popover state — for text fields (name, nameAlt, description) ──
+  const { i18n } = useTranslation();
+  const isSinhala = i18n.language === 'si';
+
+  // ── Cell Popover state — for text fields (name, nameSinhala, description) ──
   const [cellPopover, setCellPopover] = useState<{
     category: Category;
-    field: 'name' | 'nameAlt' | 'description';
+    field: 'name' | 'nameSinhala' | 'description';
     anchorRect: DOMRect;
   } | null>(null);
 
-  // ── DYNAMIC USAGE COUNTER: Counts inventoryItems by categoryId — single source of truth ──
+  // ── DYNAMIC USAGE COUNTER: Counts inventoryItems by categoryId ──
   const getUsageCount = useCallback((categoryId: string, categoryName: string) => {
-    // Strategy 1: Match by FK categoryId (all 150 inventory items have proper categoryId)
     const countById = inventoryItems.filter(p => p.categoryId === categoryId).length;
     if (countById > 0) return countById;
-    // Strategy 2: Fallback — match by productCategory name (case-insensitive, normalized)
     const normalizedCatName = categoryName.trim().toLowerCase();
     return inventoryItems.filter(p =>
       p.productCategory.trim().toLowerCase() === normalizedCatName
     ).length;
-  }, []);
+  }, [inventoryItems]);
 
   // Check if category has active filters
   const hasActiveFilters = searchQuery.length > 0;
 
-  // Filter and sort categories (flat — no parent filter)
+  // Filter and sort categories
   const filteredCategories = useMemo(() => {
     return categories
       .filter(cat => {
         if (!searchQuery) return true;
         const q = searchQuery.toLowerCase();
         return cat.name.toLowerCase().includes(q) ||
-          (cat.nameAlt && cat.nameAlt.includes(q)) ||
+          (cat.nameSinhala && cat.nameSinhala.includes(q)) ||
           (cat.description && cat.description.toLowerCase().includes(q));
       })
       .sort((a, b) => {
@@ -83,7 +96,7 @@ export const Categories: React.FC = () => {
     setCurrentPage(1);
   }, [searchQuery, sortOrder, rowsPerPage]);
 
-  // Stats — use live getUsageCount for accurate live totals
+  // Stats
   const totalCategories = categories.length;
   const categoriesWithProducts = categories.filter(cat => getUsageCount(cat.id, cat.name) > 0).length;
   const totalLiveUsage = categories.reduce((s, c) => s + getUsageCount(c.id, c.name), 0);
@@ -103,44 +116,33 @@ export const Categories: React.FC = () => {
     setIsDeleteModalOpen(true);
   };
 
-  const handleSaveCategory = (categoryData: Partial<Category>) => {
+  const handleSaveCategory = async (categoryData: Partial<Category>) => {
     if (selectedCategory) {
-      setCategories(prev => prev.map(cat => 
-        cat.id === selectedCategory.id ? { ...cat, ...categoryData } : cat
-      ));
+      await updateCategory(selectedCategory.id, categoryData);
     } else {
-      const newCategory: Category = {
-        id: `cat-${String(categories.length + 1).padStart(3, '0')}`,
-        name: categoryData.name || '',
-        nameAlt: categoryData.nameAlt,
-        icon: categoryData.icon,
-        description: categoryData.description,
-      };
-      setCategories(prev => [...prev, newCategory]);
+      await addCategory(categoryData);
     }
     setIsFormModalOpen(false);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (selectedCategory) {
-      setCategories(prev => prev.filter(cat => cat.id !== selectedCategory.id));
+      await deleteCategory(selectedCategory.id);
     }
     setIsDeleteModalOpen(false);
     setSelectedCategory(null);
   };
 
-  // ── Popover cell save handler ──
-  const handleCellSave = useCallback((category: Category, field: string, value: string | number) => {
-    setCategories(prev => prev.map(cat => 
-      cat.id === category.id ? { ...cat, [field]: String(value) } : cat
-    ));
+  // ── Inline cell save handler ──
+  const handleCellSave = useCallback(async (category: Category, field: string, value: string | number) => {
+    await patchCategory(category.id, { [field]: String(value) });
     setCellPopover(null);
-  }, []);
+  }, [patchCategory]);
 
   // ── Open cell popover from click event ──
   const openCellPopover = useCallback((
     category: Category,
-    field: 'name' | 'nameAlt' | 'description',
+    field: 'name' | 'nameSinhala' | 'description',
     e: React.MouseEvent
   ) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -151,19 +153,33 @@ export const Categories: React.FC = () => {
   const startItem = (currentPage - 1) * rowsPerPage + 1;
   const endItem = Math.min(currentPage * rowsPerPage, filteredCategories.length);
 
+  // ── Get display name based on active language ──
+  const getDisplayName = useCallback((category: Category): string => {
+    if (isSinhala) {
+      return category.nameSinhala || category.name;
+    }
+    return category.name;
+  }, [isSinhala]);
+
   return (
     <div className={`space-y-4 ${isMobile ? 'pb-20' : ''}`}>
-      {/* ── Floating Cell Popover (for text fields: name, nameAlt, description) ── */}
+      {/* ── Floating Cell Popover (for text fields) ── */}
       {cellPopover && (
         <CellPopover
           value={cellPopover.category[cellPopover.field] || ''}
-          fieldLabel={cellPopover.field === 'name' ? 'Category Name' : cellPopover.field === 'nameAlt' ? 'Alt Name' : 'Description'}
+          fieldLabel={cellPopover.field === 'name' ? 'Category Name' : cellPopover.field === 'nameSinhala' ? 'Sinhala Name' : 'Description'}
           type="text"
           anchorRect={cellPopover.anchorRect}
           onSave={(val) => handleCellSave(cellPopover.category, cellPopover.field, val)}
           onClose={() => setCellPopover(null)}
         />
       )}
+
+      {/* ── Display Settings Modal ── */}
+      <DisplaySettingsModal
+        isOpen={isDisplaySettingsOpen}
+        onClose={() => setIsDisplaySettingsOpen(false)}
+      />
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -176,6 +192,17 @@ export const Categories: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setIsDisplaySettingsOpen(true)}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all text-xs border ${
+              isDark 
+                ? 'bg-slate-700 text-slate-300 hover:bg-slate-600 border-slate-600' 
+                : 'bg-white text-slate-600 hover:bg-slate-50 border-slate-200'
+            }`}
+          >
+            <Settings2 className="w-3.5 h-3.5" />
+            Display
+          </button>
           <button 
             onClick={handleAddCategory}
             className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600 text-white rounded-lg font-medium transition-all shadow shadow-orange-500/20 text-xs"
@@ -211,7 +238,7 @@ export const Categories: React.FC = () => {
         })}
       </div>
 
-      {/* ── Toolbar (flat — no type or parent filter, just search + sort) ── */}
+      {/* ── Toolbar ── */}
       <div className={`p-3 rounded-lg border ${isDark ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}>
         <div className="flex items-center gap-2">
           <div className="relative flex-1 max-w-xl">
@@ -233,21 +260,32 @@ export const Categories: React.FC = () => {
           </div>
 
           <SortButton currentSortOrder={sortOrder} onSortToggle={() => setSortOrder(s => s === 'asc' ? 'desc' : 'asc')} />
+          
+          <button
+            onClick={refreshCategories}
+            disabled={isCategoriesLoading}
+            className={`p-1.5 rounded-lg transition-all ${isDark ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-slate-100 text-slate-500'} disabled:opacity-50`}
+            title="Refresh"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isCategoriesLoading ? 'animate-spin' : ''}`} />
+          </button>
+
           <span className={`text-[10px] font-medium ml-auto ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
             {filteredCategories.length} categories
           </span>
         </div>
       </div>
 
-      {/* ── FLAT TABLE (no Parent Category column) ── */}
+      {/* ── TABLE ── */}
       <div className={`rounded-lg border overflow-hidden ${isDark ? 'bg-slate-900/95 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[700px]">
+          <table className="w-full min-w-[800px]">
             <thead className={isDark ? 'bg-slate-800/80' : 'bg-slate-50'}>
               <tr>
                 {[
-                  { label: t('tableHeaders.category'), align: 'left' as const },
-                  { label: t('categories.sinhalaName'), align: 'left' as const },
+                  { label: 'Name', align: 'left' as const },
+                  { label: 'Sort', align: 'center' as const },
+                  { label: 'Visible', align: 'center' as const },
                   { label: t('common.description'), align: 'left' as const },
                   { label: t('categories.usage'), align: 'right' as const },
                   { label: t('common.actions'), align: 'center' as const },
@@ -262,9 +300,18 @@ export const Categories: React.FC = () => {
               </tr>
             </thead>
             <tbody className={`divide-y ${isDark ? 'divide-slate-700/40' : 'divide-slate-200'}`}>
-              {paginatedCategories.length === 0 ? (
+              {isCategoriesLoading ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center">
+                  <td colSpan={6} className="px-4 py-12 text-center">
+                    <div className="flex items-center justify-center gap-2">
+                      <div className="w-5 h-5 border-2 border-orange-500/30 border-t-orange-500 rounded-full animate-spin" />
+                      <span className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Loading categories...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : paginatedCategories.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-12 text-center">
                     <FolderTree className={`w-10 h-10 mx-auto mb-3 ${isDark ? 'text-slate-600' : 'text-slate-300'}`} />
                     <p className={`text-sm font-medium ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                       {searchQuery ? 'No categories match your search' : 'No categories yet'}
@@ -274,17 +321,17 @@ export const Categories: React.FC = () => {
               ) : (
                 paginatedCategories.map((category) => (
                   <tr key={category.id} className={`transition-colors ${isDark ? 'hover:bg-slate-700/25' : 'hover:bg-slate-50'}`}>
-                    {/* Name */}
+                    {/* Name — unified column with i18n routing */}
                     <td
                       className="px-2 py-1.5 relative group cursor-pointer"
-                      onClick={(e) => openCellPopover(category, 'name', e)}
+                      onClick={(e) => openCellPopover(category, isSinhala ? 'nameSinhala' : 'name', e)}
                     >
                       <div className="flex items-center gap-2">
                         <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-gradient-to-br from-orange-500/20 to-rose-500/20 flex-shrink-0">
                           <FolderTree className="w-3 h-3 text-orange-400" />
                         </div>
                         <span className={`text-[11px] font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                          {category.name}
+                          {getDisplayName(category)}
                         </span>
                       </div>
                       <span className={`absolute -right-0.5 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-150 ${
@@ -294,19 +341,26 @@ export const Categories: React.FC = () => {
                       </span>
                     </td>
 
-                    {/* Alt Name */}
-                    <td
-                      className="px-2 py-1.5 relative group cursor-pointer"
-                      onClick={(e) => openCellPopover(category, 'nameAlt', e)}
-                    >
-                      <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                        {category.nameAlt || '-'}
+                    {/* Sort Order */}
+                    <td className="px-2 py-1.5 text-center">
+                      <span className={`text-[11px] font-mono font-bold ${isDark ? 'text-purple-400' : 'text-purple-600'}`}>
+                        {category.sortOrder}
                       </span>
-                      <span className={`absolute -right-0.5 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-150 ${
-                        isDark ? 'text-slate-500' : 'text-slate-400'
-                      }`}>
-                        <Pencil className="w-3 h-3" />
-                      </span>
+                    </td>
+
+                    {/* Visible */}
+                    <td className="px-2 py-1.5 text-center">
+                      {category.showInQuickInvoice ? (
+                        <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 text-[9px] font-medium">
+                          <Eye className="w-2.5 h-2.5" />
+                          Yes
+                        </div>
+                      ) : (
+                        <div className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-500/10 text-slate-500 text-[9px] font-medium">
+                          <EyeOff className="w-2.5 h-2.5" />
+                          No
+                        </div>
+                      )}
                     </td>
 
                     {/* Description */}

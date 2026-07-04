@@ -151,7 +151,12 @@ const FieldGroup: React.FC<FieldGroupProps & { isDark?: boolean }> = ({ label, i
 export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onClose, mode, initialData, prefillCategory }) => {
   const { theme } = useTheme();
   const { t } = useTranslation();
-  const { categories, addCategory, addInventoryItem, updateInventoryItem } = useCatalog();
+  const { categories, addCategory, addInventoryItem, updateInventoryItem, syncCategoriesFromServer } = useCatalog();
+  const categoryMap = useMemo(() => {
+    const map = new Map<string, string>();
+    categories.forEach((cat) => map.set(cat.name, cat.id));
+    return map;
+  }, [categories]);
   const isDark = theme === 'dark';
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -160,6 +165,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
       return {
         searchKey: '',
         name: '',
+        nameSinhala: '',
         productCategory: prefillCategory || '',
         barcode: '',
         cost: 0,
@@ -174,6 +180,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
     return {
       searchKey: d?.searchKey || d?.product?.sku || d?.displaySku || '',
       name: d?.name || d?.displayName || '',
+      nameSinhala: d?.nameSinhala || d?.nameSi || '',
       productCategory: prefillCategory || d?.productCategory || d?.product?.category || '',
       barcode: d?.barcode || '',
       cost: Number(d?.cost) || Number(d?.costPrice) || 0,
@@ -241,10 +248,15 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
   const handleSubmit = async () => {
     if (!validate()) return;
 
+    // 🚀 CRITICAL FIX: Resolve categoryId from selected productCategory name
+    const selectedCategoryId = form.productCategory ? categoryMap.get(form.productCategory) : undefined;
+
     const productData = {
       searchKey: form.searchKey,
       name: form.name,
+      nameSinhala: form.nameSinhala || undefined,
       productCategory: form.productCategory || 'HARDWARE',
+      categoryId: selectedCategoryId || undefined,
       barcode: (form as any).barcode || undefined,
       cost: form.cost,
       lastPrice: form.lastPrice,
@@ -257,16 +269,26 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
 
     try {
       if (mode === 'create') {
-        // POST to backend API — create new product
-        const created = await api.post<InventoryProduct>('/products', productData);
+        // POST to backend API — create new product. Use fullResponse to get syncCategories.
+        const response: any = await api.post('/products', productData, true);
+        const created = response?.data || response;
         addInventoryItem(created);
+        // 🔄 Real-time category usage count update from server — zero extra HTTP calls
+        if (response?.syncCategories && Array.isArray(response.syncCategories)) {
+          syncCategoriesFromServer(response.syncCategories);
+        }
         toast.success(`Product "${created.searchKey}" created successfully.`);
       } else {
         // PUT to backend API — update existing product
         const existingId = (initialData as any)?.flatId || (initialData as any)?.id;
         if (existingId) {
-          const updated = await api.put<InventoryProduct>(`/products/${existingId}`, productData);
+          const response: any = await api.put(`/products/${existingId}`, productData, true);
+          const updated = response?.data || response;
           updateInventoryItem(existingId, updated);
+          // 🔄 Real-time category usage count update from server — zero extra HTTP calls
+          if (response?.syncCategories && Array.isArray(response.syncCategories)) {
+            syncCategoriesFromServer(response.syncCategories);
+          }
           const d = initialData as any;
           const productName = d?.searchKey || d?.name || d?.displayName || '';
           toast.success(`Product "${productName}" updated successfully.`);
@@ -320,8 +342,8 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
     }
   };
 
-  const handleNewCategory = (catData: Partial<Category>) => {
-    const newCat = addCategory(catData as any);
+  const handleNewCategory = async (catData: Partial<Category>) => {
+    const newCat = await addCategory(catData as any);
     updateField('productCategory', newCat.name);
     setShowAddCategory(false);
   };
@@ -378,11 +400,17 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
                   <input type="text" value={derivedStatus} disabled className={`w-full px-2.5 py-1.5 text-xs border rounded-lg opacity-70 cursor-not-allowed ${isDark ? 'bg-slate-700/30 border-slate-600 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-500'}`} />
                 </FieldGroup>
               </div>
-              {/* Name */}
+              {/* Product Name (English) */}
               <div className="lg:col-span-3">
                 <FieldGroup label={t('addProductModal.productName')} isDark={isDark} icon={<Package className="w-3 h-3" />}>
                   <ClearableInput value={form.name} isDark={isDark} onChange={(v) => handleStrUpdate('name', v)} placeholder={t('addProductModal.productNamePlaceholder')} hasError={!!errors.name} />
                   {errors.name && <p className="text-[9px] text-red-400 mt-0.5">{errors.name}</p>}
+                </FieldGroup>
+              </div>
+              {/* Product Name (Sinhala) */}
+              <div className="lg:col-span-3">
+                <FieldGroup label="Product Name (Sinhala)" isDark={isDark} icon={<Package className="w-3 h-3" />}>
+                  <ClearableInput value={form.nameSinhala} isDark={isDark} onChange={(v) => updateField('nameSinhala', v)} placeholder="Enter Sinhala product name" />
                 </FieldGroup>
               </div>
               {/* Barcode */}

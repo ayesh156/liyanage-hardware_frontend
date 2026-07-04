@@ -1,13 +1,13 @@
-const y={steel:"වානේ",iron:"යකඩ",copper:"තඹ",aluminum:"ඇලුමිනියම්",brass:"පිත්තල",metal:"ලෝහ",wire:"වයිරු",rod:"දණ්ඩ",pipe:"පයිපය",tube:"නලිකා",sheet:"තහඩු",plate:"ප්ලේට්",bar:"බාර්",bolt:"බෝල්ට්",nut:"නට්",screw:"ඉස්කුරුවी",nail:"ගස්",cable:"කේබල්",breaker:"බ්‍රේකර්",switch:"ස්විච්",socket:"සොකට්",bulb:"බල්බ්",light:"ආලෝකය",electric:"විදුලි",panel:"පැනලය",tap:"ටැප්",fitting:"සවිකිරීම",valve:"කපාటය",pump:"පම්පය",tank:"ටැංකිය",sink:"සින්ක්",paint:"පින්තුරු",wood:"දැව",timber:"කර දැව",brick:"ඉඩඩ",cement:"සිමෙන්",sand:"වැලි",stone:"ගල්",tile:"ටයිල්",glass:"වීදුරු",plastic:"ප්ලාස්ටික්",hammer:"මhammer",saw:"කර",drill:"කෝටුව",wrench:"එක්සත්",spanner:"స්පැනර්",plier:"ප්ලයර්",level:"නිම්නය",ruler:"පටිමාණ",tape:"ටේප්",knife:"පිත්තල",shovel:"බෙල්ල",pickaxe:"පිකස්",axe:"කිරුණ",broom:"ඉවුණ",mm:"මි.මී",cm:"සෙ.මී",inch:"අඟල්",foot:"පාදය",meter:"මීටර්",kg:"කි.ග්‍ර",liter:"ලීටර්",box:"බොක්ස්",impact:"ඉම්පැක්ට්",stanley:"ස්ටැන්ලි",fatmax:"ෆැට්මැක්ස්",black:"කළු",decker:"ඩෙකර්",makita:"මකිටා",bosch:"බොෂ්",dewalt:"ඩිවෝල්ට්",ingco:"ඉන්කෝ",total:"ටෝටල්"};function b(t){if(!t)return"";const a=t.toLowerCase().split(/\s+/),d=[];for(const s of a){const r=s.replace(/[^a-z0-9]/gi,"");if(y[r]){d.push(y[r]);continue}let o=!1;for(const[l,e]of Object.entries(y))if(r.includes(l)){const p=s.replace(new RegExp(l,"i"),e);d.push(p),o=!0;break}o||d.push(s)}return d.join(" ")}const j=(t,a,d="si")=>{const s=t.status==="paid",r=t.discount||0,o=t.receivedAmount||0,l=t.changeAmount||(o>0?Math.max(0,o-t.total):0),e=t.items.reduce((i,n)=>{const c=n,g=Number(c.displayPrice??c.originalPrice??n.unitPrice??0),f=Number(c.salesPrice??c.ourPrice??c.lastPrice??n.unitPrice??0),u=(g-f)*n.quantity;return i+(u>0?u:0)},0),p=!a||a.id==="walk-in",m=a?.name?a.nameSi||b(a.name):"සාමාන්‍ය පාරිභෝගිකයා",x=p?"":a?.phone??"",w=t.items.map(i=>{const n=i,c=i.productNameSi||b(i.productName),g=Number(n.displayPrice??n.originalPrice??i.unitPrice??0),f=Number(n.salesPrice??n.ourPrice??n.lastPrice??i.unitPrice??0),u=f*i.quantity,v=f<g,k=f>g?"-":g.toLocaleString("en-US",{minimumFractionDigits:2}),S=Number(i.quantity)%1===0?Number(i.quantity).toString():Number(i.quantity).toFixed(3).replace(/\.?0+$/,"");return`
+const h={steel:"වානේ",iron:"යකඩ",copper:"තඹ",aluminum:"ඇලුමිනියම්",brass:"පිත්තල",metal:"ලෝහ",wire:"වයිරු",rod:"දණ්ඩ",pipe:"පයිපය",tube:"නලිකා",sheet:"තහඩු",plate:"ප්ලේට්",bar:"බාර්",bolt:"බෝල්ට්",nut:"නට්",screw:"ඉස්කුරුවी",nail:"ගස්",cable:"කේබල්",breaker:"බ්‍රේකර්",switch:"ස්විච්",socket:"සොකට්",bulb:"බල්බ්",light:"ආලෝකය",electric:"විදුලි",panel:"පැනලය",tap:"ටැප්",fitting:"සවිකිරීම",valve:"කපාటය",pump:"පම්පය",tank:"ටැංකිය",sink:"සින්ක්",paint:"පින්තුරු",wood:"දැව",timber:"කර දැව",brick:"ඉඩඩ",cement:"සිමෙන්",sand:"වැලි",stone:"ගල්",tile:"ටයිල්",glass:"වීදුරු",plastic:"ප්ලාස්ටික්",hammer:"මhammer",saw:"කර",drill:"කෝටුව",wrench:"එක්සත්",spanner:"స්පැනර්",plier:"ප්ලයර්",level:"නිම්නය",ruler:"පටිමාණ",tape:"ටේප්",knife:"පිත්තල",shovel:"බෙල්ල",pickaxe:"පිකස්",axe:"කිරුණ",broom:"ඉවුණ",mm:"මි.මී",cm:"සෙ.මී",inch:"අඟල්",foot:"පාදය",meter:"මීටර්",kg:"කි.ග්‍ර",liter:"ලීටර්",box:"බොක්ස්",impact:"ඉම්පැක්ට්",stanley:"ස්ටැන්ලි",fatmax:"ෆැට්මැක්ස්",black:"කළු",decker:"ඩෙකර්",makita:"මකිටා",bosch:"බොෂ්",dewalt:"ඩිවෝල්ට්",ingco:"ඉන්කෝ",total:"ටෝටල්"};function j(t){if(!t)return"";const a=t.toLowerCase().split(/\s+/),p=[];for(const d of a){const s=d.replace(/[^a-z0-9]/gi,"");if(h[s]){p.push(h[s]);continue}let r=!1;for(const[o,f]of Object.entries(h))if(s.includes(o)){const e=d.replace(new RegExp(o,"i"),f);p.push(e),r=!0;break}r||p.push(d)}return p.join(" ")}const z=(t,a,p="si",d="Admin User")=>{const s=t.status==="paid",r=t.discount||0,o=t.receivedAmount||0,f=t.changeAmount||(o>0?Math.max(0,o-t.total):0),e=t.items.reduce((i,n)=>{const m=n,y=Number(m.displayPrice??m.originalPrice??n.unitPrice??0),g=Number(m.salesPrice??m.ourPrice??m.lastPrice??n.unitPrice??0),c=(y-g)*n.quantity;return i+(c>0?c:0)},0),l=!a||a.id==="walk-in",x=a?.name?a.nameSi||j(a.name):"සාමාන්‍ය පාරිභෝගිකයා",u=l?"":a?.phone??"",w=t.items.map(i=>{const n=i,y=i.productNameSi||i.productName,g=Number(n.displayPrice??n.originalPrice??i.unitPrice??0),c=Number(n.salesPrice??n.ourPrice??n.lastPrice??i.unitPrice??0),v=c*i.quantity,k=c<g,S=c>g?"-":g.toLocaleString("en-US",{minimumFractionDigits:2}),N=Number(i.quantity)%1===0?Number(i.quantity).toString():Number(i.quantity).toFixed(3).replace(/\.?0+$/,"");return`
       <div style="border-bottom:1px dashed #000;padding:4px 0;">
-        <div style="font-weight:800;font-size:12px;color:#000;margin-bottom:2px;word-break:break-word;">${c}</div>
+        <div style="font-weight:800;font-size:12px;color:#000;margin-bottom:2px;word-break:break-word;">${y}</div>
         <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700;font-family:'Courier New',monospace;color:#000;width:100%;">
-          <span style="width:15%;text-align:left;flex-shrink:0;">${S}</span>
-          <span style="width:25%;text-align:right;${v?"text-decoration:line-through;":""}color:#000;opacity:0.6;flex-shrink:0;">${k}</span>
-          <span style="width:25%;text-align:right;font-weight:800;color:#000;flex-shrink:0;">${f.toLocaleString("en-US",{minimumFractionDigits:2})}</span>
-          <span style="width:35%;text-align:right;font-weight:900;color:#000;flex-shrink:0;">${u.toLocaleString("en-US",{minimumFractionDigits:2})}</span>
+          <span style="width:15%;text-align:left;flex-shrink:0;">${N}</span>
+          <span style="width:25%;text-align:right;${k?"text-decoration:line-through;":""}color:#000;opacity:0.6;flex-shrink:0;">${S}</span>
+          <span style="width:25%;text-align:right;font-weight:800;color:#000;flex-shrink:0;">${c.toLocaleString("en-US",{minimumFractionDigits:2})}</span>
+          <span style="width:35%;text-align:right;font-weight:900;color:#000;flex-shrink:0;">${v.toLocaleString("en-US",{minimumFractionDigits:2})}</span>
         </div>
-      </div>`}).join(""),h=e+r;return`<!DOCTYPE html>
+      </div>`}).join(""),b=e+r;return`<!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8"/>
@@ -100,12 +100,12 @@ const y={steel:"වානේ",iron:"යකඩ",copper:"තඹ",aluminum:"ඇල�
     </div>
   </div>
 
-  ${p?"":`
+  ${l?"":`
   <!-- CUSTOMER -->
   <div style="padding:3px 0;border-bottom:2px dashed #000;">
     <span style="font-size:10px;font-weight:700;">පාරිභෝගිකයා: </span>
-    <span style="font-size:12px;font-weight:800;">${m}</span>
-    ${x?`<span style="float:right;font-size:11px;font-weight:700;">${x}</span>`:""}
+    <span style="font-size:12px;font-weight:800;">${x}</span>
+    ${u?`<span style="float:right;font-size:11px;font-weight:700;">${u}</span>`:""}
   </div>`}
 
   <!-- ITEMS HEADER -->
@@ -144,11 +144,11 @@ const y={steel:"වානේ",iron:"යකඩ",copper:"තඹ",aluminum:"ඇල�
       <span style="font-weight:800;">[${t.items.reduce((i,n)=>i+n.quantity,0)}]</span>
     </div>
 
-    ${h>0?`
+    ${b>0?`
     <!-- SAVINGS -->
     <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;font-weight:800;border-top:2px dashed #000;margin-top:4px;">
       <span>ඔබ ලැබූ ලාභය</span>
-      <span style="font-family:'Courier New',monospace;font-weight:900;">${h.toLocaleString("en-US",{minimumFractionDigits:2})}</span>
+      <span style="font-family:'Courier New',monospace;font-weight:900;">${b.toLocaleString("en-US",{minimumFractionDigits:2})}</span>
     </div>`:""}
   </div>
 
@@ -162,7 +162,7 @@ const y={steel:"වානේ",iron:"යකඩ",copper:"තඹ",aluminum:"ඇල�
       </div>
       <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:12px;font-weight:700;">
         <span>ඉතිරි මුදල</span>
-        <span style="font-family:'Courier New',monospace;font-weight:800;">${l.toLocaleString("en-US",{minimumFractionDigits:2})}</span>
+        <span style="font-family:'Courier New',monospace;font-weight:800;">${f.toLocaleString("en-US",{minimumFractionDigits:2})}</span>
       </div>
     </div>
   </div>`:""}
@@ -170,7 +170,7 @@ const y={steel:"වානේ",iron:"යකඩ",copper:"තඹ",aluminum:"ඇල�
   <!-- CASHIER -->
   <div style="padding:3px 0;border-top:1px dashed #000;margin-top:3px;">
     <span style="font-size:11px;font-weight:700;">කැෂියර්: </span>
-    <span style="font-size:11px;font-weight:800;">Admin</span>
+    <span style="font-size:11px;font-weight:800;">${d||"Admin User"}</span>
   </div>
 
   <!-- FOOTER -->
@@ -182,4 +182,4 @@ const y={steel:"වානේ",iron:"යකඩ",copper:"තඹ",aluminum:"ඇල�
 
 </div>
 </body>
-</html>`},N=(t,a,d="en")=>new Promise((s,r)=>{try{const o=j(t,a,d),l=document.getElementById("pos-print-iframe");l&&l.remove();const e=document.createElement("iframe");e.id="pos-print-iframe",e.style.cssText=["position:fixed","top:0","left:0","width:0","height:0","border:none","opacity:0","pointer-events:none","z-index:-9999"].join(";"),document.body.appendChild(e);const p=e.contentWindow?.document??e.contentDocument;if(!p){e.remove(),r(new Error("Cannot access iframe document"));return}p.open(),p.write(o),p.close();const m=()=>{try{e.contentWindow?.focus(),e.contentWindow?.print()}catch{}setTimeout(()=>{try{e.remove()}catch{}s()},1500)};e.contentDocument?.readyState==="complete"||e.contentWindow?.document?.readyState==="complete"?setTimeout(m,300):e.onload=()=>setTimeout(m,300)}catch(o){r(o)}});export{j as g,N as p};
+</html>`},P=(t,a,p="en",d="Admin User")=>new Promise((s,r)=>{try{const o=z(t,a,p,d),f=document.getElementById("pos-print-iframe");f&&f.remove();const e=document.createElement("iframe");e.id="pos-print-iframe",e.style.cssText=["position:fixed","top:0","left:0","width:0","height:0","border:none","opacity:0","pointer-events:none","z-index:-9999"].join(";"),document.body.appendChild(e);const l=e.contentWindow?.document??e.contentDocument;if(!l){e.remove(),r(new Error("Cannot access iframe document"));return}l.open(),l.write(o),l.close();const x=()=>{try{e.contentWindow?.focus(),e.contentWindow?.print()}catch{}setTimeout(()=>{try{e.remove()}catch{}s()},1500)};e.contentDocument?.readyState==="complete"||e.contentWindow?.document?.readyState==="complete"?setTimeout(x,300):e.onload=()=>setTimeout(x,300)}catch(o){r(o)}});export{z as g,P as p};

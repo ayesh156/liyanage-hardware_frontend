@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useIsMobile } from '../hooks/use-mobile';
 import { mockCustomers, mockProducts, mockInvoices } from '../data/mockData';
 import { Customer, Product, Invoice, InvoiceItem, FlattenedProduct } from '../types/index';
@@ -40,6 +41,7 @@ const DISCOUNT_TYPES: ('none' | 'percentage' | 'fixed')[] = ['none', 'percentage
 export const CreateInvoice: React.FC = () => {
   const { t, i18n } = useTranslation();
   const { theme } = useTheme();
+  const { user: currentUser } = useAuth();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const isSinhala = i18n.language === 'si';
@@ -527,7 +529,7 @@ export const CreateInvoice: React.FC = () => {
     });
 
     // Print directly without preview
-    printInvoice(invoice, printCustomer, i18n.language as 'en' | 'si')
+    printInvoice(invoice, printCustomer, i18n.language as 'en' | 'si', currentUser?.name || 'Admin User')
       .then(() => {
         toast.success(`${t('invoice.invoiceCreated')}: ${finalInvoiceNumber}`);
         navigate('/invoices');

@@ -238,7 +238,12 @@ interface ProductTableProps {
 export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onDelete }) => {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const { updateInventoryItem, refreshInventory } = useCatalog();
+  const { categories: catalogCategories, updateInventoryItem, refreshInventory, syncCategoriesFromServer } = useCatalog();
+  const categoryIdMap = useMemo(() => {
+    const map = new Map<string, string>();
+    catalogCategories.forEach((cat) => map.set(cat.name, cat.id));
+    return map;
+  }, [catalogCategories]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
@@ -252,12 +257,18 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
   const [rowEditItem, setRowEditItem] = useState<InventoryProduct | null>(null);
   const [inlineEdit, setInlineEdit] = useState<{ itemId: string; field: string } | null>(null);
 
-  const { t } = useTranslation();
+  const [activeBarcodeEditId, setActiveBarcodeEditId] = useState<string | null>(null);
+  const [tempBarcodeValue, setTempBarcodeValue] = useState<string>('');
+  const [barcodeRect, setBarcodeRect] = useState<DOMRect | null>(null);
+
+  const { t, i18n } = useTranslation();
+  const isSinhala = i18n.language === 'si';
 
   const fieldLabels: Record<string, string> = {
     cost: t('products.costTitle'), lastPrice: t('products.lastPriceTitle'), salesPrice: t('products.salesPriceTitle'),
     displayPrice: t('products.displayPriceTitle'), storeQty: t('products.storeQtyTitle'),
     searchKey: t('products.searchKey'), name: t('common.name'),
+    barcode: 'PRODUCT BARCODE',
   };
 
   const categories = useMemo(() => {
@@ -312,8 +323,21 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
   const patchBackend = useCallback(async (itemId: string, field: string, value: string | number) => {
     try {
       // Ensure numeric values are actual Number types for Prisma type validation
-      const payload = { [field]: typeof value === 'number' ? Number(value) : value };
-      await api.patch(`/products/${itemId}`, payload);
+      const payload: Record<string, any> = { [field]: typeof value === 'number' ? Number(value) : value };
+      // 🚀 CRITICAL FIX: When productCategory changes, also send the resolved categoryId
+      // so the backend records the relational FK correctly for Prisma's _count aggregate.
+      if (field === 'productCategory' && typeof value === 'string') {
+        const resolvedId = categoryIdMap.get(value);
+        if (resolvedId) {
+          payload.categoryId = resolvedId;
+        }
+      }
+      // Use fullResponse: true to receive the full envelope including syncCategories
+      const response: any = await api.patch(`/products/${itemId}`, payload, true);
+      // 🔄 Real-time category usage count update from server — zero extra HTTP calls
+      if (response?.syncCategories && Array.isArray(response.syncCategories)) {
+        syncCategoriesFromServer(response.syncCategories);
+      }
       const product = items.find(i => i.id === itemId);
       const productName = product?.name || product?.searchKey || itemId;
       toast.success(`Product "${productName}" - ${field.toUpperCase()} updated successfully.`, {
@@ -327,7 +351,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
     } catch {
       // Silent fail — local state already updated
     }
-  }, [items]);
+  }, [items, syncCategoriesFromServer]);
 
   const updateCatalogState = useCallback((itemId: string, field: string, value: string | number) => {
     // Update global CatalogContext state so the UI rerenders without crashing
@@ -370,11 +394,57 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
     patchBackend(itemId, field, value);
   }, [items, updateCatalogState, patchBackend]);
 
+  const handleBarcodeSave = useCallback(async (itemId: string, barcode: string) => {
+    const product = items.find(i => i.id === itemId);
+    if (product) {
+      const originalValue = product.barcode || '';
+      if (originalValue === barcode) {
+        setActiveBarcodeEditId(null);
+        setBarcodeRect(null);
+        return;
+      }
+    }
+    // Update local state immediately for instant UI feedback
+    updateCatalogState(itemId, 'barcode', barcode || '');
+    setActiveBarcodeEditId(null);
+    setBarcodeRect(null);
+    // Fire dedicated barcode PATCH endpoint (with uniqueness check on backend)
+    try {
+      const payload = { barcode: barcode || null };
+      const response: any = await api.patch(`/products/${itemId}/barcode`, payload, true);
+      if (response?.syncCategories && Array.isArray(response.syncCategories)) {
+        syncCategoriesFromServer(response.syncCategories);
+      }
+      const productName = product?.name || product?.searchKey || itemId;
+      toast.success(`Barcode updated for "${productName}".`, {
+        position: 'top-right', autoClose: 2500, hideProgressBar: false,
+        closeOnClick: true, pauseOnHover: true, draggable: true,
+      });
+    } catch (err: any) {
+      // On conflict (barcode already in use), revert local state and notify
+      if (product) {
+        updateCatalogState(itemId, 'barcode', product.barcode || '');
+      }
+      const msg = err?.message || 'Failed to update barcode';
+      toast.error(msg, { position: 'top-right', autoClose: 4000 });
+    }
+  }, [items, updateCatalogState, syncCategoriesFromServer]);
+
   const openCellEdit = useCallback((itemId: string, field: string, e: React.MouseEvent) => {
     setRowEditItem(null);
-    setInlineEdit({ itemId, field });
-    setCellEdit({ itemId, field, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() });
-  }, []);
+    if (field === 'barcode') {
+      // Use dedicated barcode popover with orange border
+      setInlineEdit(null);
+      setCellEdit(null);
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      setBarcodeRect(rect);
+      setTempBarcodeValue(items.find(i => i.id === itemId)?.barcode || '');
+      setActiveBarcodeEditId(itemId);
+    } else {
+      setInlineEdit({ itemId, field });
+      setCellEdit({ itemId, field, rect: (e.currentTarget as HTMLElement).getBoundingClientRect() });
+    }
+  }, [items]);
 
   const openRowEdit = useCallback((item: InventoryProduct) => {
     setCellEdit(null);
@@ -417,6 +487,12 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
         <CellPopover value={cellEditValue} fieldLabel={fieldLabels[cellEdit.field] || cellEdit.field}
           type={cellEdit.field === 'productCategory' ? 'category' : editableNumericFields.includes(cellEdit.field as any) ? 'number' : 'text'}
           anchorRect={cellEdit.rect} onSave={(val) => handleCellSave(cellEdit.itemId, cellEdit.field, val)} onClose={() => setCellEdit(null)} />
+      )}
+
+      {/* Dedicated Barcode CellPopover */}
+      {activeBarcodeEditId && barcodeRect && (
+        <CellPopover value={tempBarcodeValue} fieldLabel="PRODUCT BARCODE"
+          type="text" anchorRect={barcodeRect} onSave={(val) => handleBarcodeSave(activeBarcodeEditId, String(val))} onClose={() => { setActiveBarcodeEditId(null); setBarcodeRect(null); }} />
       )}
 
       {/* ── BALANCED HORIZONTAL TOOLBAR with permanently visible filters ── */}
@@ -519,6 +595,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                     {(() => {
                       const field = 'name';
                       const isEditing = inlineEdit?.itemId === item.id && inlineEdit?.field === field;
+                      const displayName = isSinhala ? (item.nameSinhala || item.name) : item.name;
                       return (
                         <td className="px-2 py-1.5 relative group cursor-pointer" onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
                           {isEditing ? (
@@ -528,7 +605,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                               <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}>
                                 <Package className={`w-2.5 h-2.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
                               </div>
-                              <span className={`text-[11px] font-medium leading-tight ${isDark ? 'text-white' : 'text-slate-900'} hover:text-orange-400 transition-colors`}>{item.name}</span>
+                              <span className={`text-[11px] font-medium leading-tight ${isDark ? 'text-white' : 'text-slate-900'} hover:text-orange-400 transition-colors`}>{displayName}</span>
                             </div>
                           )}
                         </td>
@@ -549,12 +626,25 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                       );
                     })()}
 
-                    {/* Barcode cell */}
-                    <td className="px-2 py-1.5">
-                      <span className={`text-[10px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                        {item.barcode || '—'}
-                      </span>
-                    </td>
+                    {/* Barcode cell — floating popover with orange border */}
+                    {(() => {
+                      const field = 'barcode';
+                      const isBarcodeActive = activeBarcodeEditId === item.id;
+                      return (
+                        <td
+                          className={`px-2 py-1.5 relative group cursor-pointer transition-all ${
+                            isBarcodeActive
+                              ? 'ring-2 ring-orange-500 ring-inset rounded-sm'
+                              : ''
+                          }`}
+                          onClick={(e) => !isBarcodeActive && openCellEdit(item.id, field, e)}
+                        >
+                          <span className={`text-[10px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'} hover:text-orange-400 transition-colors`}>
+                            {item.barcode || '—'}
+                          </span>
+                        </td>
+                      );
+                    })()}
 
                     {(['cost', 'lastPrice', 'salesPrice', 'displayPrice'] as const).map((field) => {
                       const isEditing = inlineEdit?.itemId === item.id && inlineEdit?.field === field;

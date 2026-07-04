@@ -1,8 +1,9 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { mockInvoices, mockCustomers } from '../data/mockData';
+import api from '../lib/api';
 import {
   FileText, Search, Plus, Eye, Edit2, Trash2, Printer,
   Clock, CheckCircle, AlertTriangle, XCircle, Filter, RefreshCw,
@@ -15,6 +16,7 @@ import { DeleteConfirmationModal } from '../components/modals/DeleteConfirmation
 import { InvoicePreviewModal } from '../components/modals/InvoicePreviewModal';
 import { printInvoice } from '../components/modals/PrintInvoiceModal';
 import { useIsMobile } from '../hooks/use-mobile';
+import { toast } from 'react-toastify';
 
 const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100];
 
@@ -104,10 +106,12 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({ options, value, onC
 export const Invoices: React.FC = () => {
   const { t } = useTranslation();
   const { theme } = useTheme();
+  const { user: currentUser } = useAuth();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const isDark = theme === 'dark';
-  const [invoices, setInvoices] = useState<Invoice[]>(mockInvoices);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
@@ -117,11 +121,31 @@ export const Invoices: React.FC = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null);
 
+  // ── Fetch invoices from live backend API ──
+  const fetchInvoicesHistory = useCallback(async () => {
+    try {
+      setLoading(true);
+      const response = await api.get<any[]>('/invoices', { perPage: 1000 }, true) as any;
+      // Handle response envelope { success, data, meta } or plain array
+      const data = response?.data || response || [];
+      setInvoices(data);
+    } catch (err) {
+      console.error('[Invoices] Failed to fetch invoices:', err);
+      toast.error('Failed to sync live server invoices');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchInvoicesHistory();
+  }, [fetchInvoicesHistory]);
+
   const filteredInvoices = useMemo(() => {
     const filtered = invoices.filter((invoice) => {
       const matchesSearch =
         invoice.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        invoice.customerName.toLowerCase().includes(searchQuery.toLowerCase());
+        (invoice.customerName || '').toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === 'all' || invoice.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
@@ -154,16 +178,37 @@ export const Invoices: React.FC = () => {
   const endItem = Math.min(currentPage * rowsPerPage, filteredInvoices.length);
 
   const handlePrintClick = (invoice: Invoice) => {
-    const customer = mockCustomers.find(c => c.id === invoice.customerId) || {
-      id: invoice.customerId || 'walk-in', name: invoice.customerName, businessName: invoice.customerName,
-      email: '', phone: '', address: '', registrationDate: new Date().toISOString(), totalSpent: 0,
-      customerType: 'regular' as const, isActive: true, loanBalance: 0
+    const customer = {
+      id: invoice.customerId || 'walk-in',
+      name: invoice.customerName,
+      phone: '',
+      email: '',
+      address: '',
+      customerType: 'regular' as const,
+      loanBalance: 0,
+      creditLimit: 0,
+      nic: undefined,
+      nameSi: undefined,
     };
-    printInvoice(invoice, customer, 'en').catch(() => {});
+    printInvoice(invoice, customer, 'en', currentUser?.name || 'Admin User').catch(() => {});
   };
 
-  const handleConfirmDelete = () => {
-    if (invoiceToDelete) { setInvoices(invoices.filter((inv) => inv.id !== invoiceToDelete.id)); setShowDeleteModal(false); setInvoiceToDelete(null); }
+  const handleConfirmDelete = async () => {
+    if (!invoiceToDelete) return;
+    try {
+      await api.delete(`/invoices/${invoiceToDelete.id}`);
+      toast.success(`Invoice ${invoiceToDelete.invoiceNumber} deleted`);
+      setInvoices(invoices.filter((inv) => inv.id !== invoiceToDelete.id));
+      setShowDeleteModal(false);
+      setInvoiceToDelete(null);
+    } catch (err) {
+      toast.error('Failed to delete invoice');
+      console.error('[Invoices] Delete failed:', err);
+    }
+  };
+
+  const handleRefresh = () => {
+    fetchInvoicesHistory();
   };
 
   return (
@@ -175,6 +220,10 @@ export const Invoices: React.FC = () => {
           <p className={`text-xs mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{t('invoices.description')}</p>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={handleRefresh}
+            className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-slate-500 to-slate-600 hover:from-slate-600 hover:to-slate-700 text-white rounded-lg font-medium transition-all shadow shadow-slate-500/20 text-xs">
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> {loading ? 'Syncing...' : 'Refresh'}
+          </button>
           <button onClick={() => navigate('/invoices/quick-checkout')}
             className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600 text-white rounded-lg font-medium transition-all shadow shadow-orange-500/20 text-xs">
             <Plus className="w-3.5 h-3.5" /> {t('invoices.addInvoice')}
@@ -260,7 +309,15 @@ export const Invoices: React.FC = () => {
               </tr>
             </thead>
             <tbody className={`divide-y ${isDark ? 'divide-slate-700/40' : 'divide-slate-200'}`}>
-              {filteredInvoices.length === 0 && (
+              {loading && (
+                <tr>
+                  <td colSpan={7} className={`px-2 py-8 text-center text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                    <RefreshCw className={`w-8 h-8 mx-auto mb-2 animate-spin ${isDark ? 'text-slate-600' : 'text-slate-300'}`} />
+                    Loading invoices from server...
+                  </td>
+                </tr>
+              )}
+              {!loading && filteredInvoices.length === 0 && (
                 <tr>
                   <td colSpan={7} className={`px-2 py-8 text-center text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                     <FileText className={`w-8 h-8 mx-auto mb-2 ${isDark ? 'text-slate-600' : 'text-slate-300'}`} />
@@ -268,7 +325,7 @@ export const Invoices: React.FC = () => {
                   </td>
                 </tr>
               )}
-              {paginatedInvoices.map((invoice) => {
+              {!loading && paginatedInvoices.map((invoice) => {
                 const st = statusConfig[invoice.status] || statusConfig.pending;
                 const isOverdue = new Date(invoice.dueDate) < new Date() && invoice.status !== 'paid';
                 return (
@@ -387,7 +444,7 @@ export const Invoices: React.FC = () => {
       {previewInvoice && (
         <InvoicePreviewModal
           invoice={previewInvoice}
-          customer={mockCustomers.find(c => c.id === previewInvoice.customerId) || null}
+          customer={null}
           onClose={() => setPreviewInvoice(null)}
           onEdit={() => {
             setPreviewInvoice(null);

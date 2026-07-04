@@ -2,11 +2,13 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import { useIsMobile } from '../hooks/use-mobile';
 import { useDropdownPosition } from '../hooks/use-dropdown-position';
 import { useColumnResize, ColumnResizeConfig } from '../hooks/useColumnResize';
 import { useCatalog } from '../contexts/CatalogContext';
-import { mockProducts, mockInvoices, mockCategories, categoryNames } from '../data/mockData';
+import { DisplaySettingsModal } from '../components/modals/DisplaySettingsModal';
+import { mockProducts, mockInvoices } from '../data/mockData';
 import { api } from '../lib/api';
 import { Product, Invoice, InvoiceItem, FlattenedProduct, InventoryProduct, Customer } from '../types/index';
 import { flattenProducts } from '../lib/utils';
@@ -79,12 +81,13 @@ initializeFromExistingInvoices(mockInvoices);
 export const QuickCheckout: React.FC = () => {
   const { t, i18n } = useTranslation();
   const { theme } = useTheme();
+  const { user: currentUser } = useAuth();
   const isSinhala = i18n.language === 'si';
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isMobile = useIsMobile();
   
-  const { inventoryItems, addInventoryItem } = useCatalog();
+  const { categories, inventoryItems, addInventoryItem, refreshCategories } = useCatalog();
   
   // Derive flattenedProducts from mockProducts once for legacy product catalog
   const [products] = useState<Product[]>(() => mockProducts);
@@ -103,33 +106,68 @@ export const QuickCheckout: React.FC = () => {
   }, [inventoryItems]);
   // ── In-place Edit mode via query param ──
   const editInvoiceId = searchParams.get('edit');
-  const editingInvoice = useMemo(() => {
-    if (!editInvoiceId) return null;
-    return mockInvoices.find(inv => inv.id === editInvoiceId) || null;
-  }, [editInvoiceId]);
+  const [editingInvoice, setEditingInvoice] = useState<any | null>(null);
+  const [editingInvoiceLoading, setEditingInvoiceLoading] = useState(false);
+
+  // Fetch the invoice from the backend API when edit mode is active
+  // This uses the backend's flexible resolver that handles both UUID and invoiceNumber
+  useEffect(() => {
+    if (!editInvoiceId) {
+      setEditingInvoice(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      setEditingInvoiceLoading(true);
+      try {
+        const response = await api.get<any>(`/invoices/${encodeURIComponent(editInvoiceId)}`);
+        if (!cancelled) {
+          setEditingInvoice(response?.data ?? response);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          console.warn('[QuickCheckout] Invoice not found for editing — starting fresh:', editInvoiceId, err);
+          // Graceful fallback: show informative toast instead of error
+          // The invoice ID used (?edit=...) does not match any existing record.
+          // This is expected for test strings like "inv-001" or manually-typed IDs.
+          toast.info(
+            `Invoice "${editInvoiceId}" not found. Starting with a fresh checkout.`,
+            { autoClose: 4000 }
+          );
+          setEditingInvoice(null);
+
+          // Clear the ?edit= param from the URL to prevent re-triggering on re-render
+          // and to keep the URL bar clean
+          navigate(window.location.pathname, { replace: true });
+        }
+      } finally {
+        if (!cancelled) setEditingInvoiceLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [editInvoiceId, navigate]);
 
   // ── Hydrate state when editing an existing invoice ──
   useEffect(() => {
     if (!editingInvoice) return;
 
     // Map invoice items → QuickInvoiceItem, preserving all pricing fields
-    // from the rich mock data (displayPrice, ourPrice, cost, etc.)
-    const hydratedItems: QuickInvoiceItem[] = editingInvoice.items.map(item => {
-      const ext = item as any;
-      const ourPrice   = Number(ext.ourPrice   || ext.salesPrice  || item.unitPrice || 0);
-      const dispPrice  = Number(ext.displayPrice|| ext.originalPrice || item.unitPrice || 0);
-      const costPrice  = Number(ext.cost        || 0);
-      const lastPrice  = Number(ext.lastPrice   || dispPrice);
+    const hydratedItems: QuickInvoiceItem[] = editingInvoice.items.map((item: any) => {
+      const ourPrice   = Number(item.unitPrice || 0);
+      const dispPrice  = Number(item.originalPrice || item.unitPrice || 0);
+      const costPrice  = Number(item.cost || 0);
+      const lastPrice  = Number(item.lastPrice || dispPrice);
 
       return {
         id: item.id,
         productId: item.productId,
         productName: item.productName,
-        productNameSi: ext.productNameSi || item.productName,
+        productNameSi: item.productNameSi || item.productName,
         variantId: item.variantId,
         size: item.size,
         quantity: item.quantity,
-        // unitPrice drives the legacy subtotal calc — use ourPrice
         unitPrice: ourPrice,
         originalPrice: dispPrice,
         displayPrice: dispPrice,
@@ -145,10 +183,11 @@ export const QuickCheckout: React.FC = () => {
     // Populate customer
     if (editingInvoice.customerId && editingInvoice.customerId !== 'walk-in') {
       setSelectedCustomerId(editingInvoice.customerId);
-      const cust = findCustomerById(editingInvoice.customerId);
-      if (cust) {
-        setCustomerSearch(cust.name);
-      }
+      // Customer name may be populated later when customers array loads
+      // The findCustomerById lookup is done inside the effect to avoid
+      // stale closure — use the editing invoice's own customerName as fallback
+      const found = customers.find((c: any) => c.id === editingInvoice.customerId);
+      setCustomerSearch(found?.name || editingInvoice.customerName || '');
     } else {
       setSelectedCustomerId('walk-in');
       setCustomerSearch('');
@@ -166,7 +205,7 @@ export const QuickCheckout: React.FC = () => {
 
     // Toast notification
     toast.info(`Editing invoice ${editingInvoice.invoiceNumber}. ${hydratedItems.length} items loaded.`);
-  }, [editingInvoice]);
+  }, [editingInvoice]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [items, setItems] = useState<QuickInvoiceItem[]>([]);
   const [productSearch, setProductSearch] = useState('');
@@ -241,16 +280,16 @@ export const QuickCheckout: React.FC = () => {
   const salesCellRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const qtyCellRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
-  // ── Quick Categories Drag-and-Drop State ──
-  const allCategoryNames = useMemo(() => {
-    return categoryNames.filter(c => c !== "සියල්ල");
-  }, []);
-  const [quickCategories, setQuickCategories] = useState<string[]>(() => {
-    return allCategoryNames.slice(0, 18);
-  });
-  const [isEditingCategories, setIsEditingCategories] = useState(false);
-  const [isAddDropdownOpen, setIsAddDropdownOpen] = useState(false);
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  // ── Categories from CatalogContext (live, database-backed) ──
+  // Strict: showInQuickInvoice must be true AND sortOrder must be > 0
+  // Sorted numerically by sortOrder ascending
+  const quickCheckoutCategories = useMemo(() => {
+    return categories
+      .filter(c => c.showInQuickInvoice && c.sortOrder > 0)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [categories]);
+
+  // ── Category Popover State ──
   const [activeCategoryPopover, setActiveCategoryPopover] = useState<string | null>(null);
   const [categoryPopoverFilter, setCategoryPopoverFilter] = useState('');
   const [categoryPopoverAnchor, setCategoryPopoverAnchor] = useState<DOMRect | null>(null);
@@ -262,6 +301,9 @@ export const QuickCheckout: React.FC = () => {
   const [quantityPromptProduct, setQuantityPromptProduct] = useState<any | null>(null);
   const [categoryPromptQty, setCategoryPromptQty] = useState<string>("1");
   const categoryListContainerRef = useRef<HTMLDivElement>(null);
+  
+  // ── Display Settings Modal ──
+  const [showDisplaySettings, setShowDisplaySettings] = useState(false);
 
   // Memoized map of category → products for the Quick Categories grid
   const categoryProductMap = useMemo(() => {
@@ -403,9 +445,10 @@ export const QuickCheckout: React.FC = () => {
       item => item.barcode && item.barcode.trim() === raw
     );
     if (barcodeHit) {
+      const sinhalaName = barcodeHit.nameSinhala || barcodeHit.nameSi || barcodeHit.name;
       return [{
         flatId: barcodeHit.id,
-        product: { nameAlt: barcodeHit.name, sku: barcodeHit.searchKey, category: barcodeHit.productCategory } as any,
+        product: { nameAlt: sinhalaName, sku: barcodeHit.searchKey, category: barcodeHit.productCategory } as any,
         variant: undefined,
         displayName: barcodeHit.name,
         displaySku: barcodeHit.searchKey,
@@ -426,9 +469,11 @@ export const QuickCheckout: React.FC = () => {
     const strippedQuery = normalizedQuery.replace(/\s+/g, '');
     const queryTokens   = normalizedQuery.split(/\s+/).filter(Boolean);
 
-    const toFlat = (item: typeof inventoryItems[0]) => ({
+    const toFlat = (item: typeof inventoryItems[0]) => {
+      const sinhalaName = item.nameSinhala || item.nameSi || item.name;
+      return {
       flatId: item.id,
-      product: { nameAlt: item.name, sku: item.searchKey, category: item.productCategory } as any,
+      product: { nameAlt: sinhalaName, sku: item.searchKey, category: item.productCategory } as any,
       variant: undefined,
       displayName: item.name,
       displaySku: item.searchKey,
@@ -442,7 +487,8 @@ export const QuickCheckout: React.FC = () => {
       minStock: 0,
       isVariant: false,
       variantLabel: undefined,
-    });
+      };
+    };
 
     const scoreField = (fieldRaw: string): 0 | 1 | 2 => {
       if (!fieldRaw) return 0;
@@ -654,9 +700,10 @@ export const QuickCheckout: React.FC = () => {
     );
     if (!foundProduct) return false;
 
+    const sinhalaName = foundProduct.nameSinhala || foundProduct.nameSi || foundProduct.name;
     const fp: FlattenedProduct = {
       flatId: foundProduct.id,
-      product: { nameAlt: foundProduct.name, sku: foundProduct.searchKey, category: foundProduct.productCategory } as any,
+      product: { nameAlt: sinhalaName, sku: foundProduct.searchKey, category: foundProduct.productCategory } as any,
       variant: undefined,
       displayName: foundProduct.name,
       displaySku: foundProduct.searchKey,
@@ -907,66 +954,259 @@ export const QuickCheckout: React.FC = () => {
     }
   }, [t]);
 
-  const handleCheckout = useCallback(() => {
+  const handleCheckout = useCallback(async () => {
     if (items.length === 0 || isProcessing) return;
+    
+    // Check if we are handling a replacement modification instead of an entirely fresh sale
+    if (editInvoiceId) {
+      // BEYOND CRITICAL: In Edit Mode, Route the Checkout & Print F12 trigger into the PUT update service pipeline!
+      setIsProcessing(true);
+      try {
+        const resolved = await api.get<any>(`/invoices/${editInvoiceId}`);
+        const resolvedInvoice = resolved?.data ?? resolved;
+        const dbUuid = resolvedInvoice?.id || editInvoiceId;
+        
+        const invoiceDiscount = Math.round(computedDiscount * 100) / 100;
+        
+        // Dispatch exact aligned payload structure via PUT to update instead of duplicating rows
+        // ⚠️ CRITICAL: Use absolute array index position for item matching, NOT productId-based
+        // lookups. This eliminates ALL hash collisions when multiple custom/temporary items
+        // share productId: null. The backend update() now uses the same index-based protocol.
+        const invoiceItems = items.map((item, index) => {
+          // Index-based lookup: use the DB item at the same array index position
+          const dbItemAtIndex = resolvedInvoice?.items?.[index];
+          return {
+            id: dbItemAtIndex?.id || item.id,
+            productId: item.productId,
+            productName: item.productName,
+            productNameSi: item.productNameSi,
+            quantity: item.quantity,
+            unitPrice: Number(item.salesPrice || item.ourPrice || item.unitPrice),
+            originalPrice: Number(item.displayPrice || item.originalPrice || item.unitPrice),
+            total: Number(item.salesPrice || item.ourPrice || item.unitPrice) * item.quantity,
+          };
+        });
+        
+        const payloadData = {
+          customerId: selectedCustomerId || 'walk-in',
+          discount: invoiceDiscount,
+          subtotal: Math.round(computedSubtotal * 100) / 100,
+          total: Math.round(computedFinalTotal * 100) / 100,
+          receivedAmount: receivedAmount > 0 ? Math.round(receivedAmount * 100) / 100 : undefined,
+          changeAmount: changeAmount > 0 ? Math.round(changeAmount * 100) / 100 : undefined,
+          paymentMethod: paymentMethod,
+          status: paymentMethod === 'credit' ? 'pending' : 'paid',
+          notes: invoiceDiscount > 0 
+            ? `${t('quickCheckout.quickSaleNote')} - ${t('quickCheckout.discount')}: ${t('common.currency')} ${invoiceDiscount.toLocaleString()}`
+            : t('quickCheckout.quickSaleNote'),
+          items: invoiceItems,
+        };
+        
+        // Send PUT using the resolved internal UUID
+        await api.put(`/invoices/${dbUuid}`, payloadData);
+        
+        playBeep('success');
+        
+        // Fire standard hardware template print logic right after
+        const walkInCustomer: Customer = {
+          id: 'walk-in',
+          name: t('invoice.walkInCustomer'),
+          email: '',
+          phone: '',
+          address: '',
+          customerType: 'regular',
+          loanBalance: 0,
+        };
+        const selectedCust = selectedCustomerId !== 'walk-in' ? findCustomerById(selectedCustomerId) : null;
+        
+        try {
+          const savedInvoiceNumber = resolvedInvoice?.invoiceNumber || 'N/A';
+          await printInvoice(
+            {
+              ...payloadData,
+              id: dbUuid,
+              invoiceNumber: savedInvoiceNumber,
+              items: items as any,
+              tax: 0,
+            } as Invoice,
+            selectedCust ?? walkInCustomer,
+            isSinhala ? 'si' : 'en',
+            currentUser?.name || 'Admin User',
+          );
+        } catch {
+          toast.error(t('quickCheckout.printBlocked'));
+        }
+        
+        toast.success(t('quickCheckout.invoiceUpdated'));
+        clearCart();
+        navigate('/invoices');
+      } catch (err: any) {
+        toast.error(err?.response?.data?.message || err?.message || 'Failed to update invoice');
+        playBeep('error');
+      } finally {
+        setIsProcessing(false);
+      }
+      return; // Terminate execution thread here safely
+    }
     
     setIsProcessing(true);
     
     const invoiceNumber = generateNextInvoiceNumberSync();
     const invoiceDiscount = Math.round(computedDiscount * 100) / 100;
     const invoiceItems = items.map(item => ({
-      ...item,
+      productId: item.productId,
+      productName: item.productName,
+      productNameSi: item.productNameSi,
+      quantity: item.quantity,
       unitPrice: Number(item.salesPrice || item.ourPrice || item.unitPrice),
+      originalPrice: Number(item.displayPrice || item.originalPrice || item.unitPrice),
+      discount: item.discount ?? 0,
       total: Number(item.salesPrice || item.ourPrice || item.unitPrice) * item.quantity,
-      displayPrice: Number(item.displayPrice || item.lastPrice || item.unitPrice),
-      ourPrice: Number(item.salesPrice || item.ourPrice || item.unitPrice),
     }));
     
     const selectedCust = selectedCustomerId !== 'walk-in' ? findCustomerById(selectedCustomerId) : null;
     const customerName = selectedCust?.name ?? t('invoice.walkInCustomer');
     
-    const invoice: Invoice = {
-      id: `inv-${Date.now()}`,
-      invoiceNumber,
-      customerId: selectedCustomerId || 'walk-in',
+    // Build payload matching backend InvoiceService.create input schema
+    const payload = {
+      customerId: selectedCustomerId || '',
       customerName,
-      items: invoiceItems,
       subtotal: Math.round(computedSubtotal * 100) / 100,
-      tax: 0,
       discount: invoiceDiscount,
       total: Math.round(computedFinalTotal * 100) / 100,
       receivedAmount: receivedAmount > 0 ? Math.round(receivedAmount * 100) / 100 : undefined,
       changeAmount: changeAmount > 0 ? Math.round(changeAmount * 100) / 100 : undefined,
-      issueDate: new Date().toISOString().split('T')[0],
-      dueDate: new Date().toISOString().split('T')[0],
+      issueDate: new Date().toISOString(),
+      dueDate: new Date().toISOString(),
+      paymentMethod,
       status: paymentMethod === 'credit' ? 'pending' : 'paid',
-      paymentMethod: paymentMethod,
       notes: invoiceDiscount > 0 
         ? `${t('quickCheckout.quickSaleNote')} - ${t('quickCheckout.discount')}: ${t('common.currency')} ${invoiceDiscount.toLocaleString()}`
         : t('quickCheckout.quickSaleNote'),
+      items: invoiceItems,
     };
 
-    playBeep('success');
+    try {
+      // 1. POST to backend — this is the actual database write
+      const response: any = await api.post('/invoices', payload);
+      const savedInvoice = response?.data ?? response;
+      const savedInvoiceNumber = savedInvoice?.invoiceNumber || invoiceNumber;
 
-    const walkInCustomer: Customer = {
-      id: 'walk-in',
-      name: t('invoice.walkInCustomer'),
-      email: '',
-      phone: '',
-      address: '',
-      customerType: 'regular',
-      loanBalance: 0
-    };
+      playBeep('success');
 
-    printInvoice(invoice, selectedCust ?? walkInCustomer, isSinhala ? 'si' : 'en')
-      .then(() => {
-        finalizeSale(invoice.invoiceNumber);
-      })
-      .catch(() => {
+      // 2. Print receipt only after successful database write
+      const walkInCustomer: Customer = {
+        id: 'walk-in',
+        name: t('invoice.walkInCustomer'),
+        email: '',
+        phone: '',
+        address: '',
+        customerType: 'regular',
+        loanBalance: 0,
+      };
+
+      try {
+        await printInvoice(
+          {
+            ...payload,
+            id: savedInvoice?.id || `inv-${Date.now()}`,
+            invoiceNumber: savedInvoiceNumber,
+            items: items as any,
+            tax: 0,
+          } as Invoice,
+          selectedCust ?? walkInCustomer,
+          isSinhala ? 'si' : 'en',
+          currentUser?.name || 'Admin User',
+        );
+      } catch {
         toast.error(t('quickCheckout.printBlocked'));
-        finalizeSale(invoice.invoiceNumber);
+      }
+
+      // 3. Clear UI state and show success ONLY after HTTP 201/200 confirmed
+      finalizeSale(savedInvoiceNumber);
+
+      // 4. If in edit mode, redirect to invoices list
+      if (editInvoiceId) {
+        navigate('/invoices');
+      }
+    } catch (err: any) {
+      setIsProcessing(false);
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to save invoice');
+      playBeep('error');
+    }
+  }, [items, computedSubtotal, computedFinalTotal, computedDiscount, selectedCustomerId, paymentMethod, playBeep, t, finalizeSale, receivedAmount, changeAmount, isSinhala, findCustomerById, editInvoiceId, navigate]);
+
+  // ── Update existing invoice via PUT /api/invoices/:id ──
+  const handleUpdateInvoice = useCallback(async () => {
+    if (items.length === 0 || isProcessing || !editInvoiceId) return;
+    
+    setIsProcessing(true);
+    
+    try {
+      // 1. Resolve the actual internal UUID from the backend by fetching
+      //    the invoice first. The backend's getById handles both UUID and
+      //    invoiceNumber lookup, returning the full record with the DB id.
+      const resolved = await api.get<any>(`/invoices/${editInvoiceId}`);
+      const resolvedInvoice = resolved?.data ?? resolved;
+      const dbUuid = resolvedInvoice?.id || editInvoiceId;
+
+      const invoiceDiscount = Math.round(computedDiscount * 100) / 100;
+
+      // Hydrate item payload with database UUIDs from the resolved invoice.
+      // ⚠️ CRITICAL: Use absolute array index position for item matching, NOT
+      // productId-based lookups. This eliminates ALL hash collisions when multiple
+      // custom/temporary items share productId: null. The backend update() now
+      // uses the same index-based protocol for final alignment.
+      const invoiceItems = items.map((item, index) => {
+        // Index-based lookup: use the DB item at the same array index position
+        const dbItemAtIndex = resolvedInvoice?.items?.[index];
+        return {
+          id: dbItemAtIndex?.id || item.id,
+          productId: item.productId,
+          productName: item.productName,
+          productNameSi: item.productNameSi,
+          quantity: item.quantity,
+          unitPrice: Number(item.salesPrice || item.ourPrice || item.unitPrice),
+          originalPrice: Number(item.displayPrice || item.originalPrice || item.unitPrice),
+          total: Number(item.salesPrice || item.ourPrice || item.unitPrice) * item.quantity,
+        };
       });
-  }, [items, computedSubtotal, computedFinalTotal, computedDiscount, selectedCustomerId, paymentMethod, playBeep, t, finalizeSale, receivedAmount, changeAmount, isSinhala, findCustomerById]);
+      
+      const payloadData = {
+        customerId: selectedCustomerId || 'walk-in',
+        discount: invoiceDiscount,
+        subtotal: Math.round(computedSubtotal * 100) / 100,
+        total: Math.round(computedFinalTotal * 100) / 100,
+        receivedAmount: receivedAmount > 0 ? Math.round(receivedAmount * 100) / 100 : undefined,
+        changeAmount: changeAmount > 0 ? Math.round(changeAmount * 100) / 100 : undefined,
+        paymentMethod: paymentMethod,
+        status: paymentMethod === 'credit' ? 'pending' : 'paid',
+        notes: invoiceDiscount > 0 
+          ? `${t('quickCheckout.quickSaleNote')} - ${t('quickCheckout.discount')}: ${t('common.currency')} ${invoiceDiscount.toLocaleString()}`
+          : t('quickCheckout.quickSaleNote'),
+        items: invoiceItems,
+      };
+      
+      // 2. Send PUT using the resolved internal UUID to ensure the backend
+      //    routes to the correct database record
+      await api.put(`/invoices/${dbUuid}`, payloadData);
+      
+      playBeep('success');
+      toast.success(t('quickCheckout.invoiceUpdated'));
+      
+      await refreshCategories();
+      
+      setItems([]);
+      setDiscount(0);
+      setReceivedAmount(0);
+      
+      navigate('/invoices');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to update invoice');
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [items, computedSubtotal, computedFinalTotal, computedDiscount, selectedCustomerId, paymentMethod, editInvoiceId, receivedAmount, changeAmount, playBeep, t, navigate, refreshCategories]);
 
   const handleQuickSave = useCallback(() => {
     if (items.length === 0 || isProcessing) return;
@@ -1022,6 +1262,20 @@ export const QuickCheckout: React.FC = () => {
   // Keyboard event handler (full, preserved as-is)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // ── DEFEND FORM FIELDS: If user is actively typing in an input, textarea,
+      //    or contentEditable block, DO NOT trigger cart removal on Delete/Backspace!
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
+      ) {
+        // Allow native text erasure for Backspace/Delete; skip all cart logic.
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          return; // Safe bypass — let native text erasure happen
+        }
+      }
+
       const isInSearchInput = document.activeElement === searchInputRef.current;
       const isInQuantityInput = document.activeElement === quantityInputRef.current;
       const isInDiscountInput = document.activeElement === discountInputRef.current;
@@ -1184,7 +1438,14 @@ export const QuickCheckout: React.FC = () => {
           break;
           
         case 'Delete':
-          if (items.length > 0 && !isInDiscountInput) {
+          // Extra safety: also guard by activeElement refs (belt-and-suspenders)
+          if (
+            items.length > 0 &&
+            !isInSearchInput &&
+            !isInQuantityInput &&
+            !isInDiscountInput &&
+            !isInReceivedInput
+          ) {
             e.preventDefault();
             const itemToRemove = isCartFocused && selectedCartIndex >= 0 
               ? items[selectedCartIndex] 
@@ -1260,7 +1521,6 @@ export const QuickCheckout: React.FC = () => {
           
         case '0': case '1': case '2': case '3': case '4':
         case '5': case '6': case '7': case '8': case '9':
-        case 'Backspace':
         case '.':
         case '-':
           if (isCartFocused && !activeCellPopover && !isInSearchInput && !isInQuantityInput && !isInDiscountInput) {
@@ -1890,6 +2150,23 @@ export const QuickCheckout: React.FC = () => {
                 )}
               </button>
             </div>
+            {/* ── Update Invoice button (mobile, visible only in Edit Mode) ── */}
+            {editInvoiceId && (
+              <div className="mt-1.5">
+                <button
+                  onClick={handleUpdateInvoice}
+                  disabled={items.length === 0 || isProcessing}
+                  className={`w-full py-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] ${
+                    items.length > 0
+                      ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/30'
+                      : isDark ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  }`}
+                >
+                  <CheckCircle className="w-3.5 h-3.5" />
+                  {t('quickCheckout.updateInvoice')}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -2654,241 +2931,95 @@ export const QuickCheckout: React.FC = () => {
               )}
             </div>
 
-            {/* ── Quick Categories ── */}
+            {/* ── Quick Categories (live from DB, scrollable fixed-height grid) ── */}
             <div className={`rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-900' : 'bg-white border-slate-200 shadow-sm'}`}>
-              <div className="p-3 pb-0">
-                <div className="flex justify-between items-center mb-3 border-b border-slate-900 pb-2">
+              <div className="p-2.5 pb-0">
+                <div className="flex justify-between items-center mb-2 border-b border-slate-900 pb-2">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
                     <h3 className={`text-xs font-bold tracking-wide uppercase ${isDark ? 'text-slate-200' : 'text-slate-900'}`}>
-                      Quick Categories
+                      {t('quickCheckout.quickCategories')}
                     </h3>
+                    <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded-full ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
+                      {quickCheckoutCategories.length}
+                    </span>
                   </div>
                   
                   <button 
                     type="button"
-                    onClick={() => {
-                      setIsEditingCategories(!isEditingCategories);
-                      setIsAddDropdownOpen(false);
-                    }}
+                    onClick={() => setShowDisplaySettings(true)}
                     className={`px-2.5 py-1 rounded-lg text-[9px] font-bold transition-all duration-200 flex items-center gap-1 ${
-                      isEditingCategories 
-                        ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' 
-                        : isDark 
-                          ? 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800' 
-                          : 'bg-slate-100 border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-200'
+                      isDark 
+                        ? 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800' 
+                        : 'bg-slate-100 border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-200'
                     }`}
                   >
                     <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                       <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
                     </svg>
-                    {isEditingCategories ? "Done" : "Edit"}
+                    Settings
                   </button>
                 </div>
               </div>
 
-              <div className={`px-3 pb-3 max-h-[305px] overflow-y-auto pr-2 ${isDark ? 'scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-slate-900' : 'scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100'}`}>
-                <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-                  {quickCategories.map((categoryName, index) => {
-                    const categoryProducts = categoryProductMap.get(categoryName) || [];
-                    return (
-                    <div 
-                      key={categoryName}
-                      draggable={isEditingCategories}
-                      onDragStart={(e) => {
-                        if (!isEditingCategories) return;
-                        setDraggedIndex(index);
-                        e.dataTransfer.effectAllowed = "move";
-                      }}
-                      onDragOver={(e) => {
-                        if (!isEditingCategories || draggedIndex === null) return;
-                        e.preventDefault();
-                      }}
-                      onDrop={(e) => {
-                        if (!isEditingCategories || draggedIndex === null) return;
-                        e.preventDefault();
-                        const updated = [...quickCategories];
-                        const [removed] = updated.splice(draggedIndex, 1);
-                        updated.splice(index, 0, removed);
-                        setQuickCategories(updated);
-                        setDraggedIndex(null);
-                      }}
-                      onDragEnd={() => setDraggedIndex(null)}
-
-                      className={`relative group rounded-xl flex flex-col items-center justify-between text-center min-h-[85px] transition-all duration-200 ${
-                        isEditingCategories 
-                          ? isDark
-                            ? 'border-2 border-dashed border-amber-500/30 bg-slate-950/60 cursor-grab active:cursor-grabbing hover:border-amber-500/60'
-                            : 'border-2 border-dashed border-amber-500/30 bg-slate-100/80 cursor-grab active:cursor-grabbing hover:border-amber-500/60'
-                          : isDark
-                            ? 'bg-slate-800/50 border border-slate-700/80 hover:border-slate-600 hover:bg-slate-800/60 cursor-pointer active:scale-95'
-                            : 'bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 cursor-pointer active:scale-95 shadow-sm'
-                      } ${draggedIndex === index ? 'opacity-40 border-amber-500 bg-amber-500/5' : ''}`}
-                      onClick={(e) => {
-                        if (!isEditingCategories) {
-                          if (categoryProducts.length > 0) {
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            setCategoryPopoverAnchor(rect);
-                            setActiveCategoryPopover(categoryName);
-                            setCategoryPopoverFilter('');
-                            setTimeout(() => categoryPopoverInputRef.current?.focus(), 100);
-                          } else {
-                            toast.info(`${categoryName} - ${t('quickCheckout.noProductsFound')}`);
-                          }
-                        }
-                      }}
-                    >
-                      {isEditingCategories && (
-                        <div className="absolute top-1 left-1 right-1 flex justify-between items-center w-[calc(100%-8px)] opacity-80 group-hover:opacity-100 transition-opacity">
-                          <span className="text-[10px] text-slate-600 font-bold select-none leading-none">⠿</span>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setQuickCategories(quickCategories.filter(c => c !== categoryName));
-                              toast.success(`Removed "${categoryName}" from grid`);
-                            }}
-                            className="w-4 h-4 rounded-md bg-rose-500/10 hover:bg-rose-500 border border-rose-500/20 text-rose-400 hover:text-white flex items-center justify-center text-[9px] font-black transition-all"
-                          >
-                            ✕
-                          </button>
-                        </div>
-                      )}
-
-                      <div className="w-full flex flex-col items-center justify-center my-auto pt-2">
-                        <div className={`w-7 h-7 rounded-lg bg-gradient-to-br ${
-                          index % 2 === 0 ? 'from-cyan-500 to-blue-600' : 'from-amber-500 to-orange-500'
-                        } flex items-center justify-center mb-1 shadow-lg`}>
-                          <Package className="w-3.5 h-3.5 text-white" />
-                        </div>
-                        <span className={`text-[10px] font-bold tracking-wide uppercase leading-tight line-clamp-2 px-1 ${
-                          isDark ? 'text-slate-300' : 'text-slate-700'
-                        }`}>
-                          {categoryName}
-                        </span>
-                      </div>
-
-                      {!isEditingCategories && (
-                        <div className="w-1.5 h-1.5 rounded-full bg-cyan-500 shadow-glow mt-1 mb-0.5"></div>
-                      )}
-                    </div>
-                    );
-                  })}
-
-                  {isEditingCategories && (
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                          setAddBoxAnchor(rect);
-                          setIsAddDropdownOpen(!isAddDropdownOpen);
-                          setAddCategorySearch('');
-                        }}
-                        className={`w-full min-h-[85px] border-2 border-dashed border-slate-800 hover:border-emerald-500/40 bg-slate-950/20 hover:bg-emerald-950/5 rounded-xl flex flex-col items-center justify-center gap-1 transition-all group ${
-                          isDark ? '' : 'bg-slate-50/50 border-slate-300 hover:border-emerald-400/40 hover:bg-emerald-50/30'
-                        }`}
-                      >
-                        <span className="text-emerald-500 text-lg font-bold group-hover:scale-125 transition-transform">+</span>
-                        <span className="text-[9px] font-bold text-slate-500 group-hover:text-emerald-400 uppercase tracking-wider">Add Box</span>
-                      </button>
-
-                      {isAddDropdownOpen && addBoxAnchor && (
-                        <>
-                          <div
-                            className="fixed inset-0 z-[100]"
-                            onClick={() => { setIsAddDropdownOpen(false); setAddBoxAnchor(null); }}
-                          />
-                          <div
-                            className={`fixed z-[101] w-80 rounded-2xl shadow-2xl animate-fade-in overflow-hidden ${
-                              isDark
-                                ? 'bg-slate-900 border border-slate-700/60'
-                                : 'bg-white border border-slate-200 shadow-xl'
-                            }`}
-                            style={{
-                              bottom: Math.max(8, window.innerHeight - addBoxAnchor.top + 8),
-                              left:   Math.max(8, Math.min(addBoxAnchor.left, window.innerWidth - 328)),
-                            }}
-                          >
-                            <div className={`flex items-center justify-between px-4 py-3 border-b ${isDark ? 'border-slate-700/60 bg-slate-800/80' : 'border-slate-100 bg-slate-50'}`}>
-                              <div className="flex items-center gap-2">
-                                <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
-                                  <Plus className="w-3.5 h-3.5 text-white" />
-                                </div>
-                                <span className={`text-xs font-black uppercase tracking-wider ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                                  Add Category
-                                </span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => { setIsAddDropdownOpen(false); setAddBoxAnchor(null); setAddCategorySearch(''); }}
-                                className={`w-6 h-6 rounded-lg flex items-center justify-center transition-colors ${isDark ? 'hover:bg-slate-700 text-slate-400 hover:text-white' : 'hover:bg-slate-200 text-slate-500 hover:text-slate-900'}`}
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
+              <div className="px-2.5 pb-2.5">
+                <div className="max-h-[290px] md:max-h-[310px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    {quickCheckoutCategories.map((cat) => {
+                      const categoryProducts = categoryProductMap.get(cat.name) || [];
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => {
+                            if (categoryProducts.length > 0) {
+                              const rect = (document.querySelector(`[data-cat-id="${cat.id}"]`) as HTMLElement)?.getBoundingClientRect();
+                              if (rect) {
+                                setCategoryPopoverAnchor(rect);
+                              }
+                              setActiveCategoryPopover(cat.name);
+                              setCategoryPopoverFilter('');
+                              setTimeout(() => categoryPopoverInputRef.current?.focus(), 100);
+                            } else {
+                              toast.info(`${cat.name} - ${t('quickCheckout.noProductsFound')}`);
+                            }
+                          }}
+                          data-cat-id={cat.id}
+                          className={`relative group rounded-xl flex flex-col items-center justify-center text-center min-h-[72px] transition-all duration-200 ${
+                            isDark
+                              ? 'bg-slate-800/50 border border-slate-700/80 hover:border-slate-600 hover:bg-slate-800/60 active:scale-95'
+                              : 'bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 active:scale-95 shadow-sm'
+                          }`}
+                        >
+                          <div className="w-full flex flex-col items-center justify-center py-2 px-1">
+                            <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${
+                              (quickCheckoutCategories.indexOf(cat) % 2) === 0 ? 'from-cyan-500 to-blue-600' : 'from-amber-500 to-orange-500'
+                            } flex items-center justify-center mb-1 shadow-lg`}>
+                              <Package className="w-4 h-4 text-white" />
                             </div>
-                            <div className={`px-3 py-2.5 border-b ${isDark ? 'border-slate-700/60' : 'border-slate-100'}`}>
-                              <input
-                                autoFocus
-                                type="text"
-                                value={addCategorySearch}
-                                onChange={e => setAddCategorySearch(e.target.value)}
-                                placeholder="Search categories..."
-                                className={`w-full px-3 py-2 text-xs font-medium rounded-xl focus:outline-none border transition-all ${
-                                  isDark
-                                    ? 'bg-slate-800 border-slate-700 text-white placeholder-slate-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/20'
-                                    : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200'
-                                }`}
-                              />
-                            </div>
-                            <div className="max-h-60 overflow-y-auto p-2">
-                              {(() => {
-                                const available = allCategoryNames.filter(c =>
-                                  !quickCategories.includes(c) &&
-                                  (addCategorySearch.trim() === '' ||
-                                    c.toLowerCase().includes(addCategorySearch.toLowerCase()))
-                                );
-                                if (available.length === 0) {
-                                  return (
-                                    <div className={`text-center py-6 text-xs font-bold ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>
-                                      {allCategoryNames.filter(c => !quickCategories.includes(c)).length === 0
-                                        ? 'All categories are already on the grid!'
-                                        : 'No matching categories'}
-                                    </div>
-                                  );
-                                }
-                                return available.map(cat => (
-                                  <button
-                                    key={cat}
-                                    type="button"
-                                    onClick={() => {
-                                      setQuickCategories([...quickCategories, cat]);
-                                      setIsAddDropdownOpen(false);
-                                      setAddBoxAnchor(null);
-                                      setAddCategorySearch('');
-                                      toast.success(`Added "${cat}" to grid`);
-                                    }}
-                                    className={`w-full text-left px-3 py-2.5 text-xs font-semibold rounded-xl transition-all flex items-center gap-2.5 mb-0.5 ${
-                                      isDark
-                                        ? 'text-slate-300 hover:text-white hover:bg-slate-800'
-                                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                                    }`}
-                                  >
-                                    <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0"></span>
-                                    {cat}
-                                  </button>
-                                ));
-                              })()}
-                            </div>
+                            <span className={`text-[13px] font-bold leading-tight line-clamp-2 text-center break-words max-w-full ${
+                              isDark ? 'text-slate-300' : 'text-slate-700'
+                            }`}>
+                              {isSinhala ? (cat.nameSinhala || cat.name) : cat.name}
+                            </span>
+                            <div className="w-1 h-1 rounded-full bg-cyan-500 shadow-glow mt-0.5"></div>
                           </div>
-                        </>
-                      )}
-                    </div>
-                  )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </div>
+
+            {/* ── Display Settings Modal ── */}
+            {showDisplaySettings && (
+              <DisplaySettingsModal
+                isOpen={showDisplaySettings}
+                onClose={() => setShowDisplaySettings(false)}
+              />
+            )}
 
           {/* ── CATEGORY PRODUCT POPOVER ── */}
             {activeCategoryPopover && categoryPopoverAnchor && (
@@ -2939,9 +3070,10 @@ export const QuickCheckout: React.FC = () => {
                                     e.preventDefault();
                                     const parsed = parseQuantityInput(categoryPromptQty);
                                     const finalQty = !isNaN(parsed) && parsed > 0 ? parsed : 1;
+                                    const sinhalaName = quantityPromptProduct.nameSinhala || quantityPromptProduct.nameSi || quantityPromptProduct.name;
                                     const fp: FlattenedProduct = {
                                       flatId: quantityPromptProduct.id,
-                                      product: { nameAlt: quantityPromptProduct.name, sku: quantityPromptProduct.searchKey, category: activeCategoryPopover } as any,
+                                      product: { nameAlt: sinhalaName, sku: quantityPromptProduct.searchKey, category: activeCategoryPopover } as any,
                                       displayName: quantityPromptProduct.name,
                                       displaySku: quantityPromptProduct.searchKey,
                                       retailPrice: Number(quantityPromptProduct.salesPrice),
@@ -2951,7 +3083,10 @@ export const QuickCheckout: React.FC = () => {
                                       hasDiscount: false,
                                     } as FlattenedProduct;
                                     addProductToCart(fp, finalQty);
-                                    toast.success(`${quantityPromptProduct.name} × ${finalQty} ${t('quickCheckout.addedToCart')}`);
+                                    const displayQtyName = isSinhala
+                                      ? (quantityPromptProduct.nameSinhala || quantityPromptProduct.nameSi || quantityPromptProduct.name)
+                                      : quantityPromptProduct.name;
+                                    toast.success(`${displayQtyName} × ${finalQty} ${t('quickCheckout.addedToCart')}`);
                                     setQuantityPromptProduct(null);
                                     setActiveCategoryPopover(null);
                                     setCategoryPopoverFilter('');
@@ -2981,8 +3116,8 @@ export const QuickCheckout: React.FC = () => {
                                 <div className={`w-6 h-6 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center`}>
                                   <Package className="w-3 h-3 text-white" />
                                 </div>
-                                <span className={`text-xs font-bold uppercase tracking-wide ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                                  {activeCategoryPopover}
+                            <span className={`text-xs font-bold uppercase tracking-wide ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                  {isSinhala && (quickCheckoutCategories.find(c => c.name === activeCategoryPopover)?.nameSinhala) || activeCategoryPopover}
                                 </span>
                                 <span className={`text-[9px] font-mono ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                                   {filteredCategoryProducts.length} items
@@ -3025,9 +3160,10 @@ export const QuickCheckout: React.FC = () => {
                                       e.preventDefault();
                                       const targetedProduct = filteredCategoryProducts[activeCategoryItemIndex];
                                       if (targetedProduct) {
-                                        const fp: FlattenedProduct = {
-                                          flatId: targetedProduct.id,
-                                          product: { nameAlt: targetedProduct.name, sku: targetedProduct.searchKey, category: activeCategoryPopover } as any,
+                                          const sinhalaName = targetedProduct.nameSinhala || targetedProduct.nameSi || targetedProduct.name;
+                                          const fp: FlattenedProduct = {
+                                            flatId: targetedProduct.id,
+                                            product: { nameAlt: sinhalaName, sku: targetedProduct.searchKey, category: activeCategoryPopover } as any,
                                           displayName: targetedProduct.name,
                                           displaySku: targetedProduct.searchKey,
                                           retailPrice: Number(targetedProduct.salesPrice),
@@ -3078,7 +3214,10 @@ export const QuickCheckout: React.FC = () => {
                                             quantityInputRef.current?.select();
                                           }, 50);
                                           playBeep('add');
-                                          toast.info(`${targetedProduct.name} - ${t('quickCheckout.enterQuantity')}`);
+                                          const enterQtyName = isSinhala
+                                            ? (targetedProduct.nameSinhala || targetedProduct.nameSi || targetedProduct.name)
+                                            : targetedProduct.name;
+                                          toast.info(`${enterQtyName} - ${t('quickCheckout.enterQuantity')}`);
                                         }
                                       }
                                     } else if (e.key === 'Escape') {
@@ -3112,9 +3251,10 @@ export const QuickCheckout: React.FC = () => {
                                         key={item.id}
                                         data-cat-index={idx}
                                         onClick={() => {
+                                          const sinhalaName = item.nameSinhala || item.nameSi || item.name;
                                           const fp: FlattenedProduct = {
                                             flatId: item.id,
-                                            product: { nameAlt: item.name, sku: item.searchKey, category: activeCategoryPopover } as any,
+                                            product: { nameAlt: sinhalaName, sku: item.searchKey, category: activeCategoryPopover } as any,
                                             displayName: item.name,
                                             displaySku: item.searchKey,
                                             retailPrice: Number(item.salesPrice),
@@ -3165,7 +3305,10 @@ export const QuickCheckout: React.FC = () => {
                                               quantityInputRef.current?.select();
                                             }, 50);
                                             playBeep('add');
-                                            toast.info(`${item.name} - ${t('quickCheckout.enterQuantity')}`);
+                                            const clickEnterQtyName = isSinhala
+                                              ? (item.nameSinhala || item.nameSi || item.name)
+                                              : item.name;
+                                            toast.info(`${clickEnterQtyName} - ${t('quickCheckout.enterQuantity')}`);
                                           }
                                         }}
                                         className={`p-2.5 rounded-xl flex items-center gap-2 transition-all duration-150 cursor-pointer border-l-4 ${
@@ -3187,7 +3330,7 @@ export const QuickCheckout: React.FC = () => {
                                         </div>
                                         <div className="flex-1 min-w-0">
                                           <p className={`text-[11px] font-semibold truncate ${isFocusedRow ? (isDark ? 'text-white' : 'text-amber-900') : isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-                                            {item.name}
+                                            {isSinhala ? (item.nameSinhala || item.nameSi || item.name) : item.name}
                                           </p>
                                           <div className="flex items-center gap-1.5 mt-0.5">
                                             <span className={`text-[8px] font-mono ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
@@ -3338,7 +3481,15 @@ export const QuickCheckout: React.FC = () => {
               <Printer className="w-4 h-4" />
               {t('quickCheckout.checkoutAndPrint')}
               <kbd className="ml-1 px-1.5 py-0.5 rounded bg-white/20 text-[10px] font-mono">F12</kbd>
-            </button>            
+            </button>
+            
+            {/* ── Update Invoice button (visible only in Edit Mode) ── */}
+            {editInvoiceId && (
+              <button onClick={handleUpdateInvoice} disabled={items.length === 0 || isProcessing} className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${items.length > 0 ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white shadow-lg shadow-emerald-500/30' : isDark ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>
+                <CheckCircle className="w-4 h-4" />
+                {t('quickCheckout.updateInvoice')}
+              </button>
+            )}
 
             {/* ── CUSTOMER SELECTION: Searchable Combobox ── */}
             <div ref={customerContainerRef} className={`p-3 rounded-xl border ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
@@ -3556,6 +3707,7 @@ export const QuickCheckout: React.FC = () => {
               }
               invoiceNumber="PREVIEW"
               language={isSinhala ? 'si' : 'en'}
+              cashierName={currentUser?.name || 'Admin User'}
             />
           </div>
         </div>{/* end outer flex gap-4 */}

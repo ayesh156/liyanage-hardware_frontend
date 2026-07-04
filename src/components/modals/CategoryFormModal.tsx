@@ -40,7 +40,7 @@ export const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
 
   const [formData, setFormData] = useState<Partial<Category>>({
     name: '',
-    nameAlt: '',
+    nameSinhala: '',
     icon: '',
     description: '',
   });
@@ -51,14 +51,14 @@ export const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
     if (category) {
       setFormData({
         name: category.name,
-        nameAlt: category.nameAlt || '',
+        nameSinhala: category.nameSinhala || '',
         icon: category.icon || '',
         description: category.description || '',
       });
     } else {
       setFormData({
         name: '',
-        nameAlt: '',
+        nameSinhala: '',
         icon: '',
         description: '',
       });
@@ -114,7 +114,7 @@ export const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
           </DialogHeader>
 
           <div className="grid gap-3 py-2">
-            {/* Category Name */}
+            {/* Category Name (English) */}
             <div className="space-y-1">
               <Label htmlFor="name" className={`flex items-center gap-1.5 text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                 <Tag className="w-3.5 h-3.5" />
@@ -138,14 +138,14 @@ export const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
 
             {/* Sinhala Name */}
             <div className="space-y-1">
-              <Label htmlFor="nameAlt" className={`flex items-center gap-1.5 text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+              <Label htmlFor="nameSinhala" className={`flex items-center gap-1.5 text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                 <Languages className="w-3.5 h-3.5" />
                 {t('categories.sinhalaName')}
               </Label>
               <Input
-                id="nameAlt"
-                value={formData.nameAlt}
-                onChange={(e) => handleChange('nameAlt', e.target.value)}
+                id="nameSinhala"
+                value={formData.nameSinhala || ''}
+                onChange={(e) => handleChange('nameSinhala', e.target.value)}
                 placeholder={t('categories.sinhalaNamePlaceholder')}
                 className={`h-8 text-xs ${
                   isDark 

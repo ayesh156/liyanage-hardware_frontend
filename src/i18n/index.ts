@@ -999,6 +999,8 @@ export const translations = {
       priceUpdated: 'Price updated',
       priceDeducted: 'Price reduced',
       invoiceSaved: 'Invoice saved',
+      updateInvoice: 'Update Invoice',
+      invoiceUpdated: 'Invoice updated successfully',
       typing: 'typing',
       shortcut: {
         search: 'Search',
@@ -2143,6 +2145,8 @@ export const translations = {
       priceUpdated: 'මිල යාවත්කාලීන කළා',
       priceDeducted: 'මිල අඩු කළා',
       invoiceSaved: 'ඉන්වොයිසිය සුරැකුවා',
+      updateInvoice: 'ගිණුම්පත යාවත්කාලීන කරන්න',
+      invoiceUpdated: 'ගිණුම්පත සාර්ථකව යාවත්කාලීන කරන ලදී',
       typing: 'ටයිප් කරනවා',
       shortcut: {
         search: 'සෙවීම',
@@ -2162,7 +2166,7 @@ export const translations = {
         adjustQty: 'ප්‍රමාණය සකසන්න',
         editPrice: 'මිල සංස්කරණය',
       },
-      quickCategories: 'ඉක්මන් කාණ්ඩ',
+      quickCategories: 'ඉක්මන් ප්‍රවර්ග',
       quickAdd: 'ඉක්මන් එකතු කිරීම',
       quickAddTitle: 'අභිරුචි අයිතමය ඉක්මනින් එකතු කරන්න',
       quickAddValidation: 'කරුණාකර නම, මිල සහ ප්‍රමාණය ඇතුළත් කරන්න',

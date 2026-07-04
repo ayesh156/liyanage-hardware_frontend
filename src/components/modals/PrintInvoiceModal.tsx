@@ -499,10 +499,10 @@ const generate80mmReceiptContent = (invoice: Invoice, customer?: Customer | null
   `;
 };
 
-export const printInvoice = (invoice: Invoice, customer?: Customer | null, language: 'en' | 'si' = 'en'): Promise<void> => {
+export const printInvoice = (invoice: Invoice, customer?: Customer | null, language: 'en' | 'si' = 'en', cashierName: string = 'Admin User'): Promise<void> => {
   return new Promise((resolve, reject) => {
     try {
-      const printContent = generateReceiptHTML(invoice, customer, language);
+      const printContent = generateReceiptHTML(invoice, customer, language, cashierName);
 
       // Remove any stale print iframe from a prior job
       const existing = document.getElementById('pos-print-iframe');

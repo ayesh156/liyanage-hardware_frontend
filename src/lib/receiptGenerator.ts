@@ -9,7 +9,8 @@ import { translateToSinhala } from './sinhalaTranslator';
 export const generateReceiptHTML = (
   invoice: Invoice,
   customer?: Customer | null,
-  language: 'en' | 'si' = 'si'
+  language: 'en' | 'si' = 'si',
+  cashierName: string = 'Admin User'
 ): string => {
   const isPaid = invoice.status === 'paid';
   const finalDiscount = invoice.discount || 0;
@@ -36,8 +37,10 @@ export const generateReceiptHTML = (
   const itemsHtml = invoice.items
     .map((item) => {
       const ext = item as any;
-      const displayName =
-        item.productNameSi || translateToSinhala(item.productName);
+      // STRICT PRINTING RULE: Always prefer Sinhala name regardless of UI locale.
+      // Only fall back to English if Sinhala name is completely missing.
+      const printedItemName = item.productNameSi || item.productName;
+      const displayName = printedItemName;
       // Col 2 (25%): displayPrice — marked/RRP, conditionally struck-through
       //   ONLY apply line-through if salesPrice < displayPrice.
       //   If prices are equal or salesPrice > displayPrice, NO strikethrough.
@@ -238,7 +241,7 @@ export const generateReceiptHTML = (
   <!-- CASHIER -->
   <div style="padding:3px 0;border-top:1px dashed #000;margin-top:3px;">
     <span style="font-size:11px;font-weight:700;">කැෂියර්: </span>
-    <span style="font-size:11px;font-weight:800;">Admin</span>
+    <span style="font-size:11px;font-weight:800;">${cashierName || 'Admin User'}</span>
   </div>
 
   <!-- FOOTER -->

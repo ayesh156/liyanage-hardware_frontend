@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Invoice, Customer } from '../types/index';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import { FileText, ArrowLeft, Printer, Download } from 'lucide-react';
 import { printInvoice } from '../components/modals/PrintInvoiceModal';
 
@@ -16,6 +17,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoices, customer
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
   const { theme } = useTheme();
+  const { user: currentUser } = useAuth();
 
   const invoice = invoices.find((inv) => inv.id === id);
   const customer = customers.find(c => c.id === invoice?.customerId);
@@ -53,7 +55,7 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoices, customer
       isActive: true,
       loanBalance: 0
     };
-    printInvoice(invoice, printCustomer, i18n.language as 'en' | 'si').catch(() => {});
+    printInvoice(invoice, printCustomer, i18n.language as 'en' | 'si', currentUser?.name || 'Admin User').catch(() => {});
   };
 
   return (
