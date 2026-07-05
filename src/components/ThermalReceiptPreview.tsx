@@ -37,6 +37,7 @@ const ThermalReceiptPreview: React.FC<ThermalReceiptPreviewProps> = memo(({
   cashierName = 'Admin User',
 }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const previewShellRef = useRef<HTMLDivElement>(null);
   const { theme } = useTheme();
   const isDark = theme === 'dark';
 
@@ -83,17 +84,50 @@ const ThermalReceiptPreview: React.FC<ThermalReceiptPreviewProps> = memo(({
     doc.write(html);
     doc.close();
 
-    // Resize iframe to match receipt content height
-    const resize = () => {
+    const applyPreviewScaling = () => {
       try {
-        const body = iframe.contentDocument?.body;
+        const body = doc.body;
+        const shell = previewShellRef.current;
+        const receiptRoot = body?.firstElementChild as HTMLElement | null;
+        const previewScale = 1.05;
+
         if (body) {
-          iframe.style.height = body.scrollHeight + 'px';
+          body.style.margin = '0';
+          body.style.padding = '0';
+          body.style.background = '#ffffff';
+          body.style.display = 'flex';
+          body.style.justifyContent = 'center';
+          body.style.alignItems = 'flex-start';
+          body.style.overflowX = 'hidden';
+          body.style.width = '100%';
+          body.style.minHeight = '100%';
+          body.style.boxSizing = 'border-box';
         }
+
+        if (receiptRoot) {
+          receiptRoot.style.display = 'block';
+          receiptRoot.style.margin = '0 auto';
+          receiptRoot.style.transform = `scale(${previewScale})`;
+          receiptRoot.style.transformOrigin = 'top left';
+          receiptRoot.style.width = `${100 / previewScale}%`;
+          receiptRoot.style.maxWidth = `${100 / previewScale}%`;
+          receiptRoot.style.boxSizing = 'border-box';
+          receiptRoot.style.minWidth = '0';
+        }
+
+        const contentHeight = Math.max(320, receiptRoot?.scrollHeight || body?.scrollHeight || 320);
+        iframe.style.height = `${Math.ceil(contentHeight * previewScale)}px`;
+        iframe.style.width = '100%';
+        iframe.style.maxWidth = '100%';
       } catch (_) {}
     };
-    iframe.onload = resize;
-    setTimeout(resize, 200);
+
+    iframe.onload = applyPreviewScaling;
+    requestAnimationFrame(applyPreviewScaling);
+    setTimeout(applyPreviewScaling, 180);
+    window.addEventListener('resize', applyPreviewScaling);
+
+    return () => window.removeEventListener('resize', applyPreviewScaling);
   }, [items, discount, receivedAmount, paymentMethod, subtotal, total, customer, invoiceNumber, language, cashierName]);
 
   return (
@@ -108,20 +142,29 @@ const ThermalReceiptPreview: React.FC<ThermalReceiptPreviewProps> = memo(({
       </div>
 
       {/* Paper receipt container */}
-      <div className={`rounded-lg overflow-hidden shadow-xl ${isDark ? 'bg-slate-950 shadow-slate-950/80 ring-1 ring-slate-800' : 'bg-white shadow-slate-700/40 ring-1 ring-slate-700'}`}>
-        <iframe
-          ref={iframeRef}
-          title="receipt-preview"
-          sandbox="allow-scripts allow-same-origin allow-modals"
-          scrolling="no"
-          style={{
-            width: '100%',
-            border: 'none',
-            display: 'block',
-            minHeight: '200px',
-            backgroundColor: '#ffffff',
-          }}
-        />
+      <div
+        ref={previewShellRef}
+        className={`w-full h-full flex flex-col items-center p-0 m-0 overflow-y-auto overflow-x-hidden bg-slate-900/5 box-border ${isDark ? 'rounded-xl shadow-slate-950/80 ring-1 ring-slate-800' : 'rounded-xl shadow-slate-700/40 ring-1 ring-slate-700'}`}
+      >
+        <div className="w-full min-w-full bg-white text-black px-1 py-4 shadow-none border-x-0 flex flex-col break-words box-border" style={{ width: '100% !important' }}>
+          <iframe
+            ref={iframeRef}
+            title="receipt-preview"
+            sandbox="allow-scripts allow-same-origin allow-modals"
+            scrolling="no"
+            style={{
+              width: '100%',
+              maxWidth: '100%',
+              border: 'none',
+              display: 'block',
+              minHeight: '320px',
+              backgroundColor: '#ffffff',
+              overflow: 'visible',
+              boxSizing: 'border-box',
+              minWidth: '0',
+            }}
+          />
+        </div>
       </div>
     </div>
   );

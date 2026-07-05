@@ -64,12 +64,12 @@ export const generateReceiptHTML = (
         ? Number(item.quantity).toString()
         : Number(item.quantity).toFixed(3).replace(/\.?0+$/, '');
       return `
-      <div style="border-bottom:1px dashed #000;padding:4px 0;">
-        <div style="font-weight:800;font-size:12px;color:#000;margin-bottom:2px;word-break:break-word;">${displayName}</div>
-        <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:700;font-family:'Courier New',monospace;color:#000;width:100%;">
+      <div style="border-bottom:1px dashed #000;padding:5px 0;">
+        <div style="font-weight:900;font-size:15px;color:#000;margin-bottom:2px;word-break:break-word;line-height:1.25;">${displayName}</div>
+        <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:800;font-family:'Courier New',monospace;color:#000;width:100%;">
           <span style="width:15%;text-align:left;flex-shrink:0;">${displayQty}</span>
-          <span style="width:25%;text-align:right;${showStrikethrough ? 'text-decoration:line-through;' : ''}color:#000;opacity:0.6;flex-shrink:0;">${displayPriceDisplay}</span>
-          <span style="width:25%;text-align:right;font-weight:800;color:#000;flex-shrink:0;">${salesPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+          <span style="width:25%;text-align:right;${showStrikethrough ? 'text-decoration:line-through;' : ''}color:#000;opacity:1;flex-shrink:0;">${displayPriceDisplay}</span>
+          <span style="width:25%;text-align:right;font-weight:900;color:#000;flex-shrink:0;">${salesPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
           <span style="width:35%;text-align:right;font-weight:900;color:#000;flex-shrink:0;">${lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
         </div>
       </div>`;
@@ -127,27 +127,31 @@ export const generateReceiptHTML = (
   }
   .status-paid-text * { color: #ffffff !important; }
   hr { border: none !important; border-top: 1px dashed #000000 !important; }
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
   body {
     font-family: 'Segoe UI', 'Noto Sans Sinhala', Arial, sans-serif;
     background: #ffffff;
     font-weight: 700;
     font-size: 12px;
     line-height: 1.4;
-    width: 76mm;
+    width: 80mm;
     color: #000000;
   }
 </style>
 </head>
 <body>
-<div style="width:76mm;padding:2px;margin:0 auto;background:#fff;font-family:'Segoe UI','Noto Sans Sinhala',Arial,sans-serif;font-size:12px;font-weight:700;color:#000;">
+<div style="width:80mm;padding:8px 12px;margin:0 auto;background:#fff;font-family:'Segoe UI','Noto Sans Sinhala',Arial,sans-serif;font-size:12px;font-weight:700;color:#000;">
 
   <!-- HEADER -->
   <div style="text-align:center;padding-bottom:4px;border-bottom:2px double #000;">
     <img src="/inv_logo.png" alt="" style="width:90px;height:auto;display:block;margin:0 auto;"/>
     <div style="margin:5px 0 3px;border-bottom:1px solid #000;padding-bottom:3px;">
-      <div style="font-size:22px;font-weight:900;color:#000;line-height:1.1;">ලියනගේ හාඩ්වෙයාර්</div>
+      <div style="font-size:24px;font-weight:900;color:#000;line-height:1.1;">ලියනගේ හාඩ්වෙයාර්</div>
     </div>
-    <div style="font-size:11px;font-weight:700;color:#000;line-height:1.5;">
+    <div style="font-size:14px;font-weight:800;color:#000;line-height:1.5;">
       හක්මන පාර, දෙයියන්දර<br/>
       දුරකථන: 0773751805 / 0412268217<br/>
       Email: liyanagehardware1986@gmail.com
@@ -157,32 +161,32 @@ export const generateReceiptHTML = (
   <!-- INVOICE META -->
   <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:2px dashed #000;">
     <div>
-      <div style="font-size:10px;font-weight:700;">බිල්පත</div>
-      <div style="font-size:13px;font-weight:800;font-family:'Courier New',monospace;">${invoice.invoiceNumber}</div>
+      <div style="font-size:11px;font-weight:700;">බිල්පත</div>
+      <div style="font-size:15px;font-weight:900;font-family:'Courier New',monospace;">${invoice.invoiceNumber}</div>
     </div>
     <div style="text-align:center;">
-      <div style="display:inline-block;padding:2px 6px;border:2px solid #000000;border-radius:3px;font-size:10px;font-weight:800;background-color:${isPaid ? '#000000' : '#ffffff'} !important;background-image:${isPaid ? 'linear-gradient(#000000,#000000)' : 'none'} !important;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;">
+      <div style="display:inline-block;padding:2px 6px;border:2px solid #000000;border-radius:3px;font-size:11px;font-weight:800;background-color:${isPaid ? '#000000' : '#ffffff'} !important;background-image:${isPaid ? 'linear-gradient(#000000,#000000)' : 'none'} !important;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;">
         <span style="color:${isPaid ? '#ffffff' : '#000000'} !important;font-weight:800;">${isPaid ? '✓ ගෙවා ඇත' : '○ ගෙවිය යුතු'}</span>
       </div>
     </div>
     <div style="text-align:right;">
-      <div style="font-size:10px;font-weight:700;">දිනය</div>
-      <div style="font-size:11px;font-weight:800;">${new Date(invoice.issueDate).toLocaleDateString('si-LK', { day: '2-digit', month: 'short', year: '2-digit' })}</div>
+      <div style="font-size:11px;font-weight:700;">දිනය</div>
+      <div style="font-size:13px;font-weight:800;">${new Date(invoice.issueDate).toLocaleDateString('si-LK', { day: '2-digit', month: 'short', year: '2-digit' })}</div>
     </div>
   </div>
 
   ${!isWalkIn ? `
   <!-- CUSTOMER -->
   <div style="padding:3px 0;border-bottom:2px dashed #000;">
-    <span style="font-size:10px;font-weight:700;">පාරිභෝගිකයා: </span>
-    <span style="font-size:12px;font-weight:800;">${customerName}</span>
-    ${customerPhone ? `<span style="float:right;font-size:11px;font-weight:700;">${customerPhone}</span>` : ''}
+    <span style="font-size:11px;font-weight:700;">පාරිභෝගිකයා: </span>
+    <span style="font-size:13px;font-weight:800;">${customerName}</span>
+    ${customerPhone ? `<span style="float:right;font-size:12px;font-weight:700;">${customerPhone}</span>` : ''}
   </div>` : ''}
 
   <!-- ITEMS HEADER -->
   <div style="padding:3px 0 2px;border-bottom:2px solid #000;">
-    <div style="font-size:11px;font-weight:800;margin-bottom:3px;">භාණ්ඩය</div>
-    <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:800;font-family:'Courier New',monospace;width:100%;">
+    <div style="font-size:13px;font-weight:800;margin-bottom:3px;">භාණ්ඩය</div>
+    <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:800;font-family:'Courier New',monospace;width:100%;">
       <span style="width:15%;text-align:left;flex-shrink:0;">ප්‍රමාණය</span>
       <span style="width:25%;text-align:right;flex-shrink:0;">සඳහන් මිල</span>
       <span style="width:25%;text-align:right;flex-shrink:0;">අපේ මිල</span>
@@ -196,7 +200,7 @@ export const generateReceiptHTML = (
   <!-- TOTALS -->
   <div style="border-top:2px solid #000;padding-top:4px;margin-top:2px;">
     ${finalDiscount > 0 ? `
-    <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:12px;font-weight:700;">
+    <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:13px;font-weight:800;">
       <span>වට්ටම්</span>
       <span style="font-family:'Courier New',monospace;font-weight:800;">-${finalDiscount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
     </div>` : ''}
@@ -210,14 +214,14 @@ export const generateReceiptHTML = (
     </div>
 
     <!-- ITEM COUNT -->
-    <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:12px;font-weight:700;margin-top:2px;">
+    <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:14px;font-weight:800;margin-top:2px;">
       <span>භාණ්ඩ සංඛ්‍යාව</span>
-      <span style="font-weight:800;">[${invoice.items.reduce((a, i) => a + i.quantity, 0)}]</span>
+      <span style="font-weight:900;">[${invoice.items.reduce((a, i) => a + i.quantity, 0)}]</span>
     </div>
 
     ${totalSavings > 0 ? `
     <!-- SAVINGS -->
-    <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;font-weight:800;border-top:2px dashed #000;margin-top:4px;">
+    <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:15px;font-weight:800;border-top:2px dashed #000;margin-top:4px;">
       <span>ඔබ ලැබූ ලාභය</span>
       <span style="font-family:'Courier New',monospace;font-weight:900;">${totalSavings.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
     </div>` : ''}
@@ -227,11 +231,11 @@ export const generateReceiptHTML = (
   <!-- PAYMENT -->
   <div style="border-top:2px dashed #000;margin-top:4px;padding-top:4px;">
     <div style="border:1px solid #000;padding:4px 6px;border-radius:3px;">
-      <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:12px;font-weight:700;">
+      <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:13px;font-weight:800;">
         <span>ගෙවූ මුදල</span>
         <span style="font-family:'Courier New',monospace;font-weight:800;">${receivedAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:12px;font-weight:700;">
+      <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:13px;font-weight:800;">
         <span>ඉතිරි මුදල</span>
         <span style="font-family:'Courier New',monospace;font-weight:800;">${changeAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
       </div>
@@ -240,15 +244,15 @@ export const generateReceiptHTML = (
 
   <!-- CASHIER -->
   <div style="padding:3px 0;border-top:1px dashed #000;margin-top:3px;">
-    <span style="font-size:11px;font-weight:700;">කැෂියර්: </span>
-    <span style="font-size:11px;font-weight:800;">${cashierName || 'Admin User'}</span>
+    <span style="font-size:12px;font-weight:700;">කැෂියර්: </span>
+    <span style="font-size:12px;font-weight:800;">${cashierName || 'Admin User'}</span>
   </div>
 
   <!-- FOOTER -->
   <div style="text-align:center;padding-top:6px;border-top:2px dashed #000;">
-    <div style="font-size:13px;font-weight:800;">ස්තූතියි නැවත එන්න !</div>
+    <div style="font-size:14px;font-weight:800;">ස්තූතියි නැවත එන්න !</div>
     <div style="margin:4px 0;border-top:1px solid #000;"></div>
-    <div style="font-size:11px;font-weight:700;letter-spacing:0.3px;">Software by nebulainfinite - 078 3233 760</div>
+    <div style="font-size:12px;font-weight:700;letter-spacing:0.3px;">Software by nebulainfinite - 078 3233 760</div>
   </div>
 
 </div>

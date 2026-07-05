@@ -87,7 +87,7 @@ export const QuickCheckout: React.FC = () => {
   const [searchParams] = useSearchParams();
   const isMobile = useIsMobile();
   
-  const { categories, inventoryItems, addInventoryItem, refreshCategories } = useCatalog();
+  const { categories, inventoryItems, addInventoryItem, refreshCategories, updateInventoryItem } = useCatalog();
   
   // Derive flattenedProducts from mockProducts once for legacy product catalog
   const [products] = useState<Product[]>(() => mockProducts);
@@ -230,6 +230,30 @@ export const QuickCheckout: React.FC = () => {
   
   const [isProcessing, setIsProcessing] = useState(false);
   const [isQuantityFocused, setIsQuantityFocused] = useState(false);
+
+  const applyInstantStockSync = useCallback((soldItems: QuickInvoiceItem[]) => {
+    const stockDeltaById = new Map<string, number>();
+
+    soldItems.forEach((item) => {
+      const rawProductId = String(item.productId || '').trim();
+      if (!rawProductId || rawProductId.startsWith('custom') || rawProductId === 'quick-add') return;
+
+      const normalizedProductId = rawProductId.includes('__') ? rawProductId.split('__')[0] : rawProductId;
+      const quantity = Number(item.quantity || 0);
+      if (!normalizedProductId || !quantity) return;
+
+      stockDeltaById.set(normalizedProductId, (stockDeltaById.get(normalizedProductId) || 0) + quantity);
+    });
+
+    stockDeltaById.forEach((quantity, productId) => {
+      const currentProduct = inventoryItems.find((item) => item.id === productId);
+      if (!currentProduct) return;
+
+      updateInventoryItem(productId, {
+        storeQty: Math.max(0, Number(currentProduct.storeQty || 0) - quantity),
+      });
+    });
+  }, [inventoryItems, updateInventoryItem]);
   
   // Mobile-specific state
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
@@ -1092,6 +1116,7 @@ export const QuickCheckout: React.FC = () => {
       const savedInvoice = response?.data ?? response;
       const savedInvoiceNumber = savedInvoice?.invoiceNumber || invoiceNumber;
 
+      applyInstantStockSync(items);
       playBeep('success');
 
       // 2. Print receipt only after successful database write
@@ -1134,7 +1159,7 @@ export const QuickCheckout: React.FC = () => {
       toast.error(err?.response?.data?.message || err?.message || 'Failed to save invoice');
       playBeep('error');
     }
-  }, [items, computedSubtotal, computedFinalTotal, computedDiscount, selectedCustomerId, paymentMethod, playBeep, t, finalizeSale, receivedAmount, changeAmount, isSinhala, findCustomerById, editInvoiceId, navigate]);
+  }, [items, computedSubtotal, computedFinalTotal, computedDiscount, selectedCustomerId, paymentMethod, playBeep, t, finalizeSale, receivedAmount, changeAmount, isSinhala, findCustomerById, editInvoiceId, navigate, applyInstantStockSync]);
 
   // ── Update existing invoice via PUT /api/invoices/:id ──
   const handleUpdateInvoice = useCallback(async () => {
@@ -2257,7 +2282,7 @@ export const QuickCheckout: React.FC = () => {
           <div className="flex-1 min-w-0">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* Left Panel - Main checkout area */}
-          <div className="lg:col-span-9 space-y-2">
+          <div className="lg:col-span-8 space-y-2">
             {/* Condensed Search Bar */}
             <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200 shadow-sm'}`}>
               {pendingProduct && (
@@ -3373,7 +3398,7 @@ export const QuickCheckout: React.FC = () => {
           </div>
 
           {/* Right Panel - Checkout Summary */}
-          <div className="lg:col-span-3 space-y-2">
+          <div className="lg:col-span-4 space-y-2">
             {/* Discount */}
             <div className={`p-3 rounded-xl border ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
               <div className="flex items-center justify-between mb-1.5">
@@ -3684,7 +3709,7 @@ export const QuickCheckout: React.FC = () => {
           </div>{/* end flex-1 inner grid wrapper */}
 
           {/* ── RECEIPT PREVIEW COLUMN — visible on xl+ ── */}
-          <div className="hidden xl:block w-[320px] flex-shrink-0 sticky top-[52px] self-start max-h-[calc(100vh-68px)] overflow-y-auto">
+          <div className="hidden xl:block w-full max-w-[440px] flex-shrink-0 sticky top-[52px] self-start max-h-[calc(100vh-68px)] overflow-y-auto min-w-0 min-h-0">
             <ThermalReceiptPreview
               items={items}
               discount={computedDiscount}
