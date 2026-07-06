@@ -43,7 +43,7 @@ const ThermalReceiptPreview: React.FC<ThermalReceiptPreviewProps> = memo(({
 
   useEffect(() => {
     const today = new Date().toISOString().split('T')[0];
-    const changeAmount = receivedAmount > total ? receivedAmount - total : 0;
+    const changeAmount = receivedAmount > 0 ? receivedAmount - total : 0;
 
     // Build a live Invoice object mirroring what handleCheckout produces
     const previewInvoice: Invoice = {
@@ -67,7 +67,7 @@ const ThermalReceiptPreview: React.FC<ThermalReceiptPreviewProps> = memo(({
       tax: 0,
       total,
       receivedAmount: receivedAmount > 0 ? receivedAmount : undefined,
-      changeAmount: changeAmount > 0 ? changeAmount : undefined,
+      changeAmount: changeAmount !== 0 ? changeAmount : undefined,
       issueDate: today,
       dueDate: today,
       status: paymentMethod === 'credit' ? 'pending' : 'paid',

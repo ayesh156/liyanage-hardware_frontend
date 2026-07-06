@@ -26,9 +26,15 @@ export const generateReceiptHTML = (
   const isPaid = invoice.status === 'paid';
   const finalDiscount = invoice.discount || 0;
   const receivedAmount = invoice.receivedAmount || 0;
+  // Signed changeAmount: positive = change (surplus), negative = deficit (amount still due)
+  // If the backend stored a negative value, preserve it. Otherwise compute with sign.
   const changeAmount =
-    invoice.changeAmount ||
-    (receivedAmount > 0 ? Math.max(0, receivedAmount - invoice.total) : 0);
+    invoice.changeAmount !== undefined
+      ? invoice.changeAmount
+      : (receivedAmount > 0 ? receivedAmount - invoice.total : 0);
+  const isDeficit = receivedAmount > 0 && changeAmount < 0;
+  const changeLabel = isDeficit ? 'හිග මුදල' : 'ඉතිරි මුදල';
+  const displayChangeValue = isDeficit ? Math.abs(changeAmount) : changeAmount;
 
   // Customer savings: Σ((displayPrice - salesPrice) × qty) + manual discount
   const totalItemDiscounts = invoice.items.reduce((sum, item) => {
@@ -262,8 +268,8 @@ export const generateReceiptHTML = (
         <span style="font-family:'Courier New',monospace;font-weight:800;">${formatPrice(receivedAmount)}</span>
       </div>
       <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:13px;font-weight:800;">
-        <span>ඉතිරි මුදල</span>
-        <span style="font-family:'Courier New',monospace;font-weight:800;">${formatPrice(changeAmount)}</span>
+        <span>${changeLabel}</span>
+        <span style="font-family:'Courier New',monospace;font-weight:800;">${formatPrice(displayChangeValue)}</span>
       </div>
     </div>
   </div>` : ''}

@@ -999,7 +999,9 @@ export const QuickCheckout: React.FC = () => {
 
   const [receivedAmount, setReceivedAmount] = useState<number>(0);
   const receivedAmountInputRef = useRef<HTMLInputElement>(null);
-  const changeAmount = receivedAmount > 0 ? Math.max(0, receivedAmount - computedFinalTotal) : 0;
+  // Signed balance: positive = change (surplus), negative = deficit (amount still due)
+  const changeAmount = receivedAmount > 0 ? Number((receivedAmount - computedFinalTotal).toFixed(2)) : 0;
+  const isDeficit = receivedAmount > 0 && receivedAmount < computedFinalTotal;
 
   const clearCart = useCallback(() => {
     setItems([]);
@@ -1065,7 +1067,7 @@ export const QuickCheckout: React.FC = () => {
           subtotal: Math.round(computedSubtotal * 100) / 100,
           total: Math.round(computedFinalTotal * 100) / 100,
           receivedAmount: receivedAmount > 0 ? Math.round(receivedAmount * 100) / 100 : undefined,
-          changeAmount: changeAmount > 0 ? Math.round(changeAmount * 100) / 100 : undefined,
+          changeAmount: changeAmount !== 0 ? Math.round(changeAmount * 100) / 100 : undefined,
           paymentMethod: paymentMethod,
           status: paymentMethod === 'credit' ? 'pending' : 'paid',
           notes: invoiceDiscount > 0 
@@ -1147,7 +1149,7 @@ export const QuickCheckout: React.FC = () => {
       discount: invoiceDiscount,
       total: Math.round(computedFinalTotal * 100) / 100,
       receivedAmount: receivedAmount > 0 ? Math.round(receivedAmount * 100) / 100 : undefined,
-      changeAmount: changeAmount > 0 ? Math.round(changeAmount * 100) / 100 : undefined,
+      changeAmount: changeAmount !== 0 ? Math.round(changeAmount * 100) / 100 : undefined,
       issueDate: new Date().toISOString(),
       dueDate: new Date().toISOString(),
       paymentMethod,
@@ -1251,7 +1253,7 @@ export const QuickCheckout: React.FC = () => {
         subtotal: Math.round(computedSubtotal * 100) / 100,
         total: Math.round(computedFinalTotal * 100) / 100,
         receivedAmount: receivedAmount > 0 ? Math.round(receivedAmount * 100) / 100 : undefined,
-        changeAmount: changeAmount > 0 ? Math.round(changeAmount * 100) / 100 : undefined,
+        changeAmount: changeAmount !== 0 ? Math.round(changeAmount * 100) / 100 : undefined,
         paymentMethod: paymentMethod,
         status: paymentMethod === 'credit' ? 'pending' : 'paid',
         notes: invoiceDiscount > 0 
@@ -1310,7 +1312,7 @@ export const QuickCheckout: React.FC = () => {
       discount: invoiceDiscount,
       total: Math.round(computedFinalTotal * 100) / 100,
       receivedAmount: receivedAmount > 0 ? Math.round(receivedAmount * 100) / 100 : undefined,
-      changeAmount: changeAmount > 0 ? Math.round(changeAmount * 100) / 100 : undefined,
+      changeAmount: changeAmount !== 0 ? Math.round(changeAmount * 100) / 100 : undefined,
       issueDate: new Date().toISOString().split('T')[0],
       dueDate: new Date().toISOString().split('T')[0],
       status: paymentMethod === 'credit' ? 'pending' : 'paid',
