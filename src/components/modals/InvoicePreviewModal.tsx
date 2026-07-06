@@ -31,6 +31,16 @@ interface InvoicePreviewModalProps {
  * Modal width locked to max-w-[400px] to match the 80mm thermal receipt profile.
  * Receipt styles synchronized with receiptGenerator.ts Pure Black Bold standard.
  */
+/**
+ * Format price: show no decimals for whole numbers, keep 2 decimals for fractional.
+ */
+function formatPrice(n: number): string {
+  if (n % 1 === 0) {
+    return n.toLocaleString('en-US');
+  }
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
   invoice,
   customer,
@@ -276,13 +286,13 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 700, color: '#000', ...mono }}>
                           <span style={{ width: '15%', textAlign: 'center' }}>{item.quantity}</span>
                           <span style={{ width: '25%', textAlign: 'right', ...(hasPriceGap ? { textDecoration: 'line-through' } : {}) }}>
-                            {displayPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            {formatPrice(displayPrice)}
                           </span>
                           <span style={{ width: '25%', textAlign: 'right', fontWeight: 800 }}>
-                            {ourPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            {formatPrice(ourPrice)}
                           </span>
                           <span style={{ width: '30%', textAlign: 'right', fontWeight: 900 }}>
-                            {lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            {formatPrice(lineTotal)}
                           </span>
                         </div>
                       </div>
@@ -296,13 +306,13 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
                   {discountAmount > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: '12px', ...PB }}>
                       <span>වට්ටම් {invoice.discountType === 'percentage' ? `(${invoice.discountValue || invoice.discount}%)` : ''}</span>
-                      <span style={{ ...mono, fontWeight: 800 }}>-{discountAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                      <span style={{ ...mono, fontWeight: 800 }}>-{formatPrice(discountAmount)}</span>
                     </div>
                   )}
                   {(invoice.tax ?? 0) > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: '11px', ...PB }}>
                       <span>බදු</span>
-                      <span style={{ ...mono }}>{(invoice.tax ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                      <span style={{ ...mono }}>{formatPrice(invoice.tax ?? 0)}</span>
                     </div>
                   )}
 
@@ -324,7 +334,7 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontSize: '15px', fontWeight: 800, color: '#ffffff' }}>මුළු එකතුව</span>
                       <span style={{ fontSize: '19px', fontWeight: 900, ...mono, letterSpacing: '1px', color: '#ffffff' }}>
-                        {invoice.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        {formatPrice(invoice.total)}
                       </span>
                     </div>
                   </div>
@@ -339,7 +349,7 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
                   {totalSavings > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '13px', fontWeight: 800, color: '#000', borderTop: '2px dashed #000', marginTop: '4px' }}>
                       <span>ඔබ ලැබූ ලාභය</span>
-                      <span style={{ ...mono, fontWeight: 900 }}>{totalSavings.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                      <span style={{ ...mono, fontWeight: 900 }}>{formatPrice(totalSavings)}</span>
                     </div>
                   )}
                 </div>
@@ -350,11 +360,11 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
                     <div style={{ border: '1px solid #000', padding: '4px 6px', borderRadius: '3px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: '12px', ...PB }}>
                         <span>ගෙවූ මුදල</span>
-                        <span style={{ ...mono, fontWeight: 800 }}>{receivedAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                        <span style={{ ...mono, fontWeight: 800 }}>{formatPrice(receivedAmount)}</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', fontSize: '12px', ...PB }}>
                         <span>ඉතිරි මුදල</span>
-                        <span style={{ ...mono, fontWeight: 800 }}>{changeAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                        <span style={{ ...mono, fontWeight: 800 }}>{formatPrice(changeAmount)}</span>
                       </div>
                     </div>
                   </div>

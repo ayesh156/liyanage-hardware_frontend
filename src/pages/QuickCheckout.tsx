@@ -23,8 +23,7 @@ import {
   Keyboard, X, Package, Calculator, Barcode, Volume2, VolumeX,
   ChevronUp, ChevronDown, RotateCcw, CreditCard, Banknote, Percent,
   ArrowRight, ArrowUp, ArrowDown, ArrowLeftIcon, CheckCircle,
-  Minus, ScanLine, ChevronRight, Receipt, Sparkles, User, Building2,
-  Edit
+  Minus, ScanLine, ChevronRight, Receipt, Sparkles, User, Building2
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 
@@ -75,6 +74,13 @@ const CART_SHORTCUTS = {
 // Import concurrency-safe invoice number generator
 import { generateNextInvoiceNumberSync, initializeFromExistingInvoices } from '../lib/invoiceNumberService';
 
+// ── Inline quantity control helpers (for search & category popup rows) ──
+// getItemCartQuantity: returns the current quantity of a product in the cart, or 0 if not present
+const getItemCartQuantity = (items: QuickInvoiceItem[], productId: string): number => {
+  const found = items.find(i => i.productId === productId);
+  return found ? found.quantity : 0;
+};
+
 // Initialize invoice counter from existing data on module load
 initializeFromExistingInvoices(mockInvoices);
 
@@ -104,6 +110,19 @@ export const QuickCheckout: React.FC = () => {
     });
     return idx;
   }, [inventoryItems]);
+  // ── Conditional inline-edit tracking state ──
+  const [editingCell, setEditingCell] = useState<{ itemId: string; field: 'salesPrice' | 'quantity' } | null>(null);
+  const inlineEditInputRef = useRef<HTMLInputElement>(null);
+  const [inlineEditStr, setInlineEditStr] = useState<string>('');
+
+  // Focus and select all when entering inline edit mode
+  useEffect(() => {
+    if (editingCell && inlineEditInputRef.current) {
+      inlineEditInputRef.current.focus();
+      inlineEditInputRef.current.select();
+    }
+  }, [editingCell]);
+
   // ── In-place Edit mode via query param ──
   const editInvoiceId = searchParams.get('edit');
   const [editingInvoice, setEditingInvoice] = useState<any | null>(null);
@@ -294,16 +313,6 @@ export const QuickCheckout: React.FC = () => {
   const [isCartFocused, setIsCartFocused] = useState(false);
   const [isPaymentFocused, setIsPaymentFocused] = useState(false);
 
-  // ── Hover popup overlay state for cart cells ──
-  const [activeCellPopover, setActiveCellPopover] = useState<{ type: 'sales' | 'qty'; itemId: string } | null>(null);
-  const [cellPopoverInput, setCellPopoverInput] = useState<string>('');
-  const [cellPopoverAnchorRect, setCellPopoverAnchorRect] = useState<DOMRect | null>(null);
-  const [hoveredSalesCellId, setHoveredSalesCellId] = useState<string | null>(null);
-  const [hoveredQtyCellId, setHoveredQtyCellId] = useState<string | null>(null);
-  const cellPopoverInputRef = useRef<HTMLInputElement>(null);
-  const salesCellRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const qtyCellRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-
   // ── Categories from CatalogContext (live, database-backed) ──
   // Strict: showInQuickInvoice must be true AND sortOrder must be > 0
   // Sorted numerically by sortOrder ascending
@@ -412,20 +421,29 @@ export const QuickCheckout: React.FC = () => {
   const [addCategorySearch, setAddCategorySearch] = useState('');
   const [addBoxAnchor, setAddBoxAnchor] = useState<DOMRect | null>(null);
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STRICT 2-DECIMAL PRECISION HELPER
+  // Uses Number(value.toFixed(2)) for robust nearest-neighbor rounding:
+  //   1.33333... → 1.33    1.66666... → 1.67
+  // ═══════════════════════════════════════════════════════════════════════════
+  const toTwoDecimals = useCallback((value: number): number => {
+    return Number(value.toFixed(2));
+  }, []);
+
   // Helper functions for decimal-preserving quantity adjustments (rely on numeric quantity)
   const incrementQuantity = useCallback((currentQty: number): number => {
     const intPart = Math.floor(currentQty);
     const decimalPart = currentQty - intPart;
-    return intPart + 1 + decimalPart;
-  }, []);
+    return toTwoDecimals(intPart + 1 + decimalPart);
+  }, [toTwoDecimals]);
 
   const decrementQuantity = useCallback((currentQty: number, minValue: number = 0.01): number => {
     const intPart = Math.floor(currentQty);
     const decimalPart = currentQty - intPart;
     const newIntPart = Math.max(0, intPart - 1);
     const newQty = newIntPart + decimalPart;
-    return Math.max(minValue, newQty > 0 ? newQty : decimalPart > 0 ? decimalPart : minValue);
-  }, []);
+    return Math.max(minValue, newQty > 0 ? newQty : decimalPart > 0 ? toTwoDecimals(decimalPart) : minValue);
+  }, [toTwoDecimals]);
 
   // Play beep sound for feedback
   const playBeep = useCallback((type: 'add' | 'remove' | 'error' | 'success') => {
@@ -612,15 +630,15 @@ export const QuickCheckout: React.FC = () => {
     const raw = overrideQty !== undefined ? String(overrideQty) : quantityStr;
     const parsed = parseQuantityInput(raw);
     if (isNaN(parsed) || parsed <= 0) return 0.001;
-    return parsed;
-  }, [quantityStr, parseQuantityInput]);
+    return toTwoDecimals(parsed);
+  }, [quantityStr, parseQuantityInput, toTwoDecimals]);
 
   const syncQuantityFromStr = useCallback(() => {
     const parsed = parseQuantityInput(quantityStr);
     if (!isNaN(parsed) && parsed > 0) {
-      setQuantity(parsed);
+      setQuantity(toTwoDecimals(parsed));
     }
-  }, [quantityStr, parseQuantityInput]);
+  }, [quantityStr, parseQuantityInput, toTwoDecimals]);
 
   const addProductToCart = useCallback((flatProduct: FlattenedProduct, overrideQty?: number) => {
     const addQty = getCartQuantity(overrideQty);
@@ -678,8 +696,11 @@ export const QuickCheckout: React.FC = () => {
     playBeep('add');
     setQuantity(1);
     setQuantityStr("1");
-    setProductSearch('');
-    setSelectedProductIndex(-1);
+    // ── DO NOT clear productSearch or selectedProductIndex here ──
+    // The search suggestion dropdown must remain persistently open
+    // when items are added/modified from inline +/- controls.
+    // Callers (Enter key, row click, barcode scan) each handle
+    // search-field clearing explicitly before invoking this method.
     searchInputRef.current?.focus();
 
     setTimeout(() => {
@@ -788,25 +809,9 @@ export const QuickCheckout: React.FC = () => {
     playBeep('add');
   }, [items, t, playBeep]);
 
-  const handleUpdateCartItemPrice = useCallback((itemId: string, newPrice: number) => {
+  // Lightweight direct state setter — NO validation, NO toast
+  const setCartItemPrice = useCallback((itemId: string, newPrice: number) => {
     const sanitizedPrice = Number(newPrice || 0);
-    
-    const targetItem = items.find(i => i.id === itemId);
-    if (!targetItem) return;
-    
-    const lastPriceThreshold = Number(targetItem.lastPrice ?? 0);
-    
-    if (lastPriceThreshold > 0 && sanitizedPrice < lastPriceThreshold) {
-      playBeep('error');
-      toast.error(
-        `Price cannot drop below the last-price threshold: Rs. ${lastPriceThreshold.toFixed(2)}`,
-        { autoClose: 4000 }
-      );
-      setActiveCellPopover(null);
-      setCellPopoverAnchorRect(null);
-      return;
-    }
-    
     setItems((prevItems) =>
       prevItems.map((item) =>
         item.id === itemId
@@ -820,10 +825,52 @@ export const QuickCheckout: React.FC = () => {
           : item
       )
     );
-  }, [items, playBeep, toast]);
+  }, []);
+
+  // Silent live state update — NO validation during keystroke typing
+  const handleUpdateCartItemPrice = useCallback((itemId: string, newPrice: number) => {
+    setCartItemPrice(itemId, newPrice);
+  }, [setCartItemPrice]);
+
+  // Commit-time deferred price validation + auto-correction — fires ONLY on Enter or Blur
+  const commitCartItemPrice = useCallback((itemId: string) => {
+    const targetItem = items.find(i => i.id === itemId);
+    if (!targetItem) {
+      setEditingCell(null);
+      return;
+    }
+
+    const lastPriceThreshold = Number(targetItem.lastPrice ?? 0);
+    const sanitizedPrice = parseFloat(inlineEditStr);
+
+    if (isNaN(sanitizedPrice) || sanitizedPrice < 0) {
+      // Invalid input — reset to last valid price
+      const resetPrice = Number(targetItem.salesPrice || targetItem.ourPrice || 0);
+      setInlineEditStr(String(resetPrice));
+      setEditingCell(null);
+      return;
+    }
+
+    // Apply the typed value silently first (it may have been partially typed)
+    setCartItemPrice(itemId, sanitizedPrice);
+
+    if (lastPriceThreshold > 0 && sanitizedPrice < lastPriceThreshold) {
+      // Auto-correct: reset to lastPrice threshold
+      playBeep('error');
+      toast.error(
+        `Price cannot drop below the last-price threshold: Rs. ${lastPriceThreshold.toFixed(2)}. Auto-corrected to threshold.`,
+        { autoClose: 4000 }
+      );
+      setCartItemPrice(itemId, lastPriceThreshold);
+      setInlineEditStr(String(lastPriceThreshold));
+    }
+
+    setEditingCell(null);
+  }, [items, inlineEditStr, playBeep, toast, setCartItemPrice]);
 
   const updateItemQuantity = useCallback((itemId: string, newQuantity: number) => {
-    if (newQuantity <= 0) {
+    const roundedQty = toTwoDecimals(newQuantity);
+    if (roundedQty <= 0) {
       removeItem(itemId);
       return;
     }
@@ -831,7 +878,7 @@ export const QuickCheckout: React.FC = () => {
     const item = items.find((i) => i.id === itemId);
     if (item) {
       const flatProduct = flattenedProducts.find((fp) => fp.flatId === item.productId);
-      if (flatProduct && newQuantity > flatProduct.stock) {
+      if (flatProduct && roundedQty > flatProduct.stock) {
         playBeep('error');
         toast.error(`${t('quickCheckout.insufficientStock')}: ${flatProduct.stock} ${t('invoice.available')}`);
         return;
@@ -840,10 +887,10 @@ export const QuickCheckout: React.FC = () => {
     
     setItems(items.map(i => 
       i.id === itemId 
-        ? { ...i, quantity: newQuantity, total: newQuantity * Number(i.salesPrice || i.ourPrice || i.unitPrice) }
+        ? { ...i, quantity: roundedQty, total: roundedQty * Number(i.salesPrice || i.ourPrice || i.unitPrice) }
         : i
     ));
-  }, [items, flattenedProducts, removeItem, playBeep, t]);
+  }, [items, flattenedProducts, removeItem, playBeep, t, toTwoDecimals]);
 
   const handleTouchStart = useCallback((e: React.TouchEvent, itemId: string) => {
     setTouchStartX(e.touches[0].clientX);
@@ -884,7 +931,8 @@ export const QuickCheckout: React.FC = () => {
   const [quickAddQtyStr, setQuickAddQtyStr] = useState<string>('1');
 
   const addQuickAddItem = useCallback(() => {
-    const qtyParsed = parseQuantityInput(quickAddQtyStr);
+    const rawQty = parseQuantityInput(quickAddQtyStr);
+    const qtyParsed = toTwoDecimals(rawQty);
     const salesPriceParsed = parseQuantityInput(quickAddPriceStr);
     const displayPriceParsed = quickAddDisplayPriceStr.trim()
       ? parseQuantityInput(quickAddDisplayPriceStr)
@@ -929,7 +977,7 @@ export const QuickCheckout: React.FC = () => {
         cartItemsContainerRef.current.scrollTop = cartItemsContainerRef.current.scrollHeight;
       }
     }, 50);
-  }, [quickAddName, quickAddPriceStr, quickAddDisplayPriceStr, quickAddQtyStr, parseQuantityInput, playBeep, t]);
+  }, [quickAddName, quickAddPriceStr, quickAddDisplayPriceStr, quickAddQtyStr, parseQuantityInput, toTwoDecimals, playBeep, t]);
 
   const computedSubtotal = useMemo(() => {
     return items.reduce((acc, item) => acc + (Number(item.salesPrice || item.ourPrice || 0) * item.quantity), 0);
@@ -1544,15 +1592,6 @@ export const QuickCheckout: React.FC = () => {
           }
           break;
           
-        case '0': case '1': case '2': case '3': case '4':
-        case '5': case '6': case '7': case '8': case '9':
-        case '.':
-        case '-':
-          if (isCartFocused && !activeCellPopover && !isInSearchInput && !isInQuantityInput && !isInDiscountInput) {
-            e.preventDefault();
-          }
-          break;
-          
         case 'Enter':
           if (isQuickAddMode) {
             e.preventDefault();
@@ -1625,7 +1664,7 @@ export const QuickCheckout: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [items, productSearch, filteredProducts, selectedProductIndex, selectedCartIndex, isCartFocused, isPaymentFocused, isQuantityFocused, pendingProduct, showShortcuts, showShortcutMap, currentStep, handleCheckout, handleQuickSave, removeItem, addProductToCart, updateItemQuantity, playBeep, t, incrementQuantity, decrementQuantity, isQuickAddMode, quickAddFocusField, addQuickAddItem, activeCellPopover]);
+  }, [items, productSearch, filteredProducts, selectedProductIndex, selectedCartIndex, isCartFocused, isPaymentFocused, isQuantityFocused, pendingProduct, showShortcuts, showShortcutMap, currentStep, handleCheckout, handleQuickSave, removeItem, addProductToCart, updateItemQuantity, playBeep, t, incrementQuantity, decrementQuantity, isQuickAddMode, quickAddFocusField, addQuickAddItem]);
 
   // Auto-focus search on mount
   useEffect(() => {
@@ -1966,8 +2005,61 @@ export const QuickCheckout: React.FC = () => {
                           </p>
                         )}
                       </div>
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${isDark ? 'bg-emerald-500/20' : 'bg-emerald-100'}`}>
-                        <Plus className={`w-4 h-4 ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`} />
+                      {/* ── INLINE QUANTITY CONTROLS (mobile search) ── */}
+                      <div className={`flex items-center gap-0.5 p-0.5 rounded-lg flex-shrink-0 ${isDark ? 'bg-slate-700/50' : 'bg-slate-100'}`}>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            const currentQty = getItemCartQuantity(items, flatProduct.flatId);
+                            if (currentQty > 0) {
+                              const cartItem = items.find(i => i.productId === flatProduct.flatId);
+                              if (cartItem) {
+                                const newQty = decrementQuantity(cartItem.quantity, 0.01);
+                                if (newQty <= 0) {
+                                  removeItem(cartItem.id);
+                                } else {
+                                  updateItemQuantity(cartItem.id, newQty);
+                                }
+                              }
+                            }
+                          }}
+                          className={`w-5 h-5 rounded flex items-center justify-center text-[8px] font-bold transition-all ${
+                            getItemCartQuantity(items, flatProduct.flatId) > 0
+                              ? isDark ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-white hover:bg-slate-200 text-slate-700 shadow-sm'
+                              : isDark ? 'text-slate-600 cursor-default' : 'text-slate-300 cursor-default'
+                          }`}
+                          disabled={getItemCartQuantity(items, flatProduct.flatId) <= 0}
+                        >
+                          <Minus className="w-2.5 h-2.5" />
+                        </button>
+                        <span className={`w-5 text-center font-bold text-[9px] tabular-nums ${
+                          getItemCartQuantity(items, flatProduct.flatId) > 0
+                            ? 'text-amber-500'
+                            : isDark ? 'text-slate-500' : 'text-slate-400'
+                        }`}>
+                          {getItemCartQuantity(items, flatProduct.flatId)}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            e.preventDefault();
+                            if (flatProduct.stock > 0) {
+                              addProductToCart(flatProduct, 1);
+                              playBeep('add');
+                            } else {
+                              playBeep('error');
+                              toast.error(t('quickCheckout.insufficientStock'));
+                            }
+                          }}
+                          className={`w-5 h-5 rounded flex items-center justify-center text-[8px] font-bold transition-all ${
+                            isDark
+                              ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400'
+                              : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'
+                          }`}
+                        >
+                          <Plus className="w-2.5 h-2.5" />
+                        </button>
                       </div>
                     </button>
                   ))}
@@ -2428,12 +2520,71 @@ export const QuickCheckout: React.FC = () => {
                                 </div>
                               </div>
                             </div>
-                            <div className="text-right">
+                        <div className="text-right">
                               <p className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                                 Rs. {flatProduct.retailPrice.toLocaleString()}
                               </p>
                             </div>
-                            <Plus className={`w-3.5 h-3.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
+                            {/* ── INLINE QUANTITY CONTROLS (native, no auto-close) ── */}
+                            <div className={`flex items-center gap-0.5 p-0.5 rounded-lg flex-shrink-0 ${isDark ? 'bg-slate-800/80' : 'bg-slate-100'}`}>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  const currentQty = getItemCartQuantity(items, flatProduct.flatId);
+                                  if (currentQty > 0) {
+                                    // Decrement: find the cart item for this product and update quantity
+                                    const cartItem = items.find(i => i.productId === flatProduct.flatId);
+                                    if (cartItem) {
+                                      const newQty = decrementQuantity(cartItem.quantity, 0.01);
+                                      if (newQty <= 0) {
+                                        removeItem(cartItem.id);
+                                      } else {
+                                        updateItemQuantity(cartItem.id, newQty);
+                                      }
+                                    }
+                                  }
+                                }}
+                                className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold transition-all ${
+                                  getItemCartQuantity(items, flatProduct.flatId) > 0
+                                    ? isDark ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-white hover:bg-slate-200 text-slate-700 shadow-sm'
+                                    : isDark ? 'text-slate-600 cursor-default' : 'text-slate-300 cursor-default'
+                                }`}
+                                disabled={getItemCartQuantity(items, flatProduct.flatId) <= 0}
+                              >
+                                <Minus className="w-2.5 h-2.5" />
+                              </button>
+                              <span className={`w-5 text-center font-bold text-[10px] tabular-nums ${
+                                getItemCartQuantity(items, flatProduct.flatId) > 0
+                                  ? 'text-amber-500'
+                                  : isDark ? 'text-slate-500' : 'text-slate-400'
+                              }`}>
+                                {getItemCartQuantity(items, flatProduct.flatId)}
+                              </span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  // Always add: increment or append
+                                  if (flatProduct.stock > 0) {
+                                    addProductToCart(flatProduct, 1);
+                                    // Keep search open — do NOT close the dropdown
+                                    // Keep focus on search
+                                    setTimeout(() => searchInputRef.current?.focus(), 10);
+                                  } else {
+                                    playBeep('error');
+                                    toast.error(t('quickCheckout.insufficientStock'));
+                                  }
+                                }}
+                                className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold transition-all ${
+                                  isDark
+                                    ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400'
+                                    : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'
+                                }`}
+                              >
+                                <Plus className="w-2.5 h-2.5" />
+                              </button>
+                            </div>
                           </button>
                         ))}
                       </div>
@@ -2698,128 +2849,47 @@ export const QuickCheckout: React.FC = () => {
                           {Number(item.lastPrice || 0).toFixed(2)}
                         </span>
                       </div>
-                      <div
-                        className="text-right relative group/cell truncate"
-                        onMouseEnter={() => setHoveredSalesCellId(item.id)}
-                        onMouseLeave={() => setHoveredSalesCellId(null)}
-                      >
-                        <div
-                          ref={(el) => {
-                            if (el) salesCellRefs.current.set(item.id, el);
-                            else salesCellRefs.current.delete(item.id);
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            setCellPopoverAnchorRect(rect);
-                            setCellPopoverInput(String(Number(item.salesPrice || item.ourPrice || 0)));
-                            setActiveCellPopover({ type: 'sales', itemId: item.id });
-                          }}
-                          className={`inline-flex items-center gap-1 px-1 py-0.5 rounded cursor-pointer transition-all ${
-                            hoveredSalesCellId === item.id
-                              ? isDark ? 'bg-amber-500/15 ring-1 ring-amber-500/40' : 'bg-amber-100 ring-1 ring-amber-300'
-                              : ''
-                          }`}
-                        >
-                          <span className={`text-sm font-semibold font-mono tabular-nums ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>
+                      {/* ══════ INLINE SALES PRICE — click-to-edit toggle ── REFACTORED ── */}
+                      <div className="text-right truncate">
+                        {editingCell?.itemId === item.id && editingCell?.field === 'salesPrice' ? (
+                          <input
+                            ref={inlineEditInputRef}
+                            type="number"
+                            inputMode="decimal"
+                            step="any"
+                            className={`w-20 font-bold text-right rounded border px-1.5 py-1 focus:outline-none text-sm font-mono tabular-nums ${
+                              isDark
+                                ? 'bg-amber-500/10 text-amber-300 border-amber-500 ring-1 ring-amber-500/30'
+                                : 'bg-amber-50 text-amber-700 border-amber-400 ring-1 ring-amber-200'
+                            }`}
+                            value={inlineEditStr}
+                            onChange={(e) => {
+                              // No live validation — just update the string for display
+                              setInlineEditStr(e.target.value);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                commitCartItemPrice(item.id);
+                              }
+                            }}
+                            onBlur={() => {
+                              commitCartItemPrice(item.id);
+                            }}
+                          />
+                        ) : (
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingCell({ itemId: item.id, field: 'salesPrice' });
+                              setInlineEditStr(String(Number(item.salesPrice || item.ourPrice || 0)));
+                            }}
+                            className={`cursor-pointer hover:bg-amber-500/10 rounded px-1 -mx-1 transition-colors text-sm font-mono font-bold tabular-nums ${
+                              isDark ? 'text-amber-400' : 'text-amber-600'
+                            }`}
+                          >
                             {Number(item.salesPrice || item.ourPrice || 0).toFixed(2)}
                           </span>
-                          {hoveredSalesCellId === item.id && (
-                            <Edit className={`w-2.5 h-2.5 ${isDark ? 'text-amber-400/70' : 'text-amber-500/70'}`} />
-                          )}
-                        </div>
-
-                        {activeCellPopover?.type === 'sales' && activeCellPopover?.itemId === item.id && cellPopoverAnchorRect && (
-                          <>
-                            <div className="fixed inset-0 z-[300]" onClick={(e) => { e.stopPropagation(); setActiveCellPopover(null); setCellPopoverAnchorRect(null); }} />
-                            <div
-                              className={`fixed z-[301] w-56 rounded-xl shadow-2xl animate-fade-in overflow-hidden border ${
-                                isDark ? 'bg-slate-800 border-slate-700/60' : 'bg-white border-slate-200'
-                              }`}
-                              style={{
-                                top: Math.min(cellPopoverAnchorRect.bottom + 4, window.innerHeight - 220),
-                                left: Math.max(4, Math.min(cellPopoverAnchorRect.left, window.innerWidth - 232)),
-                              }}
-                            >
-                              <div className={`px-3 py-2 border-b flex items-center justify-between ${isDark ? 'border-slate-700/60 bg-slate-800/80' : 'border-slate-100 bg-slate-50'}`}>
-                                <span className={`text-[10px] font-black uppercase tracking-wider ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                                  Sales Price
-                                </span>
-                                <button
-                                  onClick={() => { setActiveCellPopover(null); setCellPopoverAnchorRect(null); }}
-                                  className={`p-0.5 rounded ${isDark ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-slate-200 text-slate-500'}`}
-                                >
-                                  <X className="w-3 h-3" />
-                                </button>
-                              </div>
-                              <div className="p-3" onMouseDown={(e) => e.stopPropagation()}>
-                                <div className="relative flex items-center">
-                                  <input
-                                    ref={cellPopoverInputRef}
-                                    autoFocus
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={cellPopoverInput}
-                                    onChange={(e) => setCellPopoverInput(e.target.value)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        e.preventDefault();
-                                        const parsed = parseQuantityInput(cellPopoverInput);
-                                        if (!isNaN(parsed) && parsed >= 0) {
-                                          handleUpdateCartItemPrice(item.id, parsed);
-                                          playBeep('success');
-                                          toast.success(`${t('quickCheckout.priceUpdated')}: Rs. ${parsed.toFixed(2)}`);
-                                        }
-                                        setActiveCellPopover(null);
-                                        setCellPopoverAnchorRect(null);
-                                      } else if (e.key === 'Escape') {
-                                        e.preventDefault();
-                                        setActiveCellPopover(null);
-                                        setCellPopoverAnchorRect(null);
-                                      }
-                                    }}
-                                    className={`w-full px-3 py-2 pr-8 text-sm font-mono font-bold text-center rounded-lg border focus:outline-none transition-all ${isDark ? 'bg-slate-700/50 border-slate-600 text-white placeholder-slate-500 focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-amber-400 focus:ring-1 focus:ring-amber-200'}`}
-                                    placeholder="Enter new price (e.g. .25, 1/2, 1500.50)"
-                                  />
-                                  {cellPopoverInput.length > 0 && (
-                                    <button
-                                      type="button"
-                                      onClick={() => { 
-                                        setCellPopoverInput('');
-                                        setTimeout(() => cellPopoverInputRef.current?.focus(), 0);
-                                      }}
-                                      className={`absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-full transition-colors ${isDark ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200'}`}
-                                      tabIndex={-1}
-                                    >
-                                      ✕
-                                    </button>
-                                  )}
-                                </div>
-                                <div className="flex justify-end gap-1.5 mt-2">
-                                  <button
-                                    onClick={() => { setActiveCellPopover(null); setCellPopoverAnchorRect(null); }}
-                                    className={`px-2 py-1 text-[10px] font-medium rounded-lg transition-colors ${isDark ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'}`}
-                                  >
-                                    Cancel
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      const parsed = parseQuantityInput(cellPopoverInput);
-                                      if (!isNaN(parsed) && parsed >= 0) {
-                                        handleUpdateCartItemPrice(item.id, parsed);
-                                        playBeep('success');
-                                      }
-                                      setActiveCellPopover(null);
-                                      setCellPopoverAnchorRect(null);
-                                    }}
-                                    className="px-3 py-1 text-[10px] font-bold rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600"
-                                  >
-                                    Apply
-                                  </button>
-                                </div>
-                              </div>
-                            </div>
-                          </>
                         )}
                       </div>
                       {/* DISPLAY — displayPrice */}
@@ -2842,94 +2912,57 @@ export const QuickCheckout: React.FC = () => {
                           {item.storeQty ?? '—'}
                         </span>
                       </div>
-                      <div
-                        className="flex justify-center items-center relative group/cell"
-                        onMouseEnter={() => setHoveredQtyCellId(item.id)}
-                        onMouseLeave={() => setHoveredQtyCellId(null)}
-                      >
-                        <div
-                          ref={(el) => {
-                            if (el) qtyCellRefs.current.set(item.id, el);
-                            else qtyCellRefs.current.delete(item.id);
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            setCellPopoverAnchorRect(rect);
-                            setCellPopoverInput(String(item.quantity));
-                            setActiveCellPopover({ type: 'qty', itemId: item.id });
-                          }}
-                          className={`inline-flex items-center gap-1 px-2 py-1 rounded cursor-pointer transition-all ${hoveredQtyCellId === item.id ? isDark ? 'bg-amber-500/15 ring-1 ring-amber-500/40' : 'bg-amber-100 ring-1 ring-amber-300' : ''}`}
-                        >
-                          <span className={`text-center font-bold text-sm tabular-nums ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                      {/* ══════ INLINE QUANTITY — click-to-edit toggle ── REFACTORED ── */}
+                      <div className="flex justify-center items-center">
+                        {editingCell?.itemId === item.id && editingCell?.field === 'quantity' ? (
+                          <input
+                            ref={inlineEditInputRef}
+                            type="text"
+                            inputMode="decimal"
+                            step="any"
+                            className={`w-16 font-bold text-center rounded border py-1 focus:outline-none text-sm tabular-nums ${
+                              isDark
+                                ? 'bg-amber-500/10 text-amber-300 border-amber-500 ring-1 ring-amber-500/30'
+                                : 'bg-amber-50 text-amber-700 border-amber-400 ring-1 ring-amber-200'
+                            }`}
+                            value={inlineEditStr}
+                            onChange={(e) => {
+                              // No live mutation — just track the string
+                              setInlineEditStr(e.target.value);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const raw = parseQuantityInput(inlineEditStr);
+                                const parsed = !isNaN(raw) && raw > 0 ? toTwoDecimals(raw) : NaN;
+                                if (!isNaN(parsed) && parsed > 0) {
+                                  updateItemQuantity(item.id, parsed);
+                                }
+                                setEditingCell(null);
+                              }
+                            }}
+                            onBlur={() => {
+                              const raw = parseQuantityInput(inlineEditStr);
+                              const parsed = !isNaN(raw) && raw > 0 ? toTwoDecimals(raw) : NaN;
+                              if (!isNaN(parsed) && parsed > 0) {
+                                updateItemQuantity(item.id, parsed);
+                              }
+                              setEditingCell(null);
+                            }}
+                          />
+                        ) : (
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingCell({ itemId: item.id, field: 'quantity' });
+                              setInlineEditStr(String(item.quantity));
+                            }}
+                            className={`cursor-pointer hover:bg-amber-500/10 rounded px-1.5 -mx-1.5 transition-colors text-sm font-bold font-mono tabular-nums ${
+                              isDark ? 'text-white' : 'text-slate-900'
+                            }`}
+                          >
                             {item.quantity}
                           </span>
-                          {hoveredQtyCellId === item.id && (
-                            <Edit className={`w-3 h-3 ${isDark ? 'text-amber-400/70' : 'text-amber-500/70'}`} />
-                          )}
-                        </div>
-
-                        {activeCellPopover?.type === 'qty' && activeCellPopover?.itemId === item.id && cellPopoverAnchorRect && (
-                          <>
-                            <div className="fixed inset-0 z-[300]" onClick={(e) => { e.stopPropagation(); setActiveCellPopover(null); setCellPopoverAnchorRect(null); }} />
-                            <div
-                              className={`fixed z-[301] w-56 rounded-xl shadow-2xl animate-fade-in overflow-hidden border ${isDark ? 'bg-slate-800 border-slate-700/60' : 'bg-white border-slate-200'}`}
-                              style={{
-                                top: Math.min(cellPopoverAnchorRect.bottom + 4, window.innerHeight - 220),
-                                left: Math.max(4, Math.min(cellPopoverAnchorRect.left, window.innerWidth - 232)),
-                              }}
-                            >
-                              <div className={`px-3 py-2 border-b flex items-center justify-between ${isDark ? 'border-slate-700/60 bg-slate-800/80' : 'border-slate-100 bg-slate-50'}`}>
-                                <span className={`text-[10px] font-black uppercase tracking-wider ${isDark ? 'text-white' : 'text-slate-900'}`}>Quantity</span>
-                                <button
-                                  onClick={() => { setActiveCellPopover(null); setCellPopoverAnchorRect(null); }}
-                                  className={`p-0.5 rounded ${isDark ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-slate-200 text-slate-500'}`}
-                                >
-                                  <X className="w-3 h-3" />
-                                </button>
-                              </div>
-                              <div className="p-3" onMouseDown={(e) => e.stopPropagation()}>
-                                <div className="relative flex items-center">
-                                  <input
-                                    ref={cellPopoverInputRef}
-                                    autoFocus
-                                    type="text"
-                                    inputMode="decimal"
-                                    value={cellPopoverInput}
-                                    onChange={(e) => setCellPopoverInput(e.target.value)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        e.preventDefault();
-                                        const parsed = parseQuantityInput(cellPopoverInput);
-                                        if (!isNaN(parsed) && parsed > 0) { updateItemQuantity(item.id, parsed); playBeep('success'); }
-                                        setActiveCellPopover(null);
-                                        setCellPopoverAnchorRect(null);
-                                      } else if (e.key === 'Escape') { e.preventDefault(); setActiveCellPopover(null); setCellPopoverAnchorRect(null); }
-                                    }}
-                                    className={`w-full px-3 py-2 pr-8 text-sm font-mono font-bold text-center rounded-lg border focus:outline-none transition-all ${isDark ? 'bg-slate-700/50 border-slate-600 text-white placeholder-slate-500 focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20' : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-amber-400 focus:ring-1 focus:ring-amber-200'}`}
-                                    placeholder="Enter qty (e.g. .25, 1/2, 3/4)"
-                                  />
-                                  {cellPopoverInput.length > 0 && (
-                                    <button
-                                      type="button"
-                                      onClick={() => { 
-                                        setCellPopoverInput('');
-                                        setTimeout(() => cellPopoverInputRef.current?.focus(), 0);
-                                      }}
-                                      className={`absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded-full transition-colors ${isDark ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200'}`}
-                                      tabIndex={-1}
-                                    >
-                                      ✕
-                                    </button>
-                                  )}
-                                </div>
-                                <div className="flex justify-end gap-1.5 mt-2">
-                                  <button onClick={() => { setActiveCellPopover(null); setCellPopoverAnchorRect(null); }} className={`px-2 py-1 text-[10px] font-medium rounded-lg transition-colors ${isDark ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'}`}>Cancel</button>
-                                  <button onClick={() => { const parsed = parseQuantityInput(cellPopoverInput); if (!isNaN(parsed) && parsed > 0) { updateItemQuantity(item.id, parsed); playBeep('success'); } setActiveCellPopover(null); setCellPopoverAnchorRect(null); }} className="px-3 py-1 text-[10px] font-bold rounded-lg bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600">Apply</button>
-                                </div>
-                              </div>
-                            </div>
-                          </>
                         )}
                       </div>
                       <div className="text-right pr-2 truncate">
@@ -3045,7 +3078,8 @@ export const QuickCheckout: React.FC = () => {
           {/* ── CATEGORY PRODUCT POPOVER ── */}
             {activeCategoryPopover && categoryPopoverAnchor && (
               <>
-                <div className="fixed inset-0 z-[200]" onClick={() => { setActiveCategoryPopover(null); setQuantityPromptProduct(null); setActiveCategoryItemIndex(0); }} />
+                {/* Removed: backdrop overlay no longer auto-closes the category popup on click.
+                    Popup now only closes via the explicit X button, Esc key, or checkout completion. */}
                 <div 
                   ref={categoryPopoverRef}
                   className={`fixed z-[201] rounded-xl border shadow-2xl overflow-hidden animate-fade-in ${
@@ -3364,16 +3398,77 @@ export const QuickCheckout: React.FC = () => {
                                             </div>
                                           </div>
                                         </div>
-                                        <div className="text-right flex-shrink-0 flex items-center gap-2">
+                                        <div className="text-right flex-shrink-0 flex items-center gap-1">
                                           <p className={`text-[11px] font-black ${isFocusedRow ? 'text-amber-400' : isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                                             Rs. {Number(item.salesPrice).toFixed(2)}
                                           </p>
-                                          <div className={`w-5 h-5 rounded-md flex items-center justify-center text-[9px] font-black transition-all ${
-                                            isFocusedRow 
-                                              ? 'bg-amber-500 text-slate-950 shadow-lg shadow-amber-500/30 scale-110' 
-                                              : isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-200 text-slate-500'
-                                          }`}>
-                                            +
+                                          {/* ── INLINE QUANTITY CONTROLS (native, no auto-close) ── */}
+                                          <div className={`flex items-center gap-0.5 p-0.5 rounded-md flex-shrink-0 ${isDark ? 'bg-slate-800/80' : 'bg-slate-100'}`}>
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                e.preventDefault();
+                                                const currentQty = getItemCartQuantity(items, item.id);
+                                                if (currentQty > 0) {
+                                                  const cartItem = items.find(i => i.productId === item.id);
+                                                  if (cartItem) {
+                                                    const newQty = decrementQuantity(cartItem.quantity, 0.01);
+                                                    if (newQty <= 0) {
+                                                      removeItem(cartItem.id);
+                                                    } else {
+                                                      updateItemQuantity(cartItem.id, newQty);
+                                                    }
+                                                  }
+                                                }
+                                              }}
+                                              className={`w-4 h-4 rounded flex items-center justify-center text-[7px] font-bold transition-all ${
+                                                getItemCartQuantity(items, item.id) > 0
+                                                  ? isDark ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-white hover:bg-slate-200 text-slate-700 shadow-sm'
+                                                  : isDark ? 'text-slate-600 cursor-default' : 'text-slate-300 cursor-default'
+                                              }`}
+                                              disabled={getItemCartQuantity(items, item.id) <= 0}
+                                            >
+                                              <Minus className="w-2 h-2" />
+                                            </button>
+                                            <span className={`w-4 text-center font-bold text-[8px] tabular-nums ${
+                                              getItemCartQuantity(items, item.id) > 0
+                                                ? 'text-amber-500'
+                                                : isDark ? 'text-slate-500' : 'text-slate-400'
+                                            }`}>
+                                              {getItemCartQuantity(items, item.id)}
+                                            </span>
+                                            <button
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                e.preventDefault();
+                                                const sinhalaName = item.nameSinhala || item.nameSi || item.name;
+                                                const fp: FlattenedProduct = {
+                                                  flatId: item.id,
+                                                  product: { nameAlt: sinhalaName, sku: item.searchKey, category: activeCategoryPopover } as any,
+                                                  displayName: item.name,
+                                                  displaySku: item.searchKey,
+                                                  retailPrice: Number(item.salesPrice),
+                                                  wholesalePrice: Number(item.displayPrice),
+                                                  costPrice: Number(item.cost),
+                                                  stock: Number(item.storeQty),
+                                                  hasDiscount: false,
+                                                } as FlattenedProduct;
+                                                if (item.storeQty > 0) {
+                                                  addProductToCart(fp, 1);
+                                                  playBeep('add');
+                                                } else {
+                                                  playBeep('error');
+                                                  toast.error(t('quickCheckout.insufficientStock'));
+                                                }
+                                              }}
+                                              className={`w-4 h-4 rounded flex items-center justify-center text-[7px] font-bold transition-all ${
+                                                isDark
+                                                  ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400'
+                                                  : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'
+                                              }`}
+                                            >
+                                              <Plus className="w-2 h-2" />
+                                            </button>
                                           </div>
                                         </div>
                                       </div>

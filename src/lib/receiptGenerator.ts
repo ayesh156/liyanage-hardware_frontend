@@ -2,6 +2,17 @@ import { Invoice, Customer } from '../types/index';
 import { translateToSinhala } from './sinhalaTranslator';
 
 /**
+ * Format price: show no decimals for whole numbers, keep 2 decimals for fractional.
+ * Preserves thousand separators.
+ */
+function formatPrice(n: number): string {
+  if (n % 1 === 0) {
+    return n.toLocaleString('en-US');
+  }
+  return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/**
  * Generates the complete 80mm thermal receipt HTML string.
  * Used by both the print executor (PrintInvoiceModal) and the
  * live ThermalReceiptPreview component — single source of truth.
@@ -57,7 +68,7 @@ export const generateReceiptHTML = (
 
        // CONDITIONAL SUPPRESSION: If salesPrice > displayPrice, render dash instead of numeric display price
       const showDisplayPriceSuppressed = salesPrice > displayPrice;
-      const displayPriceDisplay = showDisplayPriceSuppressed ? '-' : displayPrice.toLocaleString('en-US', { minimumFractionDigits: 2 });
+      const displayPriceDisplay = showDisplayPriceSuppressed ? '-' : formatPrice(displayPrice);
 
       // Display quantity with up to 3 decimal places (e.g., 0.5, 0.125, 1.5)
       const displayQty = Number(item.quantity) % 1 === 0
@@ -66,11 +77,11 @@ export const generateReceiptHTML = (
       return `
       <div style="border-bottom:1px dashed #000;padding:5px 0;">
         <div style="font-weight:900;font-size:15px;color:#000;margin-bottom:2px;word-break:break-word;line-height:1.25;">${displayName}</div>
-        <div style="display:flex;justify-content:space-between;font-size:14px;font-weight:800;font-family:'Courier New',monospace;color:#000;width:100%;">
-          <span style="width:15%;text-align:left;flex-shrink:0;">${displayQty}</span>
-          <span style="width:25%;text-align:right;${showStrikethrough ? 'text-decoration:line-through;' : ''}color:#000;opacity:1;flex-shrink:0;">${displayPriceDisplay}</span>
-          <span style="width:25%;text-align:right;font-weight:900;color:#000;flex-shrink:0;">${salesPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
-          <span style="width:35%;text-align:right;font-weight:900;color:#000;flex-shrink:0;">${lineTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+        <div class="receipt-row" style="display:flex;justify-content:space-between;font-size:14px;font-weight:800;font-family:'Courier New',monospace;color:#000;width:100%;min-width:0;word-break:keep-all;overflow-wrap:normal;white-space:nowrap;">
+          <span style="width:12%;text-align:center;flex-shrink:0;">${displayQty}</span>
+          <span style="width:18%;text-align:right;padding-right:6px;flex-shrink:0;${showStrikethrough ? 'text-decoration:line-through;' : ''}color:#000;opacity:1;">${displayPriceDisplay}</span>
+          <span style="width:18%;text-align:right;font-weight:900;color:#000;flex-shrink:0;">${formatPrice(salesPrice)}</span>
+          <span style="width:22%;text-align:right;font-weight:900;color:#000;flex-shrink:0;word-break:keep-all;overflow-wrap:normal;white-space:nowrap;">${formatPrice(lineTotal)}</span>
         </div>
       </div>`;
     })
@@ -97,13 +108,28 @@ export const generateReceiptHTML = (
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     color-adjust: exact !important;
+    word-break: keep-all !important;
+    overflow-wrap: normal !important;
+    white-space: nowrap !important;
   }
   @media print {
     * {
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
       color-adjust: exact !important;
+      word-break: keep-all !important;
+      overflow-wrap: normal !important;
+      white-space: nowrap !important;
+      min-width: 0 !important;
     }
+  }
+  .receipt-root, .receipt-row, .receipt-columns {
+    width: 100% !important;
+    min-width: 0 !important;
+    table-layout: fixed !important;
+    word-break: keep-all !important;
+    overflow-wrap: normal !important;
+    white-space: nowrap !important;
   }
   /* ── Grand Total black box — gradient cannot be stripped ── */
   .wb {
@@ -143,7 +169,7 @@ export const generateReceiptHTML = (
 </style>
 </head>
 <body>
-<div style="width:80mm;padding:8px 12px;margin:0 auto;background:#fff;font-family:'Segoe UI','Noto Sans Sinhala',Arial,sans-serif;font-size:12px;font-weight:700;color:#000;">
+<div class="receipt-root" style="width:80mm;padding:8px 12px;margin:0 auto;background:#fff;font-family:'Segoe UI','Noto Sans Sinhala',Arial,sans-serif;font-size:12px;font-weight:700;color:#000;">
 
   <!-- HEADER -->
   <div style="text-align:center;padding-bottom:4px;border-bottom:2px double #000;">
@@ -186,11 +212,11 @@ export const generateReceiptHTML = (
   <!-- ITEMS HEADER -->
   <div style="padding:3px 0 2px;border-bottom:2px solid #000;">
     <div style="font-size:13px;font-weight:800;margin-bottom:3px;">භාණ්ඩය</div>
-    <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:800;font-family:'Courier New',monospace;width:100%;">
-      <span style="width:15%;text-align:left;flex-shrink:0;">ප්‍රමාණය</span>
-      <span style="width:25%;text-align:right;flex-shrink:0;">සඳහන් මිල</span>
-      <span style="width:25%;text-align:right;flex-shrink:0;">අපේ මිල</span>
-      <span style="width:35%;text-align:right;flex-shrink:0;">එකතුව</span>
+    <div class="receipt-row" style="display:flex;justify-content:space-between;font-size:13px;font-weight:800;font-family:'Courier New',monospace;width:100%;min-width:0;word-break:keep-all;overflow-wrap:normal;white-space:nowrap;">
+      <span style="width:12%;text-align:center;flex-shrink:0;">ප්‍රමාණය</span>
+      <span style="width:18%;text-align:right;padding-right:6px;flex-shrink:0;">සඳහන් මිල</span>
+      <span style="width:18%;text-align:right;flex-shrink:0;">අපේ මිල</span>
+      <span style="width:22%;text-align:right;flex-shrink:0;">එකතුව</span>
     </div>
   </div>
 
@@ -202,14 +228,14 @@ export const generateReceiptHTML = (
     ${finalDiscount > 0 ? `
     <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:13px;font-weight:800;">
       <span>වට්ටම්</span>
-      <span style="font-family:'Courier New',monospace;font-weight:800;">-${finalDiscount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+      <span style="font-family:'Courier New',monospace;font-weight:800;">-${formatPrice(finalDiscount)}</span>
     </div>` : ''}
 
     <!-- GRAND TOTAL -->
     <div class="wb" style="background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;color:#ffffff !important;padding:6px;margin-top:4px;border-radius:3px;border:2px solid #000000;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
         <span style="font-size:15px;font-weight:800;color:#ffffff !important;">මුළු එකතුව</span>
-        <span style="font-size:19px;font-weight:900;font-family:'Courier New',monospace;letter-spacing:1px;color:#ffffff !important;">${invoice.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+        <span style="font-size:19px;font-weight:900;font-family:'Courier New',monospace;letter-spacing:1px;color:#ffffff !important;">${formatPrice(invoice.total)}</span>
       </div>
     </div>
 
@@ -223,7 +249,7 @@ export const generateReceiptHTML = (
     <!-- SAVINGS -->
     <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:15px;font-weight:800;border-top:2px dashed #000;margin-top:4px;">
       <span>ඔබ ලැබූ ලාභය</span>
-      <span style="font-family:'Courier New',monospace;font-weight:900;">${totalSavings.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+      <span style="font-family:'Courier New',monospace;font-weight:900;">${formatPrice(totalSavings)}</span>
     </div>` : ''}
   </div>
 
@@ -233,11 +259,11 @@ export const generateReceiptHTML = (
     <div style="border:1px solid #000;padding:4px 6px;border-radius:3px;">
       <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:13px;font-weight:800;">
         <span>ගෙවූ මුදල</span>
-        <span style="font-family:'Courier New',monospace;font-weight:800;">${receivedAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+        <span style="font-family:'Courier New',monospace;font-weight:800;">${formatPrice(receivedAmount)}</span>
       </div>
       <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:13px;font-weight:800;">
         <span>ඉතිරි මුදල</span>
-        <span style="font-family:'Courier New',monospace;font-weight:800;">${changeAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+        <span style="font-family:'Courier New',monospace;font-weight:800;">${formatPrice(changeAmount)}</span>
       </div>
     </div>
   </div>` : ''}

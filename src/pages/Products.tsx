@@ -8,8 +8,9 @@ import {
   Box, BarChart3, ScanLine
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { toast } from 'sonner';
+import { toast } from 'react-toastify';
 import { InventoryProduct } from '../types';
+import api from '../lib/api';
 import { ProductTable } from '../components/ProductTable';
 import { ProductFormModal } from '../components/ProductFormModal';
 
@@ -32,18 +33,34 @@ export const Products: React.FC = () => {
     return { total, lowStock, outOfStock, totalValue };
   }, [inventoryItems]);
 
-  // Delete handler — calls backend API, falls back to local state if unavailable
+  // Delete handler — calls backend API, removes from state ONLY after server confirmation
+  // Uses the configured api client (respects VITE_API_URL and auth token injection)
   const handleDeleteProduct = async (id: string) => {
     try {
-      await fetch(`http://localhost:3000/api/products/${id}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
+      interface DeleteResponse {
+        success: boolean;
+        softDeleted?: boolean;
+        message?: string;
+      }
+      const response = await api.delete<DeleteResponse>(`/products/${id}`, true);
+      if (response?.success) {
+        deleteInventoryItem(id);
+        const msg = response.message || 'Product permanently deleted from server database.';
+        toast.success(msg, {
+          style: { backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '12px' }
+        });
+      } else {
+        toast.error('Server returned an unexpected response. Please try again.', {
+          style: { backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '12px' }
+        });
+      }
+    } catch (error: any) {
+      console.error('Product deletion failed:', error);
+      const errorMsg = error?.message || 'Cannot delete product. It is linked to existing active invoices.';
+      toast.error(errorMsg, {
+        style: { backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '12px' }
       });
-    } catch {
-      // API unavailable — fall back to local-only deletion
     }
-    deleteInventoryItem(id);
-    toast.success(`Product deleted successfully.`);
   };
 
   return (

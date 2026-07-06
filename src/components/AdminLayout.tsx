@@ -1,21 +1,225 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { SidebarTooltip } from './SidebarTooltip';
+import { Navbar } from './layout/Navbar';
 import { 
   Package, FileText, Users, LayoutDashboard, Settings, LogOut,
   Moon, Sun, Menu, X, ChevronLeft, ChevronRight, Bell, Search,
   User, HelpCircle, ChevronDown, Sparkles, TrendingUp, Shield,
-  FolderTree, Building, Truck, Zap
+  FolderTree, Building, Truck, Zap, Clock
 } from 'lucide-react';
 import { useIsMobile } from '../hooks/use-mobile';
 
 interface AdminLayoutProps {
   children: React.ReactNode;
 }
+
+// ── Localized Clock Component ──
+const LocalizedClock: React.FC = () => {
+  const { i18n } = useTranslation();
+  const { theme } = useTheme();
+  const [timeString, setTimeString] = useState<string>('');
+
+  useEffect(() => {
+    const updateClock = () => {
+      const now = new Date();
+      // Force Asia/Colombo timezone
+      const colomboTime = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Colombo' }));
+      const year = colomboTime.getFullYear();
+      const month = String(colomboTime.getMonth() + 1).padStart(2, '0');
+      const day = String(colomboTime.getDate()).padStart(2, '0');
+      const dateStr = `${year}-${month}-${day}`;
+
+      let hours = colomboTime.getHours();
+      const minutes = String(colomboTime.getMinutes()).padStart(2, '0');
+      const isPM = hours >= 12;
+      const h12 = hours % 12 || 12;
+
+      const lang = i18n.language;
+
+      if (lang === 'si') {
+        const period = isPM ? 'ප.ව.' : 'පෙ.ව.';
+        setTimeString(`${dateStr} | ${period} ${h12}.${minutes}`);
+      } else {
+        const period = isPM ? 'p.m.' : 'a.m.';
+        setTimeString(`${dateStr} | ${h12}.${minutes} ${period}`);
+      }
+    };
+
+    updateClock();
+    const interval = setInterval(updateClock, 1000);
+    return () => clearInterval(interval);
+  }, [i18n.language]);
+
+  return (
+    <span className="flex items-center gap-1.5 text-sm md:text-base font-bold font-mono tabular-nums tracking-wide whitespace-nowrap">
+      <span className={`font-bold ${theme === 'dark' ? 'text-slate-300' : 'text-slate-900'}`}>{timeString.split(' | ')[0]}</span>
+      <span className={theme === 'dark' ? 'text-slate-500/30' : 'text-slate-300/50'}>|</span>
+      <span className={`tracking-wider ${theme === 'dark' ? 'text-amber-400' : 'text-slate-900'}`}>{timeString.split(' | ')[1]}</span>
+    </span>
+  );
+};
+
+// ── Route definition for the Omnibox suggestions ──
+interface SearchRoute {
+  path: string;
+  label: string;
+  keywords: string[];
+  icon: React.ElementType;
+}
+
+// ── Omnibox Suggestion Dropdown ──
+const OmniboxDropdown: React.FC = () => {
+  const { t, i18n } = useTranslation();
+  const { theme } = useTheme();
+  const navigate = useNavigate();
+  const [query, setQuery] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const searchRoutes: SearchRoute[] = [
+    { path: '/invoices/quick-checkout', label: t('quickCheckout.title'), keywords: ['quick', 'checkout', 'invoice', 'sale', 'billing', 'fast'], icon: Zap },
+    { path: '/invoices', label: t('nav.invoices'), keywords: ['invoice', 'billing', 'sales', 'receipt'], icon: FileText },
+    { path: '/products', label: t('nav.products'), keywords: ['product', 'inventory', 'stock', 'item', 'goods'], icon: Package },
+    { path: '/product-category', label: t('nav.productCategory'), keywords: ['category', 'product category', 'group'], icon: FolderTree },
+    { path: '/customers', label: t('nav.customers'), keywords: ['customer', 'client', 'buyer', 'person'], icon: Users },
+    { path: '/suppliers', label: t('nav.suppliers'), keywords: ['supplier', 'vendor', 'provider'], icon: Truck },
+    { path: '/financial-reports', label: t('nav.financialReports'), keywords: ['financial', 'report', 'analytics', 'revenue', 'profit', 'money'], icon: TrendingUp },
+    { path: '/settings', label: t('nav.settings'), keywords: ['settings', 'configuration', 'preferences', 'options'], icon: Settings },
+    { path: '/help', label: t('nav.helpCenter'), keywords: ['help', 'support', 'faq', 'guide', 'contact'], icon: HelpCircle },
+  ];
+
+  // Filter routes based on query
+  const filteredRoutes = query.trim()
+    ? searchRoutes.filter((route) => {
+        const q = query.toLowerCase();
+        const labelMatch = route.label.toLowerCase().includes(q);
+        const keywordMatch = route.keywords.some((kw) => kw.toLowerCase().includes(q));
+        return labelMatch || keywordMatch;
+      })
+    : searchRoutes;
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
+        setActiveIndex(-1);
+      }
+    };
+    if (showDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showDropdown]);
+
+  // Keyboard navigation
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex((prev) => (prev < filteredRoutes.length - 1 ? prev + 1 : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex((prev) => (prev > 0 ? prev - 1 : filteredRoutes.length - 1));
+    } else if (e.key === 'Enter' && activeIndex >= 0 && activeIndex < filteredRoutes.length) {
+      e.preventDefault();
+      const route = filteredRoutes[activeIndex];
+      setQuery('');
+      setShowDropdown(false);
+      setActiveIndex(-1);
+      navigate(route.path);
+    } else if (e.key === 'Escape') {
+      setShowDropdown(false);
+      setActiveIndex(-1);
+      inputRef.current?.blur();
+    }
+  };
+
+  const handleSelect = (route: SearchRoute) => {
+    setQuery('');
+    setShowDropdown(false);
+    setActiveIndex(-1);
+    navigate(route.path);
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setQuery(e.target.value);
+    setShowDropdown(true);
+    setActiveIndex(-1);
+  };
+
+  const handleFocus = () => {
+    setShowDropdown(true);
+  };
+
+  return (
+    <div ref={containerRef} className="relative w-full max-w-xs md:max-w-sm lg:max-w-md">
+      <div className={`relative hidden sm:flex items-center rounded-xl border transition-all ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700/50 focus-within:border-orange-500/50' : 'bg-slate-50 border-slate-200 focus-within:border-orange-500/50'}`}>
+        <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`} />
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={handleInputChange}
+          onFocus={handleFocus}
+          onKeyDown={handleKeyDown}
+          placeholder={t('header.searchAnything')}
+          className={`bg-transparent outline-none text-sm w-full py-2 pl-9 pr-12 ${theme === 'dark' ? 'text-white placeholder-slate-500' : 'text-slate-900 placeholder-slate-400'}`}
+        />
+        <kbd className={`absolute right-3 top-1/2 -translate-y-1/2 hidden lg:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono rounded ${theme === 'dark' ? 'bg-slate-700 text-slate-400' : 'bg-slate-200 text-slate-500'}`}>⌘K</kbd>
+      </div>
+
+      {/* Dropdown Overlay — fully theme-aware */}
+      {showDropdown && (
+        <div className={`absolute top-full left-0 z-50 w-full rounded-xl shadow-2xl mt-1 overflow-hidden ${
+          theme === 'dark'
+            ? 'bg-slate-900 border border-slate-800'
+            : 'bg-white border border-slate-200 shadow-xl'
+        }`}>
+          {filteredRoutes.length > 0 ? (
+            <div className="py-1 max-h-72 overflow-y-auto">
+              {filteredRoutes.map((route, index) => {
+                const Icon = route.icon;
+                const isActive = index === activeIndex;
+                return (
+                  <button
+                    key={route.path}
+                    onClick={() => handleSelect(route)}
+                    onMouseEnter={() => setActiveIndex(index)}
+                    className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left transition-colors ${
+                      isActive
+                        ? theme === 'dark'
+                          ? 'bg-orange-500/20 text-orange-400'
+                          : 'bg-orange-500/10 text-orange-600'
+                        : theme === 'dark'
+                          ? 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    }`}
+                  >
+                    <Icon className={`w-4 h-4 flex-shrink-0 ${theme === 'dark' ? 'opacity-70' : 'opacity-60'}`} />
+                    <span>{route.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className={`px-4 py-3 text-sm text-center ${
+              theme === 'dark' ? 'text-slate-500' : 'text-slate-400'
+            }`}>
+              No results found
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
   const { t } = useTranslation();
@@ -271,19 +475,25 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
       <div className={`transition-all duration-300 ${!isMobile ? (sidebarCollapsed ? 'ml-16' : 'ml-64') : 'ml-0'}`}>
         <header className={`sticky top-0 z-30 h-16 border-b backdrop-blur-xl transition-colors duration-300 ${theme === 'dark' ? 'border-slate-800/50 bg-[#0a0f1a]/80' : 'border-slate-200 bg-white/80'}`}>
           <div className="flex items-center justify-between h-full px-4 lg:px-6">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-1 max-w-lg">
               {isMobile && (
                 <button onClick={() => setMobileSidebarOpen(true)} className={`p-2 rounded-xl transition-colors ${theme === 'dark' ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-600'}`}>
                   <Menu className="w-5 h-5" />
                 </button>
               )}
-              <div className={`hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl border transition-all ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700/50 focus-within:border-orange-500/50' : 'bg-slate-50 border-slate-200 focus-within:border-orange-500/50'}`}>
-                <Search className={`w-4 h-4 ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`} />
-                <input type="text" placeholder={t('header.searchAnything')} className={`bg-transparent outline-none text-sm w-48 lg:w-64 ${theme === 'dark' ? 'text-white placeholder-slate-500' : 'text-slate-900 placeholder-slate-400'}`} />
-                <kbd className={`hidden lg:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono rounded ${theme === 'dark' ? 'bg-slate-700 text-slate-400' : 'bg-slate-200 text-slate-500'}`}>⌘K</kbd>
-              </div>
+              {/* Omnibox Search + Suggestion Dropdown */}
+              <OmniboxDropdown />
             </div>
             <div className="flex items-center gap-2 lg:gap-3">
+              {/* Localized Clock Display */}
+              <div className={`hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl border ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700/50 text-slate-300' : 'bg-slate-50 border-slate-200 text-slate-700'}`}>
+                <Clock className="w-3.5 h-3.5 flex-shrink-0 opacity-60" />
+                <LocalizedClock />
+              </div>
+
+              {/* Shaa FM Live Radio — headless audio engine */}
+              <Navbar />
+
               <button onClick={toggleTheme} className={`relative p-2.5 rounded-xl border transition-all duration-300 ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700/50 hover:bg-slate-700/50' : 'bg-white border-slate-200 hover:bg-slate-50'}`} title={theme === 'dark' ? t('common.switchToLight') : t('common.switchToDark')}>
                 <Sun className={`w-4 h-4 text-amber-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 transition-all duration-300 ${theme === 'dark' ? 'opacity-0 rotate-90 scale-0' : 'opacity-100 rotate-0 scale-100'}`} />
                 <Moon className={`w-4 h-4 text-blue-400 transition-all duration-300 ${theme === 'dark' ? 'opacity-100 rotate-0 scale-100' : 'opacity-0 -rotate-90 scale-0'}`} />

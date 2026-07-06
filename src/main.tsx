@@ -44,7 +44,7 @@ const AppContent = () => {
   const { theme } = useTheme();
   return (
     <>
-      <ToastContainer theme={theme} position="top-right" autoClose={3000} />
+      <ToastContainer autoClose={3000} closeOnClick draggable hideProgressBar={false} newestOnTop={true} pauseOnFocusLoss pauseOnHover position="top-right" rtl={false} theme={theme} />
       <AuthProvider>
         <CatalogProvider>
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
