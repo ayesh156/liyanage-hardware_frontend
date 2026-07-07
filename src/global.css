@@ -170,6 +170,83 @@
     @apply bg-slate-600;
   }
 
+  /* ═══════════════════════════════════════════════════════════
+     LIGHT THEME TYPOGRAPHY CONTRAST ACCESSIBILITY OVERRIDES
+     Forces muted/secondary text to pure black (#000000) in
+     checkout & billing components for cashier readability.
+     Dark mode remains unaffected.
+     ═══════════════════════════════════════════════════════════ */
+  /* Override for Product Search dropdown SKU/description text */
+  .light .text-slate-400,
+  .light .text-slate-500,
+  .light .text-slate-600 {
+    color: #000000 !important;
+  }
+  /* Preserve specific semantic colors in light mode (status badges, etc.) */
+  .light .text-emerald-400,
+  .light .text-emerald-500,
+  .light .text-emerald-600,
+  .light .text-emerald-700,
+  .light .text-amber-400,
+  .light .text-amber-500,
+  .light .text-amber-600,
+  .light .text-amber-700,
+  .light .text-amber-800,
+  .light .text-amber-900,
+  .light .text-red-400,
+  .light .text-red-500,
+  .light .text-red-600,
+  .light .text-red-700,
+  .light .text-cyan-400,
+  .light .text-cyan-600,
+  .light .text-orange-400,
+  .light .text-orange-500,
+  .light .text-orange-600,
+  .light .text-pink-500,
+  .light .text-purple-400,
+  .light .text-purple-500,
+  .light .text-purple-600,
+  .light .text-purple-700,
+  .light .text-teal-400,
+  .light .text-teal-500,
+  .light .text-teal-600,
+  .light .text-teal-700,
+  .light .text-green-400,
+  .light .text-green-500,
+  .light .text-green-600,
+  .light .text-green-700,
+  .light .text-blue-400,
+  .light .text-blue-500,
+  .light .text-blue-600,
+  .light .text-blue-700 {
+    color: revert !important;
+  }
+  /* Ensure line-through muted text remains visible */
+  .light .line-through.text-slate-400,
+  .light .line-through.text-slate-500 {
+    color: #666666 !important;
+    opacity: 0.6 !important;
+  }
+  /* Preserve placeholder colors */
+  .light .placeholder-slate-400::placeholder,
+  .light .placeholder-slate-500::placeholder {
+    color: #9ca3af !important;
+  }
+  /* Invoice Preview / Receipt specific overrides */
+  .light .receipt-label-cell,
+  .light .receipt-value-cell,
+  .light [class*="receipt-"] .text-slate-400,
+  .light [class*="receipt-"] .text-slate-500,
+  .light .text-muted-foreground {
+    color: #000000 !important;
+  }
+  /* Ensure icon/text combos with muted colors still render */
+  .light .opacity-40.text-slate-400,
+  .light .opacity-40.text-slate-500 {
+    opacity: 0.6 !important;
+    color: #666666 !important;
+  }
+
   /* Custom scrollbar for light theme */
   .light ::-webkit-scrollbar {
     width: 8px;
