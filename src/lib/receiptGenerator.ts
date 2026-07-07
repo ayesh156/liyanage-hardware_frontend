@@ -82,7 +82,7 @@ export const generateReceiptHTML = (
         : Number(item.quantity).toFixed(3).replace(/\.?0+$/, '');
       return `
       <div style="border-bottom:1px dashed #000;padding:5px 0;">
-        <div style="font-weight:900;font-size:15px;color:#000;margin-bottom:2px;word-break:break-word;line-height:1.25;">${displayName}</div>
+        <div style="font-weight:900;font-size:15px;color:#000;margin-bottom:2px;line-height:1.25;max-width:80%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;">${displayName}</div>
         <div class="receipt-row" style="display:flex;justify-content:space-between;font-size:14px;font-weight:800;font-family:'Courier New',monospace;color:#000;width:100%;min-width:0;word-break:keep-all;overflow-wrap:normal;white-space:nowrap;">
           <span style="width:12%;text-align:center;flex-shrink:0;">${displayQty}</span>
           <span style="width:18%;text-align:right;padding-right:6px;flex-shrink:0;${showStrikethrough ? 'text-decoration:line-through;' : ''}color:#000;opacity:1;">${displayPriceDisplay}</span>

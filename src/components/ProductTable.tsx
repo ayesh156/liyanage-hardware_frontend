@@ -28,25 +28,25 @@ const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100];
 interface CellEditState { itemId: string; field: string; rect: DOMRect; }
 
 const columns: { key: keyof InventoryProduct | null; label: string; align: 'left' | 'right' | 'center'; editable: boolean }[] = [
-  { key: 'searchKey',       label: 'Search Key',        align: 'left',   editable: false },
-  { key: 'name',            label: 'Name',              align: 'left',   editable: false },
-  { key: 'productCategory', label: 'Product Category',  align: 'left',   editable: false },
-  { key: 'barcode',         label: 'Barcode',           align: 'left',   editable: false },
-  { key: 'cost',            label: 'Cost[0]',           align: 'right',  editable: true },
-  { key: 'lastPrice',       label: 'Last Price[1]',    align: 'right',  editable: true },
-  { key: 'salesPrice',      label: 'Sales Price[3]',    align: 'right',  editable: true },
-  { key: 'displayPrice',    label: 'Display Price[4]',  align: 'right',  editable: true },
-  { key: 'storeQty',        label: 'Store Qty',          align: 'right',  editable: true },
-  { key: null,              label: 'Sales Type',          align: 'left',   editable: false },
-  { key: null,              label: 'Status',              align: 'center', editable: false },
-  { key: null,              label: 'Actions',             align: 'center', editable: false },
+  { key: 'searchKey', label: 'Search Key', align: 'left', editable: false },
+  { key: 'name', label: 'Name', align: 'left', editable: false },
+  { key: 'productCategory', label: 'Product Category', align: 'left', editable: false },
+  { key: 'barcode', label: 'Barcode', align: 'left', editable: false },
+  { key: 'cost', label: 'Cost[0]', align: 'right', editable: true },
+  { key: 'lastPrice', label: 'Last Price[1]', align: 'right', editable: true },
+  { key: 'salesPrice', label: 'Sales Price[3]', align: 'right', editable: true },
+  { key: 'displayPrice', label: 'Display Price[4]', align: 'right', editable: true },
+  { key: 'storeQty', label: 'Store Qty', align: 'right', editable: true },
+  { key: null, label: 'Sales Type', align: 'left', editable: false },
+  { key: null, label: 'Status', align: 'center', editable: false },
+  { key: null, label: 'Actions', align: 'center', editable: false },
 ];
 
 const statusConfig: Record<string, { bg: string; text: string; border: string; icon: React.ReactNode }> = {
-  Available:      { bg: 'bg-green-500/10', text: 'text-green-400', border: 'border-green-500/20', icon: <CheckCircle className="w-3 h-3" /> },
-  'Low Stock':    { bg: 'bg-yellow-500/10', text: 'text-yellow-400', border: 'border-yellow-500/20', icon: <AlertTriangle className="w-3 h-3" /> },
+  Available: { bg: 'bg-green-500/10', text: 'text-green-400', border: 'border-green-500/20', icon: <CheckCircle className="w-3 h-3" /> },
+  'Low Stock': { bg: 'bg-yellow-500/10', text: 'text-yellow-400', border: 'border-yellow-500/20', icon: <AlertTriangle className="w-3 h-3" /> },
   'Out of Stock': { bg: 'bg-red-500/10', text: 'text-red-400', border: 'border-red-500/20', icon: <XCircle className="w-3 h-3" /> },
-  Discontinued:   { bg: 'bg-gray-500/10', text: 'text-gray-400', border: 'border-gray-500/20', icon: <XCircle className="w-3 h-3" /> },
+  Discontinued: { bg: 'bg-gray-500/10', text: 'text-gray-400', border: 'border-gray-500/20', icon: <XCircle className="w-3 h-3" /> },
 };
 
 const formatPrice = (price: number) => `Rs. ${price.toLocaleString()}`;
@@ -87,22 +87,19 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({ options, value, onC
   return (
     <div ref={containerRef} className="relative">
       <button type="button" onClick={() => setOpen(!open)}
-        className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs border rounded-lg transition-all ${
-          isDark ? 'bg-slate-800 border-slate-700 text-white hover:border-slate-600' : 'bg-white border-slate-200 text-slate-900 hover:border-slate-300'
-        }`}>
+        className={`w-full flex items-center justify-between px-2.5 py-1.5 text-xs border rounded-lg transition-all ${isDark ? 'bg-slate-800 border-slate-700 text-white hover:border-slate-600' : 'bg-white border-slate-200 text-slate-900 hover:border-slate-300'
+          }`}>
         <span className="truncate">{displayValue}</span>
         <ChevronDown className={`w-3 h-3 ml-1 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''} ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
       </button>
       {open && (
-        <div className={`absolute left-0 top-full mt-0.5 w-full min-w-[180px] rounded-lg border shadow-2xl z-50 overflow-hidden backdrop-blur-md ${
-          isDark ? 'bg-slate-800/95 border-slate-700/50' : 'bg-white/95 border-slate-200'
-        }`}>
+        <div className={`absolute left-0 top-full mt-0.5 w-full min-w-[180px] rounded-lg border shadow-2xl z-50 overflow-hidden backdrop-blur-md ${isDark ? 'bg-slate-800/95 border-slate-700/50' : 'bg-white/95 border-slate-200'
+          }`}>
           <div className="relative border-b border-slate-700/30">
             <input ref={inputRef} type="text" value={search}
               onChange={(e) => setSearch(e.target.value)} placeholder={placeholder || 'Search...'}
-              className={`w-full px-2.5 py-1.5 text-xs border-0 focus:outline-none focus:ring-0 ${
-                isDark ? 'bg-slate-800/50 text-white placeholder:text-slate-500' : 'bg-white text-slate-900 placeholder:text-slate-400'
-              }`}
+              className={`w-full px-2.5 py-1.5 text-xs border-0 focus:outline-none focus:ring-0 ${isDark ? 'bg-slate-800/50 text-white placeholder:text-slate-500' : 'bg-white text-slate-900 placeholder:text-slate-400'
+                }`}
               autoFocus
             />
             {search.length > 0 && (
@@ -114,14 +111,12 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({ options, value, onC
           </div>
           <div className="max-h-40 overflow-y-auto">
             <button onClick={() => { onChange('all'); setOpen(false); }}
-              className={`w-full text-left px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                value === 'all' ? 'bg-orange-500/20 text-orange-400' : isDark ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'
-              }`}>{allLabel}</button>
+              className={`w-full text-left px-2.5 py-1.5 text-xs font-medium transition-colors ${value === 'all' ? 'bg-orange-500/20 text-orange-400' : isDark ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'
+                }`}>{allLabel}</button>
             {filtered.map((opt) => (
               <button key={opt} onClick={() => { onChange(opt); setOpen(false); }}
-                className={`w-full text-left px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                  opt === value ? 'bg-orange-500/20 text-orange-400' : isDark ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'
-                }`}>{opt}</button>
+                className={`w-full text-left px-2.5 py-1.5 text-xs font-medium transition-colors ${opt === value ? 'bg-orange-500/20 text-orange-400' : isDark ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'
+                  }`}>{opt}</button>
             ))}
             {filtered.length === 0 && (
               <div className={`px-2.5 py-1.5 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>No results</div>
@@ -151,9 +146,8 @@ const InlineNumberInput: React.FC<InlineNumberInputProps> = ({ value, onSave, on
       }}
       onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') onCancel(); }}
       onBlur={commit}
-      className={`w-full px-2 py-0.5 text-[11px] font-mono rounded border focus:outline-none focus:ring-1 focus:ring-amber-500 ${
-        isDark ? 'bg-slate-950/80 border-amber-500 text-white' : 'bg-white border-amber-500 text-slate-900'
-      }`}
+      className={`w-full px-2 py-0.5 text-[11px] font-mono rounded border focus:outline-none focus:ring-1 focus:ring-amber-500 ${isDark ? 'bg-slate-950/80 border-amber-500 text-white' : 'bg-white border-amber-500 text-slate-900'
+        }`}
       onClick={(e) => e.stopPropagation()}
     />
   );
@@ -171,9 +165,8 @@ const InlineTextInput: React.FC<InlineTextInputProps> = ({ value, onSave, onCanc
   return (
     <input ref={inputRef} type="text" value={editValue} onChange={(e) => setEditValue(e.target.value)}
       onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') onCancel(); }} onBlur={commit}
-      className={`w-full px-2 py-0.5 text-[11px] rounded border focus:outline-none focus:ring-1 focus:ring-amber-500 ${
-        isDark ? 'bg-slate-950/90 border-amber-500 text-white' : 'bg-white border-amber-500 text-slate-900'
-      }`} onClick={(e) => e.stopPropagation()}
+      className={`w-full px-2 py-0.5 text-[11px] rounded border focus:outline-none focus:ring-1 focus:ring-amber-500 ${isDark ? 'bg-slate-950/90 border-amber-500 text-white' : 'bg-white border-amber-500 text-slate-900'
+        }`} onClick={(e) => e.stopPropagation()}
     />
   );
 };
@@ -206,17 +199,15 @@ const InlineCategorySelect: React.FC<InlineCategorySelectProps> = ({ value, onSa
       <input ref={inputRef} type="text" value={search} onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
         onKeyDown={(e) => { if (e.key === 'Escape') onCancel(); if (e.key === 'Enter' && filtered.length === 1) onSave(filtered[0]); }}
         placeholder="Search category..."
-        className={`w-full px-2 py-0.5 text-[11px] rounded border focus:outline-none focus:ring-1 focus:ring-amber-500 ${
-          isDark ? 'bg-slate-950/90 border-amber-500 text-white placeholder:text-slate-500' : 'bg-white border-amber-500 text-slate-900 placeholder:text-slate-400'
-        }`}
+        className={`w-full px-2 py-0.5 text-[11px] rounded border focus:outline-none focus:ring-1 focus:ring-amber-500 ${isDark ? 'bg-slate-950/90 border-amber-500 text-white placeholder:text-slate-500' : 'bg-white border-amber-500 text-slate-900 placeholder:text-slate-400'
+          }`}
       />
       {open && filtered.length > 0 && (
         <div className={`absolute left-0 top-full mt-1 w-full max-h-36 overflow-y-auto rounded-md border shadow-xl z-50 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
           {filtered.map((cat) => (
             <button key={cat} onMouseDown={(e) => e.preventDefault()} onClick={() => { onSave(cat); setOpen(false); }}
-              className={`w-full text-left px-2 py-1 text-[11px] font-medium transition-colors ${
-                cat === value ? 'bg-orange-500/20 text-orange-400' : isDark ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-700 hover:bg-slate-100'
-              }`}>{cat}</button>
+              className={`w-full text-left px-2 py-1 text-[11px] font-medium transition-colors ${cat === value ? 'bg-orange-500/20 text-orange-400' : isDark ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-700 hover:bg-slate-100'
+                }`}>{cat}</button>
           ))}
         </div>
       )}
@@ -253,6 +244,13 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
   const [sortField, setSortField] = useState<keyof InventoryProduct>('searchKey');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
+  // ── TASK 2: 4 CHECKBOX FILTER TOGGLES ──
+  // Search Key defaults to true (ticked) on mount; Barcode, Product Name, Category default false
+  const [searchByKey, setSearchByKey] = useState<boolean>(true);
+  const [searchBarcode, setSearchBarcode] = useState<boolean>(false);
+  const [searchByName, setSearchByName] = useState<boolean>(false);
+  const [searchByCategory, setSearchByCategory] = useState<boolean>(false);
+
   const [cellEdit, setCellEdit] = useState<CellEditState | null>(null);
   const [rowEditItem, setRowEditItem] = useState<InventoryProduct | null>(null);
   const [inlineEdit, setInlineEdit] = useState<{ itemId: string; field: string } | null>(null);
@@ -277,11 +275,39 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
     return Array.from(cats).sort();
   }, [items]);
 
+  // ── MODIFIED FILTER: respects 4 checkboxes + space exemption for Search Key ──
   const filteredItems = useMemo(() => {
     let result = [...items];
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      result = result.filter((i) => i.searchKey.toLowerCase().includes(q) || i.name.toLowerCase().includes(q) || i.productCategory.toLowerCase().includes(q));
+      result = result.filter((i) => {
+        let match = false;
+
+        // Search Key (default ON) — STRICTLY NO whitespace stripping/exemption
+        if (searchByKey) {
+          // Strip and ignore all spaces from both the query and the database searchKey
+          const cleanQuery = q.replace(/\s+/g, '').toLowerCase();
+          const cleanSearchKey = i.searchKey ? i.searchKey.replace(/\s+/g, '').toLowerCase() : '';
+
+          match = match || cleanSearchKey.startsWith(cleanQuery);
+        }
+        // Barcode
+        if (searchBarcode) {
+          match = match || (i.barcode && i.barcode.toLowerCase().includes(q));
+        }
+
+        // Product Name
+        if (searchByName) {
+          match = match || (i.name && i.name.toLowerCase().includes(q));
+        }
+
+        // Product Category
+        if (searchByCategory) {
+          match = match || (i.productCategory && i.productCategory.toLowerCase().includes(q));
+        }
+
+        return match;
+      });
     }
     if (categoryFilter !== 'all') result = result.filter((i) => i.productCategory === categoryFilter);
     if (statusFilter !== 'all') result = result.filter((i) => i.status === statusFilter);
@@ -291,7 +317,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
       return sortDir === 'asc' ? String(aVal).toLowerCase().localeCompare(String(bVal).toLowerCase()) : String(bVal).toLowerCase().localeCompare(String(aVal).toLowerCase());
     });
     return result;
-  }, [items, searchQuery, categoryFilter, statusFilter, sortField, sortDir]);
+  }, [items, searchQuery, categoryFilter, statusFilter, sortField, sortDir, searchByKey, searchBarcode, searchByName, searchByCategory]);
 
   const totalPages = Math.ceil(filteredItems.length / rowsPerPage);
   const paginatedItems = useMemo(() => {
@@ -311,7 +337,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
   };
 
   const [deleteTarget, setDeleteTarget] = useState<InventoryProduct | null>(null);
-  
+
   const handleDeleteProduct = useCallback((id: string) => {
     if (onDelete) {
       onDelete(id);
@@ -322,19 +348,14 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
 
   const patchBackend = useCallback(async (itemId: string, field: string, value: string | number) => {
     try {
-      // Ensure numeric values are actual Number types for Prisma type validation
       const payload: Record<string, any> = { [field]: typeof value === 'number' ? Number(value) : value };
-      // 🚀 CRITICAL FIX: When productCategory changes, also send the resolved categoryId
-      // so the backend records the relational FK correctly for Prisma's _count aggregate.
       if (field === 'productCategory' && typeof value === 'string') {
         const resolvedId = categoryIdMap.get(value);
         if (resolvedId) {
           payload.categoryId = resolvedId;
         }
       }
-      // Use fullResponse: true to receive the full envelope including syncCategories
       const response: any = await api.patch(`/products/${itemId}`, payload, true);
-      // 🔄 Real-time category usage count update from server — zero extra HTTP calls
       if (response?.syncCategories && Array.isArray(response.syncCategories)) {
         syncCategoriesFromServer(response.syncCategories);
       }
@@ -354,7 +375,6 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
   }, [items, syncCategoriesFromServer]);
 
   const updateCatalogState = useCallback((itemId: string, field: string, value: string | number) => {
-    // Update global CatalogContext state so the UI rerenders without crashing
     const patchData: Partial<InventoryProduct> = { [field]: value };
     if (field === 'storeQty') {
       patchData.status = deriveStatus(value as number);
@@ -368,7 +388,6 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
     const product = items.find(i => i.id === itemId);
     if (product) {
       const originalValue = product[field as keyof InventoryProduct] as string | number;
-      // Strict equality check — skip save & toast if value hasn't changed
       if (String(originalValue) === String(value) || Number(originalValue) === Number(value)) {
         setCellEdit(null);
         return;
@@ -383,7 +402,6 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
     const product = items.find(i => i.id === itemId);
     if (product) {
       const originalValue = product[field as keyof InventoryProduct] as string | number;
-      // Strict equality check — skip save & toast if value hasn't changed
       if (String(originalValue) === String(value) || Number(originalValue) === Number(value)) {
         setInlineEdit(null);
         return;
@@ -404,11 +422,9 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
         return;
       }
     }
-    // Update local state immediately for instant UI feedback
     updateCatalogState(itemId, 'barcode', barcode || '');
     setActiveBarcodeEditId(null);
     setBarcodeRect(null);
-    // Fire dedicated barcode PATCH endpoint (with uniqueness check on backend)
     try {
       const payload = { barcode: barcode || null };
       const response: any = await api.patch(`/products/${itemId}/barcode`, payload, true);
@@ -421,7 +437,6 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
         closeOnClick: true, pauseOnHover: true, draggable: true,
       });
     } catch (err: any) {
-      // On conflict (barcode already in use), revert local state and notify
       if (product) {
         updateCatalogState(itemId, 'barcode', product.barcode || '');
       }
@@ -433,7 +448,6 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
   const openCellEdit = useCallback((itemId: string, field: string, e: React.MouseEvent) => {
     setRowEditItem(null);
     if (field === 'barcode') {
-      // Use dedicated barcode popover with orange border
       setInlineEdit(null);
       setCellEdit(null);
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
@@ -513,9 +527,8 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
             <SearchableSelect options={categories} value={categoryFilter} onChange={(v) => setCategoryFilter(v)} placeholder="Search category..." isDark={isDark} allLabel={t('filters.allCategories')} />
             {categoryFilter !== 'all' && (
               <button onClick={() => setCategoryFilter('all')}
-                className={`absolute -right-2 -top-2 z-10 w-4 h-4 rounded-full flex items-center justify-center transition-colors shadow-sm ${
-                  isDark ? 'bg-slate-700 text-slate-300 hover:bg-slate-600 border border-slate-600' : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-300'
-                }`} title="Reset category filter">
+                className={`absolute -right-2 -top-2 z-10 w-4 h-4 rounded-full flex items-center justify-center transition-colors shadow-sm ${isDark ? 'bg-slate-700 text-slate-300 hover:bg-slate-600 border border-slate-600' : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-300'
+                  }`} title="Reset category filter">
                 <X className="w-2.5 h-2.5" />
               </button>
             )}
@@ -524,9 +537,8 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
             <SearchableSelect options={['Available', 'Low Stock', 'Out of Stock']} value={statusFilter} onChange={(v) => setStatusFilter(v)} placeholder="Search status..." isDark={isDark} allLabel={t('filters.allStatus')} />
             {statusFilter !== 'all' && (
               <button onClick={() => setStatusFilter('all')}
-                className={`absolute -right-2 -top-2 z-10 w-4 h-4 rounded-full flex items-center justify-center transition-colors shadow-sm ${
-                  isDark ? 'bg-slate-700 text-slate-300 hover:bg-slate-600 border border-slate-600' : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-300'
-                }`} title="Reset status filter">
+                className={`absolute -right-2 -top-2 z-10 w-4 h-4 rounded-full flex items-center justify-center transition-colors shadow-sm ${isDark ? 'bg-slate-700 text-slate-300 hover:bg-slate-600 border border-slate-600' : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-300'
+                  }`} title="Reset status filter">
                 <X className="w-2.5 h-2.5" />
               </button>
             )}
@@ -535,6 +547,53 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
             <SortButton currentSortOrder={sortDir} onSortToggle={() => handleSort(sortField)} />
             {hasActiveFilters && <button onClick={clearFilters} className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${isDark ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'}`}><RefreshCw className="w-3 h-3" /></button>}
             <span className={`text-[10px] font-medium whitespace-nowrap ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{t('products.itemsCount', { count: filteredItems.length })}</span>
+          </div>
+        </div>
+
+        {/* ── TASK 2: 2-LINE CHECKBOX FILTER BAR ── */}
+        <div className="mt-2.5 flex flex-col gap-1.5">
+          {/* Line 1: "Search In:" label + Barcode + Search Key */}
+          <div className="flex items-center gap-3">
+            <span className={`text-[10px] font-semibold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              Search In:
+            </span>
+            <label className={`flex items-center gap-1.5 cursor-pointer select-none text-[11px] font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+              <input
+                type="checkbox"
+                checked={searchBarcode}
+                onChange={e => setSearchBarcode(e.target.checked)}
+                className="accent-amber-500 w-3.5 h-3.5 rounded"
+              />
+              Barcode
+            </label>
+            <label className={`flex items-center gap-1.5 cursor-pointer select-none text-[11px] font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+              <input
+                type="checkbox"
+                checked={searchByKey}
+                onChange={e => setSearchByKey(e.target.checked)}
+                className="accent-amber-500 w-3.5 h-3.5 rounded"
+              />
+              Search Key
+            </label>
+
+            <label className={`flex items-center gap-1.5 cursor-pointer select-none text-[11px] font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+              <input
+                type="checkbox"
+                checked={searchByName}
+                onChange={e => setSearchByName(e.target.checked)}
+                className="accent-amber-500 w-3.5 h-3.5 rounded"
+              />
+              Product Name
+            </label>
+            <label className={`flex items-center gap-1.5 cursor-pointer select-none text-[11px] font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+              <input
+                type="checkbox"
+                checked={searchByCategory}
+                onChange={e => setSearchByCategory(e.target.checked)}
+                className="accent-amber-500 w-3.5 h-3.5 rounded"
+              />
+              Category
+            </label>
           </div>
         </div>
       </div>
@@ -549,7 +608,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                   <th key={i}
                     className={`px-2 py-2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'} ${isDark ? 'text-slate-400' : 'text-slate-500'} ${col.key ? 'cursor-pointer select-none hover:text-orange-400 transition-colors' : ''}`}
                     onClick={() => col.key && handleSort(col.key as keyof InventoryProduct)}>
-          <div className={`flex items-center gap-1 ${col.align === 'right' ? 'justify-end' : col.align === 'center' ? 'justify-center' : ''}`}>
+                    <div className={`flex items-center gap-1 ${col.align === 'right' ? 'justify-end' : col.align === 'center' ? 'justify-center' : ''}`}>
                       {(() => {
                         const labelMap: Record<string, string> = {
                           'Search Key': t('productTable.searchKey'),
@@ -632,11 +691,10 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                       const isBarcodeActive = activeBarcodeEditId === item.id;
                       return (
                         <td
-                          className={`px-2 py-1.5 relative group cursor-pointer transition-all ${
-                            isBarcodeActive
+                          className={`px-2 py-1.5 relative group cursor-pointer transition-all ${isBarcodeActive
                               ? 'ring-2 ring-orange-500 ring-inset rounded-sm'
                               : ''
-                          }`}
+                            }`}
                           onClick={(e) => !isBarcodeActive && openCellEdit(item.id, field, e)}
                         >
                           <span className={`text-[10px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'} hover:text-orange-400 transition-colors`}>
@@ -717,9 +775,8 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
             <div className={`flex items-center gap-1.5 text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
               <span>Rows:</span>
               <select value={rowsPerPage} onChange={(e) => setRowsPerPage(Number(e.target.value))}
-                className={`px-1.5 py-0.5 text-[10px] border rounded transition-colors focus:outline-none focus:ring-1 focus:ring-orange-500/50 ${
-                  isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900'
-                }`}>
+                className={`px-1.5 py-0.5 text-[10px] border rounded transition-colors focus:outline-none focus:ring-1 focus:ring-orange-500/50 ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+                  }`}>
                 {ROWS_PER_PAGE_OPTIONS.map((n) => (<option key={n} value={n}>{n}</option>))}
               </select>
             </div>
@@ -739,11 +796,10 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
               if (page > totalPages) return null;
               return (
                 <button key={page} onClick={() => setCurrentPage(page)}
-                  className={`w-7 h-7 text-[10px] font-semibold rounded transition-all ${
-                    page === currentPage
+                  className={`w-7 h-7 text-[10px] font-semibold rounded transition-all ${page === currentPage
                       ? 'bg-orange-500 text-white shadow-md shadow-orange-500/20'
                       : isDark ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-600 hover:bg-slate-100'
-                  }`}>{page}</button>
+                    }`}>{page}</button>
               );
             })}
             <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}

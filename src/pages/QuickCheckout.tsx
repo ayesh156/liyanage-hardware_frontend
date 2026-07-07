@@ -237,6 +237,10 @@ export const QuickCheckout: React.FC = () => {
   const [searchBarcode,  setSearchBarcode]  = useState<boolean>(true);
   const [searchByName,   setSearchByName]   = useState<boolean>(false);
 
+  // ── SEARCH DROPDOWN QUANTITY SYNC STATE (ArrowRight/ArrowLeft in search results) ──
+  const [searchDropdownQty, setSearchDropdownQty] = useState<number>(0);
+  const [searchDropdownQtyStr, setSearchDropdownQtyStr] = useState<string>("0");
+
   // Stepped navigation state
   const [currentStep, setCurrentStep] = useState<QuickCheckoutStep>('products');
   const [currentMode, setCurrentMode] = useState<CheckoutMode>('search');
@@ -1563,9 +1567,10 @@ export const QuickCheckout: React.FC = () => {
             setSelectedCartIndex((prev) => prev < items.length - 1 ? prev + 1 : prev);
           } else if (filteredProducts.length > 0 && isInSearchInput) {
             e.preventDefault();
-            setActiveMainSearchIndex((prev) => 
-              prev < filteredProducts.length - 1 ? prev + 1 : prev
-            );
+            const nextIndex = activeMainSearchIndex < filteredProducts.length - 1 ? activeMainSearchIndex + 1 : activeMainSearchIndex;
+            setActiveMainSearchIndex(nextIndex);
+            // Also sync selectedProductIndex for mobile visual highlighting
+            setSelectedProductIndex(nextIndex);
           }
           break;
           
@@ -1575,7 +1580,10 @@ export const QuickCheckout: React.FC = () => {
             setSelectedCartIndex((prev) => prev > 0 ? prev - 1 : 0);
           } else if (filteredProducts.length > 0 && isInSearchInput) {
             e.preventDefault();
-            setActiveMainSearchIndex((prev) => prev > 0 ? prev - 1 : 0);
+            const nextIndex = activeMainSearchIndex > 0 ? activeMainSearchIndex - 1 : 0;
+            setActiveMainSearchIndex(nextIndex);
+            // Also sync selectedProductIndex for mobile visual highlighting
+            setSelectedProductIndex(nextIndex);
           }
           break;
           
@@ -1590,6 +1598,28 @@ export const QuickCheckout: React.FC = () => {
             const newQty = decrementQuantity(quantity, 0.01);
             setQuantity(newQty);
             setQuantityStr(String(newQty));
+          } else if (isInSearchInput && filteredProducts.length > 0 && activeMainSearchIndex >= 0) {
+            // Search dropdown ArrowLeft — step down quantity
+            const targetedItem = filteredProducts[activeMainSearchIndex];
+            if (targetedItem) {
+              const cartItem = items.find(i => i.productId === targetedItem.flatId);
+              if (cartItem) {
+                // Exists in cart — step down safely
+                const currentQty = cartItem.quantity;
+                let newQty: number;
+                if (currentQty > 1.0) {
+                  newQty = currentQty - 1.0;
+                } else {
+                  newQty = Math.max(0.1, currentQty - 0.1);
+                }
+                const roundedNewQty = parseFloat(newQty.toFixed(1));
+                setSearchDropdownQty(roundedNewQty);
+                setSearchDropdownQtyStr(String(roundedNewQty));
+                // Fire live cart sync
+                updateItemQuantity(cartItem.id, roundedNewQty);
+              }
+              // If not in cart and qty is 0, do nothing
+            }
           } else if (isPaymentFocused) {
             setPaymentMethod('cash');
             playBeep('add');
@@ -1607,6 +1637,32 @@ export const QuickCheckout: React.FC = () => {
             const newQty = incrementQuantity(quantity);
             setQuantity(newQty);
             setQuantityStr(String(newQty));
+          } else if (isInSearchInput && filteredProducts.length > 0 && activeMainSearchIndex >= 0) {
+            // Search dropdown ArrowRight — step up quantity and instant cart sync
+            const targetedItem = filteredProducts[activeMainSearchIndex];
+            if (targetedItem) {
+              const cartItem = items.find(i => i.productId === targetedItem.flatId);
+              if (cartItem) {
+                // Already in cart — step up
+                const currentQty = cartItem.quantity;
+                let newQty: number;
+                if (currentQty >= 1.0) {
+                  newQty = currentQty + 1.0;
+                } else {
+                  newQty = currentQty + 0.1;
+                }
+                const roundedNewQty = parseFloat(newQty.toFixed(1));
+                setSearchDropdownQty(roundedNewQty);
+                setSearchDropdownQtyStr(String(roundedNewQty));
+                updateItemQuantity(cartItem.id, roundedNewQty);
+              } else {
+                // Not in cart — initialize at 1.0 and add to cart
+                setSearchDropdownQty(1.0);
+                setSearchDropdownQtyStr("1.0");
+                // Build FlattenedProduct and add to cart with qty 1
+                addProductToCart(targetedItem, 1);
+              }
+            }
           } else if (isPaymentFocused) {
             setPaymentMethod('credit');
             playBeep('add');
@@ -1897,12 +1953,17 @@ export const QuickCheckout: React.FC = () => {
                   setActiveMainSearchIndex(-1);
                 }}
                 onKeyDown={(e) => {
-                  e.stopPropagation();
-                  (e.nativeEvent as Event).stopImmediatePropagation?.();
+                  // Let arrow keys, Enter, and Escape pass through to window-level handler
+                  if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape'].includes(e.key)) {
+                    e.stopPropagation();
+                    (e.nativeEvent as Event).stopImmediatePropagation?.();
+                  }
                 }}
                 onKeyUp={(e) => {
-                  e.stopPropagation();
-                  (e.nativeEvent as Event).stopImmediatePropagation?.();
+                  if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape'].includes(e.key)) {
+                    e.stopPropagation();
+                    (e.nativeEvent as Event).stopImmediatePropagation?.();
+                  }
                 }}
                 onFocus={() => {
                   setMobileSearchFocused(true);
@@ -2526,12 +2587,17 @@ export const QuickCheckout: React.FC = () => {
                         setSelectedProductIndex(-1);
                       }}
                       onKeyDown={(e) => {
-                        e.stopPropagation();
-                        (e.nativeEvent as Event).stopImmediatePropagation?.();
+                        // Let arrow keys, Enter, and Escape pass through to window-level handler
+                        if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape'].includes(e.key)) {
+                          e.stopPropagation();
+                          (e.nativeEvent as Event).stopImmediatePropagation?.();
+                        }
                       }}
                       onKeyUp={(e) => {
-                        e.stopPropagation();
-                        (e.nativeEvent as Event).stopImmediatePropagation?.();
+                        if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Enter', 'Escape'].includes(e.key)) {
+                          e.stopPropagation();
+                          (e.nativeEvent as Event).stopImmediatePropagation?.();
+                        }
                       }}
                       className={`w-full pl-9 pr-8 py-2 text-sm border-2 rounded-lg focus:outline-none transition-all ${
                         isDark
@@ -3308,6 +3374,62 @@ export const QuickCheckout: React.FC = () => {
                                     } else if (e.key === 'ArrowUp') {
                                       e.preventDefault();
                                       setActiveCategoryItemIndex((prev) => (prev > 0 ? prev - 1 : 0));
+                                    } else if (e.key === 'ArrowRight') {
+                                      // ── Category Popup ArrowRight — step up quantity and instant cart sync ──
+                                      e.preventDefault();
+                                      const targetedItem = filteredCategoryProducts[activeCategoryItemIndex];
+                                      if (targetedItem) {
+                                        const cartItem = items.find(i => i.productId === targetedItem.id);
+                                        if (cartItem) {
+                                          const currentQty = cartItem.quantity;
+                                          let newQty: number;
+                                          if (currentQty >= 1.0) {
+                                            newQty = currentQty + 1.0;
+                                          } else {
+                                            newQty = currentQty + 0.1;
+                                          }
+                                          const roundedNewQty = parseFloat(newQty.toFixed(1));
+                                          updateItemQuantity(cartItem.id, roundedNewQty);
+                                        } else {
+                                          // Not in cart — add with qty 1
+                                          const sinhalaName = targetedItem.nameSinhala || targetedItem.nameSi || targetedItem.name;
+                                          const fp: FlattenedProduct = {
+                                            flatId: targetedItem.id,
+                                            product: { nameAlt: sinhalaName, sku: targetedItem.searchKey, category: activeCategoryPopover } as any,
+                                            displayName: targetedItem.name,
+                                            displaySku: targetedItem.searchKey,
+                                            retailPrice: Number(targetedItem.salesPrice),
+                                            wholesalePrice: Number(targetedItem.displayPrice),
+                                            costPrice: Number(targetedItem.cost),
+                                            stock: Number(targetedItem.storeQty),
+                                            hasDiscount: false,
+                                          } as FlattenedProduct;
+                                          addProductToCart(fp, 1);
+                                        }
+                                      }
+                                      // FOCUS LOCK: force focus back to category sub-filter input
+                                      setTimeout(() => categoryPopoverInputRef.current?.focus(), 10);
+                                    } else if (e.key === 'ArrowLeft') {
+                                      // ── Category Popup ArrowLeft — step down quantity ──
+                                      e.preventDefault();
+                                      const targetedItem = filteredCategoryProducts[activeCategoryItemIndex];
+                                      if (targetedItem) {
+                                        const cartItem = items.find(i => i.productId === targetedItem.id);
+                                        if (cartItem) {
+                                          const currentQty = cartItem.quantity;
+                                          let newQty: number;
+                                          if (currentQty > 1.0) {
+                                            newQty = currentQty - 1.0;
+                                          } else {
+                                            newQty = Math.max(0.1, currentQty - 0.1);
+                                          }
+                                          const roundedNewQty = parseFloat(newQty.toFixed(1));
+                                          updateItemQuantity(cartItem.id, roundedNewQty);
+                                        }
+                                        // If not in cart, do nothing (floor at 0)
+                                      }
+                                      // FOCUS LOCK: force focus back to category sub-filter input
+                                      setTimeout(() => categoryPopoverInputRef.current?.focus(), 10);
                                     } else if (e.key === 'Enter') {
                                       e.preventDefault();
                                       const targetedProduct = filteredCategoryProducts[activeCategoryItemIndex];
