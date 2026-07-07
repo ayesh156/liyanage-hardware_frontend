@@ -82,7 +82,7 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setInventoryError(null);
 
     try {
-      const data = await api.get<InventoryProduct[]>('/products', { perPage: 2000 });
+      const data = await api.get<InventoryProduct[]>('/products', { perPage: 100000 });
 
       if (Array.isArray(data)) {
         setInventoryItems(data as unknown as InventoryProduct[]);
