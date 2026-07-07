@@ -147,17 +147,12 @@ export const QuickCheckout: React.FC = () => {
       } catch (err: any) {
         if (!cancelled) {
           console.warn('[QuickCheckout] Invoice not found for editing — starting fresh:', editInvoiceId, err);
-          // Graceful fallback: show informative toast instead of error
-          // The invoice ID used (?edit=...) does not match any existing record.
-          // This is expected for test strings like "inv-001" or manually-typed IDs.
           toast.info(
             `Invoice "${editInvoiceId}" not found. Starting with a fresh checkout.`,
             { autoClose: 4000 }
           );
           setEditingInvoice(null);
 
-          // Clear the ?edit= param from the URL to prevent re-triggering on re-render
-          // and to keep the URL bar clean
           navigate(window.location.pathname, { replace: true });
         }
       } finally {
@@ -202,9 +197,6 @@ export const QuickCheckout: React.FC = () => {
     // Populate customer
     if (editingInvoice.customerId && editingInvoice.customerId !== 'walk-in') {
       setSelectedCustomerId(editingInvoice.customerId);
-      // Customer name may be populated later when customers array loads
-      // The findCustomerById lookup is done inside the effect to avoid
-      // stale closure — use the editing invoice's own customerName as fallback
       const found = customers.find((c: any) => c.id === editingInvoice.customerId);
       setCustomerSearch(found?.name || editingInvoice.customerName || '');
     } else {
@@ -237,12 +229,14 @@ export const QuickCheckout: React.FC = () => {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'credit'>('cash');
   const [pendingProduct, setPendingProduct] = useState<FlattenedProduct | null>(null);
-  // ── Search scope toggles ──
-  // searchByKey:  match against product.searchKey  (default ON)
-  // searchByName: match against product.name       (default OFF)
-  const [searchByKey,  setSearchByKey]  = useState<boolean>(true);
-  const [searchByName, setSearchByName] = useState<boolean>(false);
-  
+  // ── TRIPLE CHECKBOX FILTER STATES ──
+  // searchByKey:     match against product.searchKey  (default ON)
+  // searchBarcode:   match against product.barcode    (default ON — must be strictly true by default)
+  // searchByName:    match against product.name       (default OFF)
+  const [searchByKey,    setSearchByKey]    = useState<boolean>(true);
+  const [searchBarcode,  setSearchBarcode]  = useState<boolean>(true);
+  const [searchByName,   setSearchByName]   = useState<boolean>(false);
+
   // Stepped navigation state
   const [currentStep, setCurrentStep] = useState<QuickCheckoutStep>('products');
   const [currentMode, setCurrentMode] = useState<CheckoutMode>('search');
@@ -475,6 +469,45 @@ export const QuickCheckout: React.FC = () => {
     }
   }, [soundEnabled]);
 
+  // ── STRICT parseScanInput: only matches barcode-like scan sequences ──
+  // This function must NOT match natural product names containing 'x' or 'X'.
+  // The code part before/after the separator must be alphanumeric only (no spaces, slashes)
+  // to prevent false matches on names like "1/2X1/2 GI BOX".
+  // Additionally, the code portion must be at least 3 characters long to prevent false
+  // matches on input like "1X1" or "2X3" that are part of a product name being typed.
+  const parseScanInput = (input: string): { code?: string; qty?: number } | null => {
+    if (!input) return null;
+    const trimmed = input.trim();
+    if (!trimmed) return null;
+
+    // Prefix pattern: <digits> <separator> <clean-code>
+    // e.g. "2*BARCODE" or "3XCODE123"
+    // Code part must be at least 3 chars to avoid matching product names like "1X1"
+    const prefix = trimmed.match(/^\s*(\d+)\s*[\*xX\|\-]\s*([A-Za-z0-9_-]{3,})\s*$/);
+    if (prefix) {
+      const qty = Number(prefix[1]);
+      const code = prefix[2].trim();
+      if (code && qty > 0) return { qty, code };
+    }
+
+    // Suffix pattern: <clean-code> <separator> <digits>
+    // e.g. "BARCODE*2" or "CODE-X-5"
+    // Code part must be at least 3 chars to avoid product name collisions
+    const suffix = trimmed.match(/^\s*([A-Za-z0-9_-]{3,})\s*[\*xX\|\-]\s*(\d+)\s*$/);
+    if (suffix) {
+      const code = suffix[1].trim();
+      const qty = Number(suffix[2]);
+      if (code && qty > 0) return { qty, code };
+    }
+
+    // Plain barcode (all digits or alphanumeric without spaces/slashes)
+    // Must be at least 3 characters to avoid matching single characters typed in search
+    const plain = trimmed.match(/^[A-Za-z0-9_]{3,}$/);
+    if (plain) return { code: trimmed };
+
+    return null;
+  };
+
   // ── Search inventoryItems directly from live CatalogContext ──
   const filteredProducts = useMemo((): any[] => {
     if (!productSearch.trim()) return [];
@@ -482,29 +515,32 @@ export const QuickCheckout: React.FC = () => {
     const raw = productSearch.trim();
     const normalizedQuery = raw.toLowerCase();
 
-    // ── Priority 1: exact barcode match — single result, toggle-agnostic ──
-    const barcodeHit = inventoryItems.find(
-      item => item.barcode && item.barcode.trim() === raw
-    );
-    if (barcodeHit) {
-      const sinhalaName = barcodeHit.nameSinhala || barcodeHit.nameSi || barcodeHit.name;
-      return [{
-        flatId: barcodeHit.id,
-        product: { nameAlt: sinhalaName, sku: barcodeHit.searchKey, category: barcodeHit.productCategory } as any,
-        variant: undefined,
-        displayName: barcodeHit.name,
-        displaySku: barcodeHit.searchKey,
-        displayBarcode: barcodeHit.barcode,
-        costPrice:    barcodeHit.cost,
-        wholesalePrice: barcodeHit.displayPrice,
-        retailPrice:  barcodeHit.salesPrice,
-        discountedPrice: undefined,
-        hasDiscount: false,
-        stock: barcodeHit.storeQty,
-        minStock: 0,
-        isVariant: false,
-        variantLabel: undefined,
-      }];
+    // ── Priority 1: exact barcode match — single result ──
+    // Only triggers if Barcode checkbox is active
+    if (searchBarcode) {
+      const barcodeHit = inventoryItems.find(
+        item => item.barcode && item.barcode.trim() === raw
+      );
+      if (barcodeHit) {
+        const sinhalaName = barcodeHit.nameSinhala || barcodeHit.nameSi || barcodeHit.name;
+        return [{
+          flatId: barcodeHit.id,
+          product: { nameAlt: sinhalaName, sku: barcodeHit.searchKey, category: barcodeHit.productCategory } as any,
+          variant: undefined,
+          displayName: barcodeHit.name,
+          displaySku: barcodeHit.searchKey,
+          displayBarcode: barcodeHit.barcode,
+          costPrice:    barcodeHit.cost,
+          wholesalePrice: barcodeHit.displayPrice,
+          retailPrice:  barcodeHit.salesPrice,
+          discountedPrice: undefined,
+          hasDiscount: false,
+          stock: barcodeHit.storeQty,
+          minStock: 0,
+          isVariant: false,
+          variantLabel: undefined,
+        }];
+      }
     }
 
     // ── Priority 2: scope-aware tiered text search ──
@@ -543,15 +579,17 @@ export const QuickCheckout: React.FC = () => {
         queryTokens.length === fieldTokens.length &&
         queryTokens.every((tok, i) => tok === fieldTokens[i])
       ) return 2;
-      if (strippedQuery.length > 0 && strippedField.startsWith(strippedQuery)) return 1;
+      if (strippedQuery.length > 0 && strippedField.includes(strippedQuery)) return 1;
       return 0;
     };
 
     const scored: Array<{ item: typeof inventoryItems[0]; score: number }> = [];
     for (const item of inventoryItems) {
       let score = 0;
-      if (searchByKey)  score = Math.max(score, scoreField(item.searchKey || ''));
-      if (searchByName) score = Math.max(score, scoreField(item.name));
+      // Conditionally score each field based on which checkboxes are active (OR logic)
+      if (searchByKey)   score = Math.max(score, scoreField(item.searchKey || ''));
+      if (searchBarcode) score = Math.max(score, scoreField(item.barcode || ''));
+      if (searchByName)  score = Math.max(score, scoreField(item.name || ''));
       if (score > 0) scored.push({ item, score });
     }
 
@@ -562,21 +600,7 @@ export const QuickCheckout: React.FC = () => {
 
     filtered.sort((a, b) => b.score - a.score);
     return filtered.map(s => toFlat(s.item));
-  }, [inventoryItems, productSearch, searchByKey, searchByName]);
-
-  const parseScanInput = (input: string): { code?: string; qty?: number } | null => {
-    if (!input) return null;
-    const trimmed = input.trim();
-    if (!trimmed) return null;
-
-    const prefix = trimmed.match(/^\s*(\d+)\s*[\*xX\|\-]\s*(.+)$/);
-    if (prefix) return { qty: Number(prefix[1]), code: prefix[2].trim() };
-
-    const suffix = trimmed.match(/^\s*(.+?)\s*[\*xX\|\-]\s*(\d+)\s*$/);
-    if (suffix) return { code: suffix[1].trim(), qty: Number(suffix[2]) };
-
-    return { code: trimmed };
-  };
+  }, [inventoryItems, productSearch, searchByKey, searchBarcode, searchByName]);
 
   // Auto-detect barcode scan / direct paste (when field gains input)
   useEffect(() => {
@@ -696,11 +720,6 @@ export const QuickCheckout: React.FC = () => {
     playBeep('add');
     setQuantity(1);
     setQuantityStr("1");
-    // ── DO NOT clear productSearch or selectedProductIndex here ──
-    // The search suggestion dropdown must remain persistently open
-    // when items are added/modified from inline +/- controls.
-    // Callers (Enter key, row click, barcode scan) each handle
-    // search-field clearing explicitly before invoking this method.
     searchInputRef.current?.focus();
 
     setTimeout(() => {
@@ -1753,6 +1772,16 @@ export const QuickCheckout: React.FC = () => {
                   {t('quickCheckout.title')}
                 </h1>
                 <div className="flex items-center gap-2 mt-0.5">
+                  {/* ── TRIPLE CHECKBOX FILTER ROW (Mobile) ── */}
+                  <label className={`flex items-center gap-1 cursor-pointer select-none text-[9px] font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    <input
+                      type="checkbox"
+                      checked={searchBarcode}
+                      onChange={e => setSearchBarcode(e.target.checked)}
+                      className="accent-amber-500 w-2.5 h-2.5 rounded"
+                    />
+                    Barcode
+                  </label>
                   <label className={`flex items-center gap-1 cursor-pointer select-none text-[9px] font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     <input
                       type="checkbox"
@@ -1828,15 +1857,35 @@ export const QuickCheckout: React.FC = () => {
                 placeholder={t('quickCheckout.searchPlaceholder')}
                 value={productSearch}
                 onChange={(e) => {
+                  e.stopPropagation();
+                  (e.nativeEvent as Event).stopImmediatePropagation?.();
                   const val = e.target.value;
                   if (handleBarcodeScanDispatch(val)) return;
                   const parsed = parseScanInput(val);
                   if (parsed?.qty && parsed?.code) {
-                    const match = flattenedProducts.find(
-                      (fp) => fp.displayBarcode === parsed.code || fp.displaySku.toLowerCase() === parsed.code.toLowerCase()
+                    const match = inventoryItems.find(
+                      (inv) => inv.barcode === parsed.code || inv.searchKey.toLowerCase() === parsed.code.toLowerCase()
                     );
                     if (match) {
-                      addProductToCart(match, parsed.qty);
+                      const sinhalaName = match.nameSinhala || match.nameSi || match.name;
+                      const fp: FlattenedProduct = {
+                        flatId: match.id,
+                        product: { nameAlt: sinhalaName, sku: match.searchKey, category: match.productCategory } as any,
+                        variant: undefined,
+                        displayName: match.name,
+                        displaySku: match.searchKey,
+                        displayBarcode: match.barcode,
+                        costPrice: match.cost,
+                        wholesalePrice: match.displayPrice,
+                        retailPrice: match.salesPrice,
+                        discountedPrice: undefined,
+                        hasDiscount: false,
+                        stock: match.storeQty,
+                        minStock: 0,
+                        isVariant: false,
+                        variantLabel: undefined,
+                      } as FlattenedProduct;
+                      addProductToCart(fp, parsed.qty);
                       setProductSearch('');
                       return;
                     }
@@ -1846,6 +1895,14 @@ export const QuickCheckout: React.FC = () => {
                   setProductSearch(val);
                   setSelectedProductIndex(-1);
                   setActiveMainSearchIndex(-1);
+                }}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  (e.nativeEvent as Event).stopImmediatePropagation?.();
+                }}
+                onKeyUp={(e) => {
+                  e.stopPropagation();
+                  (e.nativeEvent as Event).stopImmediatePropagation?.();
                 }}
                 onFocus={() => {
                   setMobileSearchFocused(true);
@@ -2322,6 +2379,16 @@ export const QuickCheckout: React.FC = () => {
               {t('quickCheckout.title')}
             </span>
             <div className="flex items-center gap-2 ml-2">
+              {/* ── TRIPLE CHECKBOX FILTER ROW (Desktop) ── */}
+              <label className={`flex items-center gap-1 cursor-pointer select-none text-[10px] font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                <input
+                  type="checkbox"
+                  checked={searchBarcode}
+                  onChange={e => setSearchBarcode(e.target.checked)}
+                  className="accent-amber-500 w-3 h-3 rounded"
+                />
+                Barcode
+              </label>
               <label className={`flex items-center gap-1 cursor-pointer select-none text-[10px] font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                 <input
                   type="checkbox"
@@ -2418,15 +2485,35 @@ export const QuickCheckout: React.FC = () => {
                         setCurrentMode('search');
                       }}
                       onChange={(e) => {
+                        e.stopPropagation();
+                        (e.nativeEvent as Event).stopImmediatePropagation?.();
                         const val = e.target.value;
                         if (handleBarcodeScanDispatch(val)) return;
                         const parsed = parseScanInput(val);
                         if (parsed?.qty && parsed?.code) {
-                          const match = flattenedProducts.find(
-                            (fp) => fp.displayBarcode === parsed.code || fp.displaySku.toLowerCase() === parsed.code.toLowerCase()
+                          const match = inventoryItems.find(
+                            (inv) => inv.barcode === parsed.code || inv.searchKey.toLowerCase() === parsed.code.toLowerCase()
                           );
                           if (match) {
-                            addProductToCart(match, parsed.qty);
+                            const sinhalaName = match.nameSinhala || match.nameSi || match.name;
+                            const fp: FlattenedProduct = {
+                              flatId: match.id,
+                              product: { nameAlt: sinhalaName, sku: match.searchKey, category: match.productCategory } as any,
+                              variant: undefined,
+                              displayName: match.name,
+                              displaySku: match.searchKey,
+                              displayBarcode: match.barcode,
+                              costPrice: match.cost,
+                              wholesalePrice: match.displayPrice,
+                              retailPrice: match.salesPrice,
+                              discountedPrice: undefined,
+                              hasDiscount: false,
+                              stock: match.storeQty,
+                              minStock: 0,
+                              isVariant: false,
+                              variantLabel: undefined,
+                            } as FlattenedProduct;
+                            addProductToCart(fp, parsed.qty);
                             setProductSearch('');
                             setSelectedProductIndex(-1);
                             return;
@@ -2437,6 +2524,14 @@ export const QuickCheckout: React.FC = () => {
                         }
                         setProductSearch(val);
                         setSelectedProductIndex(-1);
+                      }}
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                        (e.nativeEvent as Event).stopImmediatePropagation?.();
+                      }}
+                      onKeyUp={(e) => {
+                        e.stopPropagation();
+                        (e.nativeEvent as Event).stopImmediatePropagation?.();
                       }}
                       className={`w-full pl-9 pr-8 py-2 text-sm border-2 rounded-lg focus:outline-none transition-all ${
                         isDark
