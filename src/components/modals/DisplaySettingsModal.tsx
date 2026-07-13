@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useCatalog } from '../../contexts/CatalogContext';
 import { Category } from '../../types/index';
@@ -62,8 +63,11 @@ function enforceGaplessSequence(itemsArray: Category[]): Category[] {
 }
 
 export const DisplaySettingsModal: React.FC<DisplaySettingsModalProps> = ({ isOpen, onClose }) => {
+  const { i18n } = useTranslation();
   const { theme } = useTheme();
   const isDark = theme === 'dark';
+  const currentLanguage = (i18n.language || '').toLowerCase();
+  const isSinhala = currentLanguage === 'si' || currentLanguage === 'sinhala';
   const { categories, bulkUpdateDisplaySettings, isCategoriesLoading } = useCatalog();
 
   const [localCategories, setLocalCategories] = useState<Category[]>([]);
@@ -204,6 +208,12 @@ export const DisplaySettingsModal: React.FC<DisplaySettingsModalProps> = ({ isOp
   const onOrderNumberBlur = useCallback((id: string, value: string) => {
     applyOrderShift(id, value);
   }, [applyOrderShift]);
+
+  const getCategoryDisplayName = useCallback((category: Category) => {
+    const sinhalaName = category.nameSinhala?.trim();
+    if (isSinhala && sinhalaName) return sinhalaName;
+    return category.name;
+  }, [isSinhala]);
 
   // ── Drag reorder with visibility group boundary protection ──
   const handleDragStart = useCallback((index: number) => {
@@ -408,9 +418,9 @@ export const DisplaySettingsModal: React.FC<DisplaySettingsModalProps> = ({ isOp
                   {/* Category info */}
                   <div className="flex-1 min-w-0">
                     <p className={`text-xs font-semibold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      {cat.name}
+                      {getCategoryDisplayName(cat)}
                     </p>
-                    {cat.nameSinhala && (
+                    {cat.nameSinhala && !isSinhala && (
                       <p className={`text-[10px] truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                         {cat.nameSinhala}
                       </p>

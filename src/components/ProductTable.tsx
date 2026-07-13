@@ -59,9 +59,10 @@ interface SearchableSelectProps {
   placeholder?: string;
   isDark: boolean;
   allLabel?: string;
+  getOptionLabel?: (value: string) => string;
 }
 
-const SearchableSelect: React.FC<SearchableSelectProps> = ({ options, value, onChange, placeholder, isDark, allLabel = 'All' }) => {
+const SearchableSelect: React.FC<SearchableSelectProps> = ({ options, value, onChange, placeholder, isDark, allLabel = 'All', getOptionLabel }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -69,10 +70,14 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({ options, value, onC
 
   const filtered = useMemo(() => {
     if (!search.trim()) return options;
-    return options.filter((o) => o.toLowerCase().includes(search.toLowerCase()));
-  }, [search, options]);
+    const q = search.toLowerCase();
+    return options.filter((o) => {
+      const label = (getOptionLabel ? getOptionLabel(o) : o).toLowerCase();
+      return o.toLowerCase().includes(q) || label.includes(q);
+    });
+  }, [search, options, getOptionLabel]);
 
-  const displayValue = value === 'all' ? allLabel : value;
+  const displayValue = value === 'all' ? allLabel : (getOptionLabel ? getOptionLabel(value) : value);
 
   useEffect(() => {
     if (!open) setSearch('');
@@ -116,7 +121,7 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({ options, value, onC
             {filtered.map((opt) => (
               <button key={opt} onClick={() => { onChange(opt); setOpen(false); }}
                 className={`w-full text-left px-2.5 py-1.5 text-xs font-medium transition-colors ${opt === value ? 'bg-orange-500/20 text-orange-400' : isDark ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'
-                  }`}>{opt}</button>
+                }`}>{getOptionLabel ? getOptionLabel(opt) : opt}</button>
             ))}
             {filtered.length === 0 && (
               <div className={`px-2.5 py-1.5 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>No results</div>
@@ -260,20 +265,49 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
   const [barcodeRect, setBarcodeRect] = useState<DOMRect | null>(null);
 
   const { t, i18n } = useTranslation();
-  const isSinhala = i18n.language === 'si';
+  const currentLang = (i18n.language || '').toLowerCase();
+  const isSinhala = currentLang === 'si' || currentLang === 'sinhala';
 
-  const fieldLabels: Record<string, string> = {
-    cost: t('products.costTitle'), lastPrice: t('products.lastPriceTitle'), salesPrice: t('products.salesPriceTitle'),
-    displayPrice: t('products.displayPriceTitle'), storeQty: t('products.storeQtyTitle'),
-    searchKey: t('products.searchKey'), name: t('common.name'),
-    barcode: 'PRODUCT BARCODE',
-  };
+  const categoryLookup = useMemo(() => {
+    const byName = new Map<string, { name: string; nameSinhala?: string }>();
+    const byId = new Map<string, { name: string; nameSinhala?: string }>();
+    catalogCategories.forEach((cat) => {
+      byName.set(cat.name, cat);
+      byId.set(cat.id, cat);
+    });
+    return { byName, byId };
+  }, [catalogCategories]);
+
+  const resolveCategoryLabel = useCallback((item: InventoryProduct): string => {
+    const linkedCategory = (item.categoryId && categoryLookup.byId.get(item.categoryId))
+      || categoryLookup.byName.get(item.productCategory);
+    const englishName = linkedCategory?.name || item.productCategory;
+    const sinhalaName = linkedCategory?.nameSinhala?.trim();
+    if (isSinhala && sinhalaName) return sinhalaName;
+    return englishName;
+  }, [categoryLookup, isSinhala]);
 
   const categories = useMemo(() => {
     const cats = new Set<string>();
     items.forEach((i) => cats.add(i.productCategory));
     return Array.from(cats).sort();
   }, [items]);
+
+  const categoryLabelByName = useMemo(() => {
+    const labels = new Map<string, string>();
+    (categories || []).forEach((categoryName) => {
+      const cat = categoryLookup.byName.get(categoryName);
+      const sinhala = cat?.nameSinhala?.trim();
+      labels.set(categoryName, isSinhala && sinhala ? sinhala : categoryName);
+    });
+    return labels;
+  }, [categories, categoryLookup, isSinhala]);
+  const fieldLabels: Record<string, string> = {
+    cost: t('products.costTitle'), lastPrice: t('products.lastPriceTitle'), salesPrice: t('products.salesPriceTitle'),
+    displayPrice: t('products.displayPriceTitle'), storeQty: t('products.storeQtyTitle'),
+    searchKey: t('products.searchKey'), name: t('common.name'),
+    barcode: 'PRODUCT BARCODE',
+  };
 
   // ── MODIFIED FILTER: respects 4 checkboxes + space exemption for Search Key ──
   const filteredItems = useMemo(() => {
@@ -524,7 +558,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
             )}
           </div>
           <div className="relative min-w-[200px] w-64">
-            <SearchableSelect options={categories} value={categoryFilter} onChange={(v) => setCategoryFilter(v)} placeholder="Search category..." isDark={isDark} allLabel={t('filters.allCategories')} />
+            <SearchableSelect options={categories} value={categoryFilter} onChange={(v) => setCategoryFilter(v)} placeholder="Search category..." isDark={isDark} allLabel={t('filters.allCategories')} getOptionLabel={(value) => categoryLabelByName.get(value) || value} />
             {categoryFilter !== 'all' && (
               <button onClick={() => setCategoryFilter('all')}
                 className={`absolute -right-2 -top-2 z-10 w-4 h-4 rounded-full flex items-center justify-center transition-colors shadow-sm ${isDark ? 'bg-slate-700 text-slate-300 hover:bg-slate-600 border border-slate-600' : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-300'
@@ -674,12 +708,13 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                     {(() => {
                       const field = 'productCategory';
                       const isEditing = inlineEdit?.itemId === item.id && inlineEdit?.field === field;
+                      const categoryLabel = resolveCategoryLabel(item);
                       return (
                         <td className="px-2 py-1.5 relative group cursor-pointer" onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
                           {isEditing ? (
                             <InlineCategorySelect value={item.productCategory} isDark={isDark} onSave={(val) => handleInlineSave(item.id, field, val)} onCancel={() => setInlineEdit(null)} />
                           ) : (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20 hover:bg-purple-500/20 transition-colors cursor-pointer">{item.productCategory}</span>
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20 hover:bg-purple-500/20 transition-colors cursor-pointer">{categoryLabel}</span>
                           )}
                         </td>
                       );

@@ -88,7 +88,8 @@ export const QuickCheckout: React.FC = () => {
   const { t, i18n } = useTranslation();
   const { theme } = useTheme();
   const { user: currentUser } = useAuth();
-  const isSinhala = i18n.language === 'si';
+  const currentLanguage = (i18n.language || '').toLowerCase();
+  const isSinhala = currentLanguage === 'si' || currentLanguage === 'sinhala';
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isMobile = useIsMobile();
@@ -320,6 +321,13 @@ export const QuickCheckout: React.FC = () => {
       .sort((a, b) => a.sortOrder - b.sortOrder);
   }, [categories]);
 
+  const getCategoryDisplayName = useCallback((category?: { name?: string; nameSinhala?: string } | null, fallbackName?: string) => {
+    const sinhalaName = category?.nameSinhala?.trim();
+    const englishName = category?.name?.trim() || fallbackName?.trim() || '';
+    if (isSinhala && sinhalaName) return sinhalaName;
+    return englishName;
+  }, [isSinhala]);
+
   // ── Category Popover State ──
   const [activeCategoryPopover, setActiveCategoryPopover] = useState<string | null>(null);
   const [categoryPopoverFilter, setCategoryPopoverFilter] = useState('');
@@ -351,6 +359,17 @@ export const QuickCheckout: React.FC = () => {
     });
     return map;
   }, [inventoryItems]);
+
+  const quickCategoryByName = useMemo(() => {
+    const map = new Map<string, (typeof quickCheckoutCategories)[number]>();
+    quickCheckoutCategories.forEach((cat) => map.set(cat.name, cat));
+    return map;
+  }, [quickCheckoutCategories]);
+
+  const activeCategoryEntity = useMemo(() => {
+    if (!activeCategoryPopover) return null;
+    return quickCategoryByName.get(activeCategoryPopover) || null;
+  }, [activeCategoryPopover, quickCategoryByName]);
 
   // ── Customer dropdown outside-click ref ──
   const customerContainerRef = useRef<HTMLDivElement>(null);
@@ -3199,7 +3218,7 @@ export const QuickCheckout: React.FC = () => {
                               setCategoryPopoverFilter('');
                               setTimeout(() => categoryPopoverInputRef.current?.focus(), 100);
                             } else {
-                              toast.info(`${cat.name} - ${t('quickCheckout.noProductsFound')}`);
+                              toast.info(`${getCategoryDisplayName(cat, cat.name)} - ${t('quickCheckout.noProductsFound')}`);
                             }
                           }}
                           data-cat-id={cat.id}
@@ -3218,7 +3237,7 @@ export const QuickCheckout: React.FC = () => {
                             <span className={`text-[13px] font-bold leading-tight line-clamp-2 text-center break-words max-w-full ${
                               isDark ? 'text-slate-300' : 'text-slate-700'
                             }`}>
-                              {isSinhala ? (cat.nameSinhala || cat.name) : cat.name}
+                              {getCategoryDisplayName(cat, cat.name)}
                             </span>
                             <div className="w-1 h-1 rounded-full bg-cyan-500 shadow-glow mt-0.5"></div>
                           </div>
@@ -3335,7 +3354,7 @@ export const QuickCheckout: React.FC = () => {
                                   <Package className="w-3 h-3 text-white" />
                                 </div>
                             <span className={`text-xs font-bold uppercase tracking-wide ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                                  {isSinhala && (quickCheckoutCategories.find(c => c.name === activeCategoryPopover)?.nameSinhala) || activeCategoryPopover}
+                                  {getCategoryDisplayName(activeCategoryEntity, activeCategoryPopover || '')}
                                 </span>
                                 <span className={`text-[9px] font-mono ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                                   {filteredCategoryProducts.length} items
