@@ -1,937 +1,1381 @@
-import React, { useState, useMemo, useRef, useCallback } from 'react';
+/**
+ * BarcodeLabels.tsx — Thermal Label Print Engine
+ *
+ * Architecture:
+ *  • Real backend integration via useCatalog() + api.get() with debounced search
+ *  • Fail-Safe Isolated Hidden Iframe Print Engine — printing NEVER touches the
+ *    main document tree, so it can never collapse the app's own layout and can
+ *    never produce a blank page.
+ *  • The iframe is written with a fully standalone HTML/CSS document (no
+ *    inherited styles, no global `* { display:none }` tricks needed anywhere).
+ *  • Barcodes are rendered inside the iframe via JsBarcode directly onto SVG
+ *    nodes after the iframe's document has finished loading.
+ *  • Page size: 90mm × 16mm continuous roll, 3-column layout (30mm each)
+ *  • Break-avoidance on every sticker row via page-break-inside/break-inside
+ *  • ZDesigner ZD230 (203dpi, ZPL) continuous-roll label media, 0 margin
+ */
+import React, {
+  useState,
+  useMemo,
+  useCallback,
+  useEffect,
+  useRef,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
 import { useIsMobile } from '../hooks/use-mobile';
-import { mockProducts, mockCategories } from '../data/mockData';
-import { Product, Category } from '../types';
-import { 
-  ArrowLeft, 
-  Printer, 
-  Package, 
-  Tag, 
-  Plus, 
-  Minus, 
-  Trash2, 
-  X,
-  Barcode,
+import { useCatalog } from '../contexts/CatalogContext';
+import api from '../lib/api';
+import { InventoryProduct } from '../types';
+import {
+  ArrowLeft,
+  Printer,
+  Tag,
+  Plus,
+  Minus,
+  Trash2,
   ScanLine,
-  Settings2,
   Layers,
-  ShoppingCart
+  ShoppingCart,
+  Search,
+  Grid3X3,
+  RotateCcw,
+  Check,
+  Info,
+  RefreshCw,
+  AlertCircle,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '../components/ui/select';
-import { SearchableSelect, SearchableSelectOption } from '../components/ui/searchable-select';
 import { toast } from 'sonner';
-
-// ============================================================================
-// CODE39 BARCODE GENERATOR - Scannable barcode SVG renderer
-// ============================================================================
-const CODE39_MAP: Record<string, string> = {
-  '0': 'nnnwwnwnn','1':'wnnwnnnnw','2':'nnwwnnnnw','3':'wnwwnnnnn','4':'nnnwwnnnw','5':'wnnwwnnnn','6':'nnwwwnnnn','7':'nnnwnnwnw','8':'wnnwnnwnn','9':'nnwwnnwnn',
-  'A':'wnnnnwnnw','B':'nnwnnwnnw','C':'wnwnnwnnn','D':'nnnnwwnnw','E':'wnnnwwnnn','F':'nnwnwwnnn','G':'nnnnnwwnw','H':'wnnnnwwnn','I':'nnwnnwwnn','J':'nnnnwwwnn',
-  'K':'wnnnnnnww','L':'nnwnnnnww','M':'wnwnnnnwn','N':'nnnnwnnww','O':'wnnnwnnwn','P':'nnwnwnnwn','Q':'nnnnnnwww','R':'wnnnnnwwn','S':'nnwnnnwwn','T':'nnnnwnwwn',
-  'U':'wwnnnnnnw','V':'nwwnnnnnw','W':'wwwnnnnnn','X':'nwnnwnnnw','Y':'wwnnwnnnn','Z':'nwwnwnnnn','-':'nwnnnnwnw','.':'wwnnnnwnn',' ':'nwwnnnwnn','$':'nwnwnwnnn','/':'nwnwnnnwn','+':'nwnnnwnwn','%':'nnnwnwnwn','*':'nwnnwnwnn'
-};
-
-interface BarcodeProps {
-  value: string;
-  height?: number;
-  narrow?: number;
-  wide?: number;
-  margin?: number;
-}
-
-const Code39Barcode: React.FC<BarcodeProps> = ({ value, height = 50, narrow = 1.5, wide = 4, margin = 4 }) => {
-  const text = `*${String(value || '')
-    .toUpperCase()
-    .replace(/[^0-9A-Z\-\. \$\/\+\%]/g, '')}*`;
-
-  let x = 0;
-  const bars: React.ReactNode[] = [];
-
-  const appendPattern = (pattern: string, charIndex: number) => {
-    for (let i = 0; i < pattern.length; i++) {
-      const isBar = i % 2 === 0;
-      const w = pattern[i] === 'n' ? narrow : wide;
-      if (isBar) {
-        bars.push(
-          <rect key={`bar-${charIndex}-${i}-${x}`} x={x} y={0} width={w} height={height} fill="#000" />
-        );
-      }
-      x += w;
-    }
-    x += narrow;
-  };
-
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    const pattern = CODE39_MAP[ch] || CODE39_MAP['-'];
-    appendPattern(pattern, i);
-  }
-
-  const totalWidth = x + margin * 2;
-
-  return (
-    <svg width={totalWidth} height={height + margin * 2} viewBox={`0 0 ${totalWidth} ${height + margin * 2}`} role="img" aria-label={`Barcode for ${value}`}>
-      <rect x={0} y={0} width={totalWidth} height={height + margin * 2} fill="#fff" />
-      <g transform={`translate(${margin}, ${margin})`}>
-        {bars}
-      </g>
-    </svg>
-  );
-};
-
-// Generate Code39 barcode as SVG string for print
-const generateCode39SVG = (value: string, height: number = 50, narrow: number = 1.5, wide: number = 4, margin: number = 4): string => {
-  const text = `*${String(value || '')
-    .toUpperCase()
-    .replace(/[^0-9A-Z\-\. \$\/\+\%]/g, '')}*`;
-
-  let x = 0;
-  const bars: string[] = [];
-
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    const pattern = CODE39_MAP[ch] || CODE39_MAP['-'];
-    
-    for (let j = 0; j < pattern.length; j++) {
-      const isBar = j % 2 === 0;
-      const w = pattern[j] === 'n' ? narrow : wide;
-      if (isBar) {
-        bars.push(`<rect x="${x}" y="0" width="${w}" height="${height}" fill="#000"/>`);
-      }
-      x += w;
-    }
-    x += narrow;
-  }
-
-  const totalWidth = x + margin * 2;
-
-  return `<svg width="${totalWidth}" height="${height + margin * 2}" viewBox="0 0 ${totalWidth} ${height + margin * 2}" xmlns="http://www.w3.org/2000/svg"><rect x="0" y="0" width="${totalWidth}" height="${height + margin * 2}" fill="#fff"/><g transform="translate(${margin}, ${margin})">${bars.join('')}</g></svg>`;
-};
+import BarcodeComponent from 'react-barcode';
+// jsbarcode has no first-party TypeScript declarations; if your build
+// complains ("Cannot find module 'jsbarcode'"), add a `jsbarcode.d.ts`
+// next to this file containing: `declare module 'jsbarcode';`
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore
+import JsBarcode from 'jsbarcode';
 
 // ============================================================================
 // INTERFACES
 // ============================================================================
-
 interface LabelConfig {
-  labelHeight: 'compact' | 'standard' | 'large';
-  showPrice: boolean;
-  showSku: boolean;
-  showCategory: boolean;
+  storeId: string;
+  barcodeHeight: number;
 }
 
-interface Entry {
+interface StickerEntry {
+  /** Unique key: product.id (no variants in InventoryProduct schema) */
   id: string;
-  product: Product;
-  variant?: Product['variants'][number];
   name: string;
   sku: string;
-  barcode?: string;
-  categoryId?: string;
+  barcode: string;
+  salesPrice: number;
 }
 
-interface SelectedEntry {
-  entry: Entry;
+interface SelectedItem {
+  entry: StickerEntry;
   quantity: number;
 }
 
-interface CategoryGroup {
-  category: Category | null;
-  categoryName: string;
-  products: SelectedEntry[];
-  totalLabels: number;
+interface StickerData {
+  key: string;
+  barcode: string;
+  line1: string; // "Rs. [price]#[sku]"
+  line2: string; // store identifier
 }
 
 const DEFAULT_CONFIG: LabelConfig = {
-  labelHeight: 'standard',
-  showPrice: true,
-  showSku: true,
-  showCategory: false,
+  storeId: 'LHD@WBS',
+  barcodeHeight: 22,
+};
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+function toStickerEntry(p: InventoryProduct): StickerEntry | null {
+  if (!p.barcode) return null;
+  return {
+    id: p.id,
+    name: p.name,
+    sku: p.searchKey || p.id,
+    barcode: p.barcode,
+    salesPrice: p.displayPrice || p.salesPrice || 0,
+  };
+}
+
+function buildStickerData(
+  entry: StickerEntry,
+  storeId: string,
+  idx: number
+): StickerData {
+  return {
+    key: `${entry.id}-${idx}`,
+    barcode: entry.barcode,
+    line1: `Rs. ${entry.salesPrice.toFixed(2)}#${entry.sku}`,
+    line2: storeId,
+  };
+}
+
+/** Escapes text before it is interpolated into the iframe's HTML string. */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Builds a fully standalone HTML document for the isolated print iframe.
+ * ZDesigner ZD230, 203dpi ZPL, 90mm continuous roll, 16mm row height,
+ * exactly 3 stickers per row (30mm × 16mm each), 0 margin.
+ *
+ * Barcode <svg> nodes are written empty (with the code in data-barcode) —
+ * the caller fills them in with JsBarcode once this document is loaded
+ * into the iframe, since JsBarcode needs real DOM nodes to draw into.
+ */
+function buildPrintDocument(stickers: StickerData[]): string {
+  const rows: StickerData[][] = [];
+  for (let i = 0; i < stickers.length; i += 3) {
+    rows.push(stickers.slice(i, i + 3));
+  }
+
+  const rowsHtml = rows
+    .map((row) => {
+      const cells = row
+        .map(
+          (s) => `
+        <div class="sticker-cell">
+          <svg class="barcode-svg" data-barcode="${escapeHtml(s.barcode)}"></svg>
+          <div class="line-1">${escapeHtml(s.line1)}</div>
+          <div class="line-2">${escapeHtml(s.line2)}</div>
+        </div>`
+        )
+        .join('');
+      // Pad incomplete trailing rows so the 3-column grid stays exact.
+      const padCount = 3 - row.length;
+      const pad = '<div class="sticker-cell sticker-cell--empty"></div>'.repeat(
+        padCount
+      );
+      return `<div class="print-row">${cells}${pad}</div>`;
+    })
+    .join('');
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Thermal Labels</title>
+<style>
+  @page {
+    size: 90mm 16mm;
+    margin: 0;
+  }
+  html, body {
+    width: 90mm;
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+    font-family: Arial, Helvetica, sans-serif;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .print-row {
+    display: flex;
+    flex-direction: row;
+    width: 90mm;
+    height: 16mm;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    box-sizing: border-box;
+  }
+  .sticker-cell {
+    width: 30mm;
+    height: 16mm;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    padding: 0.5mm;
+    overflow: hidden;
+    text-align: center;
+  }
+  .barcode-svg {
+    width: 26mm;
+    height: 8mm;
+    display: block;
+  }
+  .line-1 {
+    font-size: 7.5pt;
+    font-weight: bold;
+    color: #000;
+    line-height: 1;
+    margin-top: 0.5mm;
+    white-space: nowrap;
+  }
+  .line-2 {
+    font-size: 7pt;
+    font-weight: bold;
+    color: #000;
+    line-height: 1;
+    margin-top: 0.3mm;
+    white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+${rowsHtml}
+</body>
+</html>`;
+}
+
+// ============================================================================
+// SUB-COMPONENT: Single Sticker Cell (on-screen preview only)
+// Styled like an actual die-cut thermal label sitting on white stock — a
+// folded-corner accent + soft shadow sell the "real sticker" illusion.
+// Actual print markup is generated separately as standalone HTML/CSS and
+// rendered inside the isolated print iframe — see buildPrintDocument() below.
+// ============================================================================
+interface StickerCellProps {
+  data: StickerData;
+  barcodeHeight: number;
+}
+
+const StickerCell: React.FC<StickerCellProps> = ({ data, barcodeHeight }) => (
+  <div
+    className="group relative flex flex-col items-center justify-center overflow-hidden
+      rounded-[3px] border border-slate-200 bg-white px-1.5 py-1.5
+      shadow-[0_1px_2px_rgba(15,23,42,0.10)]
+      transition-all duration-200 ease-out
+      hover:-translate-y-0.5 hover:shadow-[0_6px_14px_rgba(15,23,42,0.16)]"
+  >
+    {/* folded-corner accent — sells the "die-cut sticker" illusion */}
+    <div
+      className="pointer-events-none absolute right-0 top-0 h-3 w-3 opacity-70
+        transition-opacity duration-200 group-hover:opacity-100"
+      style={{
+        background: 'linear-gradient(135deg, transparent 50%, #e2e8f0 50%)',
+      }}
+    />
+    <div className="flex w-full justify-center">
+      <BarcodeComponent
+        value={data.barcode}
+        format="CODE128"
+        width={0.7}
+        height={barcodeHeight}
+        displayValue={false}
+        margin={0}
+        background="#ffffff"
+        lineColor="#000000"
+      />
+    </div>
+    <div className="mt-1 whitespace-nowrap text-[9px] font-bold leading-none tracking-tight text-slate-900 tabular-nums">
+      {data.line1}
+    </div>
+    <div className="mt-0.5 whitespace-nowrap text-[7.5px] font-semibold uppercase leading-none tracking-wider text-slate-400">
+      {data.line2}
+    </div>
+  </div>
+);
+
+/** A dashed "perforation" divider between printed rows, punctuated with two
+ *  small sprocket-hole dots — a nod to real continuous label roll stock. */
+const PerforationDivider: React.FC = () => (
+  <div className="flex items-center gap-1.5 py-1">
+    <span className="h-1 w-1 shrink-0 rounded-full bg-slate-300" />
+    <div className="h-0 flex-1 border-t border-dashed border-slate-300" />
+    <span className="h-1 w-1 shrink-0 rounded-full bg-slate-300" />
+  </div>
+);
+
+// ============================================================================
+// SUB-COMPONENT: Live On-Screen Preview (screen-only, not printed)
+// Styled as a mock ZD230 feeding out a real continuous label roll — printer
+// head chrome up top, white paper stock below, perforated between rows, and
+// a torn edge at the bottom where the roll would be cut. Purely decorative;
+// the actual print output comes from buildPrintDocument(), not this markup.
+// ============================================================================
+interface PreviewPanelProps {
+  stickers: StickerData[];
+  isDark: boolean;
+  barcodeHeight: number;
+  totalLabels: number;
+}
+
+const PreviewPanel: React.FC<PreviewPanelProps> = ({
+  stickers,
+  isDark,
+  barcodeHeight,
+  totalLabels,
+}) => {
+  const rows: StickerData[][] = [];
+  for (let i = 0; i < stickers.length; i += 3) {
+    rows.push(stickers.slice(i, i + 3));
+  }
+
+  // The torn-edge teeth need a color matching whatever sits behind the card
+  // (the card itself is always white "paper", regardless of app theme).
+  const tornBg = isDark ? '#0f172a' : '#f8fafc';
+
+  return (
+    <div>
+      {/* ── Printer head chrome ── */}
+      <div className="relative rounded-t-2xl bg-gradient-to-b from-slate-700 to-slate-900 px-4 pt-3 pb-4 shadow-lg">
+        <div className="flex items-center justify-center gap-2">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.85)]" />
+          <span className="text-[9px] font-semibold uppercase tracking-[0.15em] text-slate-300">
+            ZD230 · 203dpi · Feeding
+          </span>
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.85)]" />
+        </div>
+        <div className="mx-auto mt-2.5 h-2 w-2/3 rounded-full bg-black/50 shadow-[inset_0_1px_3px_rgba(0,0,0,0.6)]" />
+      </div>
+
+      {/* ── Paper stock hanging out of the printer ── */}
+      <div className="relative -mt-px mx-2 overflow-hidden rounded-b-[2px] bg-white shadow-xl">
+        <div className="px-2.5 py-2.5">
+          {stickers.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-9 text-center">
+              <ScanLine className="mb-2 h-7 w-7 text-slate-200" />
+              <p className="text-[10px] font-medium text-slate-400">
+                Select products and set quantity
+              </p>
+              <p className="mt-0.5 text-[10px] text-slate-300">
+                Each row prints exactly 3 labels side-by-side
+              </p>
+            </div>
+          ) : (
+            <div>
+              {rows.map((row, ri) => (
+                <React.Fragment key={`pvrow-${ri}`}>
+                  {ri > 0 && <PerforationDivider />}
+                  <div className="flex flex-row gap-1">
+                    {row.map((s) => (
+                      <div key={s.key} className="min-w-0 flex-1">
+                        <StickerCell data={s} barcodeHeight={barcodeHeight} />
+                      </div>
+                    ))}
+                    {row.length < 2 && <div className="min-w-0 flex-1" />}
+                    {row.length < 3 && <div className="min-w-0 flex-1" />}
+                  </div>
+                </React.Fragment>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Torn-off roll edge */}
+        <div
+          className="h-2.5 w-full"
+          style={{
+            backgroundImage: `linear-gradient(135deg, ${tornBg} 25%, transparent 25.5%), linear-gradient(225deg, ${tornBg} 25%, transparent 25.5%)`,
+            backgroundSize: '10px 10px',
+            backgroundPosition: 'top',
+            backgroundRepeat: 'repeat-x',
+          }}
+        />
+      </div>
+
+      {/* ── Roll meta footer ── */}
+      <div
+        className={`flex items-center justify-between px-1 pt-2.5 text-[10px] font-medium ${
+          isDark ? 'text-slate-400' : 'text-slate-500'
+        }`}
+      >
+        <span className="flex items-center gap-1.5">
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${
+              totalLabels > 0 ? 'bg-emerald-400' : 'bg-slate-500'
+            }`}
+          />
+          90mm × 16mm · 3-column thermal
+        </span>
+        {totalLabels > 0 && (
+          <span className={isDark ? 'text-slate-300' : 'text-slate-600'}>
+            <span className="font-bold">{totalLabels}</span> label
+            {totalLabels !== 1 ? 's' : ''} · ~
+            {Math.ceil(totalLabels / 3)} row
+            {Math.ceil(totalLabels / 3) !== 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+    </div>
+  );
 };
 
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
-
 export const BarcodeLabels: React.FC = () => {
-  const { t } = useTranslation();
   const { theme } = useTheme();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
-  const printRef = useRef<HTMLDivElement>(null);
-
-  // State
-  const [products] = useState<Product[]>(mockProducts);
-  const [categories] = useState<Category[]>(mockCategories);
-  const [selectedEntries, setSelectedEntries] = useState<Map<string, SelectedEntry>>(new Map());
-  const [labelConfig, setLabelConfig] = useState<LabelConfig>(DEFAULT_CONFIG);
-  const [showConfig, setShowConfig] = useState(false);
-  const [isPrintPreview, setIsPrintPreview] = useState(false);
-  const [productSelectValue, setProductSelectValue] = useState<string>('');
-
   const isDark = theme === 'dark';
 
-  // Get category name by ID
-  const getCategoryName = useCallback((categoryId?: string): string => {
-    if (!categoryId) return t('barcodeLabels.uncategorized');
-    const cat = categories.find(c => c.id === categoryId);
-    return cat?.name || categoryId;
-  }, [categories, t]);
+  // ── Real backend data via CatalogContext (same source as Products page) ──
+  const {
+    inventoryItems,
+    isInventoryLoading,
+    inventoryError,
+    refreshInventory,
+  } = useCatalog();
 
-  // Flatten products into selectable entries (variant-level). Each entry has exactly one barcode (if present)
-  const entries = useMemo(() => {
-    const list: Entry[] = [];
-    products.forEach(product => {
-      if (product.hasVariants && product.variants && product.variants.length > 0) {
-        product.variants.forEach(variant => {
-          if (!variant.isActive) return;
-          const labelParts: string[] = [];
-          if (variant.size) labelParts.push(variant.size);
-          if (variant.color) labelParts.push(variant.color);
-          const name = labelParts.length ? `${product.name} (${labelParts.join(' - ')})` : `${product.name} (${variant.sku})`;
-          list.push({
-            id: `${product.id}__${variant.id}`,
-            product,
-            variant,
-            name,
-            sku: variant.sku,
-            barcode: variant.barcode,
-            categoryId: product.categoryId || product.category,
-          });
-        });
-      } else {
-        list.push({
-          id: product.id,
-          product,
-          variant: undefined,
-          name: product.name,
-          sku: product.sku,
-          barcode: product.barcode,
-          categoryId: product.categoryId || product.category,
-        });
-      }
-    });
-    return list;
-  }, [products]);
+  // ── Local search state (debounced against in-memory inventoryItems) ──
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const entriesWithBarcodes = useMemo(() => entries.filter(e => e.barcode), [entries]);
-  const countEntriesWithBarcodes = entriesWithBarcodes.length;
+  // Additional API search results for paginated deep-search
+  const [apiSearchResults, setApiSearchResults] = useState<InventoryProduct[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
-  // SearchableSelect options for entries (variants and standalone products)
-  const productOptions: SearchableSelectOption[] = useMemo(() => {
-    return entriesWithBarcodes.map(entry => ({
-      value: entry.id,
-      label: `${entry.name} (${entry.sku})`,
-      icon: <Barcode className="w-4 h-4 text-indigo-500" />,
-      count: 1,
-      disabled: selectedEntries.has(entry.id),
-    }));
-  }, [entriesWithBarcodes, selectedEntries]);
+  // ── Print queue state ──
+  const [selectedItems, setSelectedItems] = useState<Map<string, SelectedItem>>(
+    new Map()
+  );
+  const [labelConfig, setLabelConfig] = useState<LabelConfig>(DEFAULT_CONFIG);
+  const [globalQuantity, setGlobalQuantity] = useState(1);
+  const [isPrinting, setIsPrinting] = useState(false);
 
-  // Handle product selection from SearchableSelect
-  const handleEntrySelect = useCallback((entryId: string) => {
-    if (!entryId || selectedEntries.has(entryId)) return;
+  // ── Debounce search input ──
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 280);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [searchQuery]);
 
-    const entry = entries.find(e => e.id === entryId);
-    if (!entry) return;
-    if (!entry.barcode) {
-      toast.error(t('barcodeLabels.noBarcode'));
+  // ── Deep API search when local results are slim and query is non-empty ──
+  useEffect(() => {
+    if (!debouncedQuery.trim() || debouncedQuery.trim().length < 2) {
+      setApiSearchResults([]);
       return;
     }
-
-    setSelectedEntries(prev => {
-      const newMap = new Map(prev);
-      newMap.set(entry.id, {
-        entry,
-        quantity: 1,
+    let cancelled = false;
+    setIsSearching(true);
+    api
+      .get<InventoryProduct[]>('/products', {
+        search: debouncedQuery.trim(),
+        perPage: 40,
+      })
+      .then((data) => {
+        if (cancelled) return;
+        const arr = Array.isArray(data)
+          ? data
+          : (data as any)?.data ?? [];
+        setApiSearchResults(arr as InventoryProduct[]);
+      })
+      .catch(() => {
+        // Silent fail — local results are still shown
+      })
+      .finally(() => {
+        if (!cancelled) setIsSearching(false);
       });
-      return newMap;
-    });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedQuery]);
 
-    setProductSelectValue('');
-    toast.success(`${entry.name} ${t('barcodeLabels.added')}`);
-  }, [entries, selectedEntries, t]);
-
-  // Update label quantity for a product
-  const updateQuantity = useCallback((entryId: string, delta: number) => {
-    setSelectedEntries(prev => {
-      const newMap = new Map(prev);
-      const item = newMap.get(entryId);
-      if (item) {
-        const newQty = Math.max(1, Math.min(100, item.quantity + delta));
-        newMap.set(entryId, { ...item, quantity: newQty });
+  // ── Build candidate list from local inventory (always available) ──
+  const localEntries = useMemo((): StickerEntry[] => {
+    const seen = new Set<string>();
+    const result: StickerEntry[] = [];
+    for (const p of inventoryItems) {
+      const e = toStickerEntry(p);
+      if (e && !seen.has(e.id)) {
+        seen.add(e.id);
+        result.push(e);
       }
-      return newMap;
-    });
-  }, []);
+    }
+    return result;
+  }, [inventoryItems]);
 
-  // Set exact quantity
-  const setQuantity = useCallback((entryId: string, quantity: number) => {
-    setSelectedEntries(prev => {
-      const newMap = new Map(prev);
-      const item = newMap.get(entryId);
-      if (item) {
-        const newQty = Math.max(1, Math.min(100, quantity));
-        newMap.set(entryId, { ...item, quantity: newQty });
+  // ── Merge local + API search results, filtered ──
+  const filteredEntries = useMemo((): StickerEntry[] => {
+    const q = debouncedQuery.toLowerCase().trim();
+
+    // Merge: prefer local (already in memory), supplement with API results
+    const merged = new Map<string, StickerEntry>();
+    for (const e of localEntries) merged.set(e.id, e);
+    for (const p of apiSearchResults) {
+      const e = toStickerEntry(p);
+      if (e && !merged.has(e.id)) merged.set(e.id, e);
+    }
+
+    const all = Array.from(merged.values());
+
+    if (!q) return all.slice(0, 25);
+
+    return all
+      .filter(
+        (e) =>
+          e.name.toLowerCase().includes(q) ||
+          e.sku.toLowerCase().includes(q) ||
+          e.barcode.toLowerCase().includes(q)
+      )
+      .slice(0, 40);
+  }, [localEntries, apiSearchResults, debouncedQuery]);
+
+  // ── Print queue management ──
+  const handleAddEntry = useCallback(
+    (entry: StickerEntry) => {
+      if (selectedItems.has(entry.id)) {
+        toast.info(`${entry.name} is already in the queue`);
+        return;
       }
-      return newMap;
+      setSelectedItems((prev) => {
+        const next = new Map(prev);
+        next.set(entry.id, { entry, quantity: globalQuantity });
+        return next;
+      });
+      toast.success(`Added: ${entry.name}`);
+    },
+    [selectedItems, globalQuantity]
+  );
+
+  const updateQuantity = useCallback((id: string, delta: number) => {
+    setSelectedItems((prev) => {
+      const next = new Map(prev);
+      const item = next.get(id);
+      if (item) {
+        const qty = Math.max(1, Math.min(500, item.quantity + delta));
+        next.set(id, { ...item, quantity: qty });
+      }
+      return next;
     });
   }, []);
 
-  // Remove entry from selection
-  const removeEntry = useCallback((entryId: string) => {
-    setSelectedEntries(prev => {
-      const newMap = new Map(prev);
-      newMap.delete(entryId);
-      return newMap;
+  const setExactQuantity = useCallback((id: string, qty: number) => {
+    setSelectedItems((prev) => {
+      const next = new Map(prev);
+      const item = next.get(id);
+      if (item) {
+        next.set(id, { ...item, quantity: Math.max(1, Math.min(500, qty || 1)) });
+      }
+      return next;
     });
   }, []);
 
-  // Clear all selections
-  const clearSelection = useCallback(() => {
-    setSelectedEntries(new Map());
-    toast.info(t('barcodeLabels.selectionCleared'));
-  }, [t]);
+  const removeItem = useCallback((id: string) => {
+    setSelectedItems((prev) => {
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
+  }, []);
 
-  // Calculate total labels
+  const clearAll = useCallback(() => {
+    setSelectedItems(new Map());
+    toast.info('Print queue cleared');
+  }, []);
+
+  // ── Totals ──
   const totalLabels = useMemo(() => {
-    let total = 0;
-    selectedEntries.forEach(item => {
-      total += item.quantity;
+    let n = 0;
+    selectedItems.forEach((v) => { n += v.quantity; });
+    return n;
+  }, [selectedItems]);
+
+  // ── Build flat sticker array for preview and print ──
+  const allStickers = useMemo((): StickerData[] => {
+    const result: StickerData[] = [];
+    selectedItems.forEach(({ entry, quantity }) => {
+      for (let i = 0; i < quantity; i++) {
+        result.push(buildStickerData(entry, labelConfig.storeId, i));
+      }
     });
-    return total;
-  }, [selectedEntries]);
+    return result;
+  }, [selectedItems, labelConfig.storeId]);
 
-  // Organize labels by category for printing
-  const labelGroups = useMemo((): CategoryGroup[] => {
-    const groups = new Map<string, CategoryGroup>();
+  // ── Print handler ────────────────────────────────────────────────────────
+  // Fail-Safe Isolated Hidden Iframe Print Engine.
+  // Never touches the main document's DOM/CSS, so it can never collapse the
+  // app's own layout and can never produce a blank print preview. The iframe
+  // gets a fully standalone HTML document (buildPrintDocument), barcodes are
+  // rendered into it via JsBarcode once it has finished loading, then
+  // contentWindow.print() is triggered and the iframe is torn down.
+  const handlePrint = useCallback(() => {
+    if (selectedItems.size === 0) {
+      toast.error('No products in the print queue');
+      return;
+    }
+    if (allStickers.length === 0) {
+      toast.error('No labels to print');
+      return;
+    }
 
-    selectedEntries.forEach(item => {
-      const catKey = item.entry.categoryId || item.entry.product.categoryId || item.entry.product.category || 'other';
+    setIsPrinting(true);
 
-      if (!groups.has(catKey)) {
-        const category = categories.find(c => c.id === catKey) || null;
-        groups.set(catKey, {
-          category,
-          categoryName: getCategoryName(catKey),
-          products: [],
-          totalLabels: 0,
-        });
+    let iframe: HTMLIFrameElement | null = null;
+    let cleaned = false;
+
+    const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      setIsPrinting(false);
+      if (iframe && iframe.parentNode) {
+        iframe.parentNode.removeChild(iframe);
+      }
+    };
+
+    try {
+      // 1. Create the isolated hidden iframe — never display:none (some
+      //    browsers refuse to print a display:none frame), just moved off
+      //    the visible viewport and made non-interactive.
+      iframe = document.createElement('iframe');
+      iframe.setAttribute('aria-hidden', 'true');
+      iframe.setAttribute('title', 'thermal-label-print');
+      Object.assign(iframe.style, {
+        position: 'fixed',
+        right: '0',
+        bottom: '0',
+        width: '0',
+        height: '0',
+        border: '0',
+        visibility: 'hidden',
+      });
+      document.body.appendChild(iframe);
+
+      const iframeWindow = iframe.contentWindow;
+      const iframeDoc = iframeWindow?.document;
+      if (!iframeWindow || !iframeDoc) {
+        throw new Error('Unable to access isolated print iframe document');
       }
 
-      const group = groups.get(catKey)!;
-      group.products.push(item);
-      group.totalLabels += item.quantity;
-    });
+      // 2. Write a clean, standalone HTML/CSS document — zero inheritance
+      //    from the app's own stylesheets or DOM tree.
+      iframeDoc.open();
+      iframeDoc.write(buildPrintDocument(allStickers));
+      iframeDoc.close();
 
-    return Array.from(groups.values()).sort((a, b) =>
-      a.categoryName.localeCompare(b.categoryName)
-    );
-  }, [selectedEntries, categories, getCategoryName]);
-
-  // Print labels
-  const handlePrint = useCallback(() => {
-    if (selectedEntries.size === 0) {
-      toast.error(t('barcodeLabels.noProductsSelected'));
-      return;
-    }
-    setIsPrintPreview(true);
-  }, [selectedEntries.size, t]);
-
-  // Execute print with 3-column A4 layout and real Code39 barcodes
-  const executePrint = useCallback(() => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      toast.error(t('barcodeLabels.printBlocked'));
-      return;
-    }
-
-    const labelHeightPx = labelConfig.labelHeight === 'compact' ? '78px' : 
-                          labelConfig.labelHeight === 'standard' ? '98px' : '118px';
-
-    // Generate all label HTML with real Code39 barcodes
-    let labelsHTML = '';
-    
-    labelGroups.forEach(group => {
-      labelsHTML += `<div class="category-section">`;
-      labelsHTML += `<div class="category-header">${group.categoryName} (${group.totalLabels} labels)</div>`;
-      labelsHTML += `<div class="labels-grid">`;
-      
-      group.products.forEach(({ entry, quantity }) => {
-        const barcode = entry.barcode || '';
-        if (!barcode) return;
-        for (let i = 0; i < quantity; i++) {
-          const barcodeSVG = generateCode39SVG(barcode, 38, 1.2, 3.5, 2);
-
-          labelsHTML += `
-            <div class="label-item" style="height: ${labelHeightPx}">
-              <div class="product-name">${entry.name}</div>
-              <div class="barcode-container">
-                ${barcodeSVG}
-                <div class="barcode-text">${barcode}</div>
-              </div>
-              ${labelConfig.showPrice ? `<div class="price">Rs. ${(entry.product.retailPrice || entry.product.price || 0).toLocaleString()}</div>` : ''}
-              ${labelConfig.showSku ? `<div class="sku">${entry.sku}</div>` : ''}
-              ${labelConfig.showCategory ? `<div class="category-tag">${group.categoryName}</div>` : ''}
-            </div>
-          `;
-        }
-      });
-      
-      labelsHTML += `</div></div>`;
-    });
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>${t('barcodeLabels.printTitle')}</title>
-        <style>
-          @page {
-            size: A4;
-            margin: 6mm; /* reduced margin to fit more labels */
-          }
-          
-          * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-          }
-          
-          body {
-            font-family: 'Arial', sans-serif;
-            font-size: 10px;
-            line-height: 1.18;
-            background: #fff;
-          }
-          
-          .category-section {
-            margin-bottom: 8px;
-            page-break-inside: avoid;
-          }
-          
-          /* Simple black section title with bottom rule */
-          .category-header {
-            color: #0f172a;
-            padding: 4px 6px;
-            margin-bottom: 6px;
-            font-weight: 700;
-            font-size: 11px;
-            border-bottom: 1px solid #0f172a;
-          }
-          
-          .labels-grid {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px;
-          }
-          
-          /* Tighter label spacing to fit more rows on A4 */
-          .label-item {
-            width: calc(33.333% - 3px);
-            border: 1px dashed #e5e7eb;
-            border-radius: 4px;
-            padding: 3px 2px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            overflow: hidden;
-            page-break-inside: avoid;
-            background: #fff;
-          }
-          
-          .product-name {
-            font-weight: 700;
-            font-size: 9px;
-            margin-bottom: 4px;
-            max-width: 100%;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            line-height: 1.05;
-            color: #0f172a;
-            padding: 0 2px; /* small horizontal inset so text doesn't touch border */
-          }
-          
-          .barcode-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            width: 100%;
-            margin: 2px 0;
-          }
-          
-          .barcode-container svg {
-            max-width: 100%;
-            height: auto;
-            max-height: 34px; /* slightly smaller to free vertical space */
-          }
-          
-          .barcode-text {
-            font-family: 'Courier New', monospace;
-            font-size: 8.5px;
-            margin-top: 2px;
-            letter-spacing: 1.2px;
-            font-weight: 500;
-            color: #374151;
-          }
-          
-          .price {
-            font-weight: bold;
-            font-size: 12px;
-            color: #059669;
-            margin-top: 3px;
-          }
-          
-          .sku {
-            font-size: 8px;
-            color: #6b7280;
-            margin-top: 1px;
-          }
-          
-          .category-tag {
-            font-size: 7px;
-            background: #e5e7eb;
-            padding: 2px 6px;
-            border-radius: 3px;
-            color: #4b5563;
-            margin-top: 2px;
-          }
-          
-          @media print {
-            body {
-              print-color-adjust: exact;
-              -webkit-print-color-adjust: exact;
+      // 3. Once the iframe document is ready, stamp in real Code128
+      //    barcodes and trigger the native print dialog.
+      const runPrint = () => {
+        try {
+          const svgNodes = iframeDoc.querySelectorAll('svg.barcode-svg');
+          svgNodes.forEach((svgEl) => {
+            const code = svgEl.getAttribute('data-barcode') || '';
+            try {
+              JsBarcode(svgEl, code, {
+                format: 'CODE128',
+                displayValue: false,
+                margin: 0,
+                width: 1.4,
+                height: 30,
+              });
+            } catch (barcodeErr) {
+              console.error(`Failed to render barcode for "${code}"`, barcodeErr);
             }
-          }
-        </style>
-      </head>
-      <body>
-        ${labelsHTML}
-      </body>
-      </html>
-    `);
+          });
 
-    printWindow.document.close();
-    printWindow.focus();
-    
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.close();
-    }, 300);
+          iframeWindow.focus();
+          iframeWindow.print();
+          toast.success(`Sent ${allStickers.length} labels to printer`);
+        } catch (printErr) {
+          console.error('Print failed:', printErr);
+          toast.error('Failed to send labels to printer');
+        } finally {
+          // Prefer the real afterprint signal; fall back to a safety-net
+          // timeout in case a browser never fires it for iframe windows.
+          iframeWindow.onafterprint = cleanup;
+          setTimeout(cleanup, 60_000);
+        }
+      };
 
-    setIsPrintPreview(false);
-    toast.success(t('barcodeLabels.printSuccess'));
-  }, [labelConfig, labelGroups, t]);
+      if (iframeDoc.readyState === 'complete') {
+        runPrint();
+      } else {
+        iframe.onload = runPrint;
+      }
+    } catch (err) {
+      console.error('Print setup failed:', err);
+      toast.error('Failed to prepare labels for printing');
+      cleanup();
+    }
+  }, [selectedItems, allStickers]);
 
+  // ==========================================================================
+  // RENDER
+  // ==========================================================================
   return (
-    <div className={`min-h-screen ${isDark ? 'bg-slate-900' : 'bg-slate-50'} ${isMobile ? 'pb-24' : ''}`}>
-      {/* Header - Compact on mobile */}
-      <div className={`sticky top-0 z-40 ${isMobile ? 'px-3 py-2' : 'px-4 py-3'} ${isDark ? 'bg-slate-800/95 backdrop-blur border-b border-slate-700' : 'bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm'}`}>
-        <div className="flex items-center justify-between max-w-7xl mx-auto">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => navigate('/products')}
-              className={`p-2 rounded-lg transition-colors ${isDark ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-slate-100 text-slate-600'}`}
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
+    <>
+      {/* ══════════════════════════════════════════════════════════════════════
+          NOTE ON PRINTING
+          There is intentionally NO global `@media print` stylesheet and NO
+          hidden in-DOM print zone here anymore. The old approach injected a
+          `* { display: none !important }` rule into the main document, which
+          also hid every ancestor of the print zone — collapsing the app's own
+          layout and producing a blank page. Printing now happens entirely
+          inside an isolated hidden <iframe> with its own standalone HTML/CSS
+          document (see buildPrintDocument() + handlePrint above), so it can
+          never interact with — or break — this component's own DOM/CSS.
+          ══════════════════════════════════════════════════════════════════════ */}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          SCREEN UI
+          ══════════════════════════════════════════════════════════════════════ */}
+      <div className={`min-h-screen ${isDark ? 'bg-slate-900' : 'bg-slate-50'}`}>
+
+        {/* ── HEADER ── */}
+        <div
+          className={`sticky top-0 z-40 ${
+            isMobile ? 'px-3 py-2' : 'px-4 py-3'
+          } ${
+            isDark
+              ? 'bg-slate-800/95 backdrop-blur border-b border-slate-700'
+              : 'bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm'
+          }`}
+        >
+          <div className="flex items-center justify-between max-w-7xl mx-auto">
             <div className="flex items-center gap-2">
-              <div className={`${isMobile ? 'w-8 h-8' : 'w-10 h-10'} bg-gradient-to-br from-indigo-500 to-purple-500 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30`}>
-                <ScanLine className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-white`} />
-              </div>
-              <div>
-                <h1 className={`${isMobile ? 'text-base' : 'text-xl'} font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  {t('barcodeLabels.title')}
-                </h1>
-                {!isMobile && (
-                  <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    {t('barcodeLabels.subtitle')}
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-1.5">
-            {totalLabels > 0 && (
-              <Badge variant="secondary" className={`gap-1 ${isMobile ? 'px-2 py-1 text-xs' : 'px-3 py-1.5'} bg-indigo-500/20 text-indigo-600 dark:text-indigo-400`}>
-                <Tag className={`${isMobile ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
-                {totalLabels}
-              </Badge>
-            )}
-            
-            <button
-              onClick={() => setShowConfig(!showConfig)}
-              className={`p-2 rounded-lg transition-colors ${
-                showConfig 
-                  ? 'bg-indigo-500 text-white' 
-                  : isDark ? 'hover:bg-slate-700 text-slate-400' : 'hover:bg-slate-100 text-slate-600'
-              }`}
-              title={t('barcodeLabels.settings')}
-            >
-              <Settings2 className="w-5 h-5" />
-            </button>
-            
-            {/* Print button - hidden on mobile (floating button used instead) */}
-            {!isMobile && (
-              <Button
-                onClick={handlePrint}
-                disabled={selectedEntries.size === 0}
-                className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600"
+              <button
+                onClick={() => navigate('/products')}
+                className={`p-2 rounded-lg transition-colors ${
+                  isDark
+                    ? 'hover:bg-slate-700 text-slate-400'
+                    : 'hover:bg-slate-100 text-slate-600'
+                }`}
               >
-                <Printer className="w-4 h-4" />
-                {t('barcodeLabels.print')}
-              </Button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div className={`max-w-7xl mx-auto ${isMobile ? 'px-3 py-3' : 'p-4'}`}>
-        {/* Configuration Panel - Collapsible on mobile */}
-        {showConfig && (
-          <div className={`mb-4 ${isMobile ? 'p-3' : 'p-4'} rounded-2xl border ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
-            <h3 className={`font-semibold mb-3 flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'} ${isMobile ? 'text-sm' : ''}`}>
-              <Settings2 className="w-4 h-4" />
-              {t('barcodeLabels.labelSettings')}
-            </h3>
-            <div className={`grid ${isMobile ? 'grid-cols-2 gap-3' : 'grid-cols-2 md:grid-cols-4 gap-4'}`}>
-              {/* Label height */}
-              <div>
-                <label className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                  {t('barcodeLabels.labelHeight')}
-                </label>
-                <Select
-                  value={labelConfig.labelHeight}
-                  onValueChange={(v) => setLabelConfig(prev => ({ ...prev, labelHeight: v as 'compact' | 'standard' | 'large' }))}
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div className="flex items-center gap-2">
+                <div
+                  className={`${
+                    isMobile ? 'w-8 h-8' : 'w-10 h-10'
+                  } bg-gradient-to-br from-indigo-500 to-purple-500 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30`}
                 >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="compact">{t('barcodeLabels.compact')}</SelectItem>
-                    <SelectItem value="standard">{t('barcodeLabels.standard')}</SelectItem>
-                    <SelectItem value="large">{t('barcodeLabels.large')}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              
-              {/* Show price toggle */}
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="showPrice"
-                  checked={labelConfig.showPrice}
-                  onChange={(e) => setLabelConfig(prev => ({ ...prev, showPrice: e.target.checked }))}
-                  className="rounded border-slate-300"
-                />
-                <label htmlFor="showPrice" className={`text-sm ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                  {t('barcodeLabels.showPrice')}
-                </label>
-              </div>
-              
-              {/* Show SKU toggle */}
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="showSku"
-                  checked={labelConfig.showSku}
-                  onChange={(e) => setLabelConfig(prev => ({ ...prev, showSku: e.target.checked }))}
-                  className="rounded border-slate-300"
-                />
-                <label htmlFor="showSku" className={`text-sm ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                  {t('barcodeLabels.showSku')}
-                </label>
-              </div>
-              
-              {/* Show category toggle */}
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="showCategory"
-                  checked={labelConfig.showCategory}
-                  onChange={(e) => setLabelConfig(prev => ({ ...prev, showCategory: e.target.checked }))}
-                  className="rounded border-slate-300"
-                />
-                <label htmlFor="showCategory" className={`text-sm ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                  {t('barcodeLabels.showCategoryOnLabel')}
-                </label>
-              </div>
-            </div>
-            
-            {/* Layout info */}
-            <div className={`mt-3 p-2 rounded-lg text-xs ${isDark ? 'bg-indigo-500/10 text-indigo-400' : 'bg-indigo-50 text-indigo-600'}`}>
-              <strong>{t('barcodeLabels.layoutInfo')}:</strong> 3 {t('barcodeLabels.columnsPerPage')} (A4)
-            </div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {/* Left Panel - Product Selection with SearchableSelect */}
-          <div className="space-y-4">
-            <div className={`p-4 rounded-2xl border ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
-              <h3 className={`font-semibold mb-3 flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                <ShoppingCart className="w-4 h-4" />
-                {t('barcodeLabels.selectProducts')}
-              </h3>
-              
-              {/* SearchableSelect for product selection */}
-              <div className="mb-4">
-                <SearchableSelect
-                  options={productOptions}
-                  value={productSelectValue}
-                  onValueChange={handleEntrySelect}
-                  placeholder={t('barcodeLabels.searchAndSelect')}
-                  searchPlaceholder={t('barcodeLabels.searchProducts')}
-                  emptyMessage={t('barcodeLabels.noProductsWithBarcode')}
-                  theme={isDark ? 'dark' : 'light'}
-                />
-              </div>
-              
-              {/* Stats */}
-              <div className={`flex items-center justify-between text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                <span>{countEntriesWithBarcodes} {t('barcodeLabels.productsWithBarcodes')}</span>
-                {selectedEntries.size > 0 && (
-                  <button
-                    onClick={clearSelection}
-                    className="text-red-500 hover:text-red-600 text-xs flex items-center gap-1"
+                  <ScanLine
+                    className={`${isMobile ? 'w-4 h-4' : 'w-5 h-5'} text-white`}
+                  />
+                </div>
+                <div>
+                  <h1
+                    className={`${
+                      isMobile ? 'text-base' : 'text-xl'
+                    } font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}
                   >
-                    <X className="w-3 h-3" />
-                    {t('barcodeLabels.clearAll')}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Quick Add - Recently used or popular products */}
-            <div className={`${isMobile ? 'p-3' : 'p-4'} rounded-2xl border ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
-              <h4 className={`text-sm font-medium mb-3 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                {t('barcodeLabels.quickAdd')}
-              </h4>
-              <div className={`flex flex-wrap ${isMobile ? 'gap-1.5' : 'gap-2'}`}>
-                {entriesWithBarcodes.slice(0, isMobile ? 6 : 8).map(entry => {
-                  const isSelected = selectedEntries.has(entry.id);
-                  return (
-                    <button
-                      key={entry.id}
-                      onClick={() => !isSelected && handleEntrySelect(entry.id)}
-                      disabled={isSelected}
-                      className={`${isMobile ? 'px-2.5 py-2 text-xs' : 'px-3 py-1.5 text-xs'} rounded-lg font-medium transition-all active:scale-95 ${
-                        isSelected
-                          ? isDark ? 'bg-indigo-500/30 text-indigo-300 cursor-not-allowed' : 'bg-indigo-100 text-indigo-600 cursor-not-allowed'
-                          : isDark ? 'bg-slate-700 text-slate-300 hover:bg-slate-600 active:bg-slate-500' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 active:bg-slate-300'
+                    Barcode Labels — 3-Column Thermal
+                  </h1>
+                  {!isMobile && (
+                    <p
+                      className={`text-xs ${
+                        isDark ? 'text-slate-400' : 'text-slate-500'
                       }`}
                     >
-                      {entry.name.length > (isMobile ? 15 : 20) ? entry.name.slice(0, isMobile ? 15 : 20) + '...' : entry.name}
-                    </button>
-                  );
-                })}
+                      90mm × 16mm · 3 labels per row · Code128 · Live inventory
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Right Panel - Selected Products & Quantities */}
-          <div className="space-y-4">
-            <div className={`rounded-2xl border ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
-              <div className={`${isMobile ? 'px-3 py-2.5' : 'px-4 py-3'} border-b ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
-                <h3 className={`font-semibold flex items-center gap-2 ${isDark ? 'text-white' : 'text-slate-900'} ${isMobile ? 'text-sm' : ''}`}>
-                  <Layers className="w-4 h-4" />
-                  {t('barcodeLabels.selectedProducts')} ({selectedEntries.size})
-                </h3>
-              </div>
-              
-              <div className={`${isMobile ? 'max-h-[350px]' : 'max-h-[500px]'} overflow-y-auto`}>
-                {selectedEntries.size === 0 ? (
-                  <div className={`${isMobile ? 'p-6' : 'p-8'} text-center`}>
-                    <Tag className={`${isMobile ? 'w-10 h-10' : 'w-12 h-12'} mx-auto mb-3 ${isDark ? 'text-slate-600' : 'text-slate-300'}`} />
-                    <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                      {t('barcodeLabels.noSelection')}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="p-3 space-y-3">
-                    {Array.from(selectedEntries.values()).map(({ entry, quantity }) => (
-                      <div
-                        key={entry.id}
-                        className={`${isMobile ? 'p-3' : 'p-4'} rounded-xl border ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-slate-50 border-slate-200'}`}
-                      >
-                        <div className="flex items-start justify-between gap-2 mb-2">
-                          <div className="min-w-0 flex-1">
-                            <p className={`font-medium ${isMobile ? 'text-sm' : 'text-sm'} truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                              {entry.name}
-                            </p>
-                            <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                              SKU: {entry.sku}
-                            </p>
-                          </div>
-                          <button
-                            onClick={() => removeEntry(entry.id)}
-                            className={`${isMobile ? 'p-2' : 'p-1.5'} rounded-lg transition-colors active:scale-95 ${isDark ? 'hover:bg-red-500/20 active:bg-red-500/30 text-red-400' : 'hover:bg-red-100 active:bg-red-200 text-red-500'}`}
-                          >
-                            <Trash2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'}`} />
-                          </button>
-                        </div>
-                        
-                        {/* Barcode preview - smaller on mobile */}
-                        <div className={`${isMobile ? 'mb-2' : 'mb-3'} rounded-lg ${isDark ? 'bg-white' : 'bg-white border border-slate-200'} flex items-center justify-center px-2 py-1.5`} style={{ minHeight: isMobile ? 50 : 64 }}>
-                          <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column' }}>
-                            <Code39Barcode value={entry.barcode} height={isMobile ? 28 : 35} narrow={isMobile ? 0.8 : 1} wide={isMobile ? 2.5 : 3} margin={1} />
-                            <p className={`text-center ${isMobile ? 'text-[10px]' : 'text-xs'} font-mono text-slate-600 mt-0.5`}>{entry.barcode}</p>
-                          </div>
-                        </div>
-                        
-                        {/* Quantity controls - larger touch targets on mobile */}
-                        <div className="flex items-center justify-between">
-                          <span className={`text-xs font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                            {t('barcodeLabels.labelsQty')}:
-                          </span>
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => updateQuantity(entry.id, -1)}
-                              className={`${isMobile ? 'p-2.5' : 'p-1.5'} rounded-lg transition-colors active:scale-95 ${isDark ? 'hover:bg-slate-700 active:bg-slate-600 text-slate-400' : 'hover:bg-slate-200 active:bg-slate-300 text-slate-600'}`}
-                            >
-                              <Minus className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'}`} />
-                            </button>
-                            <input
-                              type="number"
-                              min="1"
-                              max="100"
-                              value={quantity}
-                              onChange={(e) => setQuantity(entry.id, parseInt(e.target.value) || 1)}
-                              className={`${isMobile ? 'w-14 px-1.5 py-2 text-base' : 'w-16 px-2 py-1.5 text-sm'} text-center font-bold rounded-lg border ${
-                                isDark 
-                                  ? 'bg-slate-700 border-slate-600 text-white' 
-                                  : 'bg-white border-slate-300 text-slate-900'
-                              }`}
-                            />
-                            <button
-                              onClick={() => updateQuantity(entry.id, 1)}
-                              className={`${isMobile ? 'p-2.5' : 'p-1.5'} rounded-lg transition-colors active:scale-95 ${isDark ? 'hover:bg-slate-700 active:bg-slate-600 text-slate-400' : 'hover:bg-slate-200 active:bg-slate-300 text-slate-600'}`}
-                            >
-                              <Plus className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                        
-                        {/* Total labels for this product */}
-                        <div className={`mt-2 pt-2 border-t text-xs text-right ${isDark ? 'border-slate-700 text-indigo-400' : 'border-slate-200 text-indigo-600'}`}>
-                          {quantity} = <strong>{quantity} {t('barcodeLabels.labels')}</strong>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              
-              {/* Summary Footer */}
-              {selectedEntries.size > 0 && (
-                <div className={`${isMobile ? 'px-3 py-3' : 'px-4 py-4'} border-t ${isDark ? 'border-slate-700 bg-slate-800/30' : 'border-slate-200 bg-slate-50'}`}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className={`font-medium ${isMobile ? 'text-sm' : ''} ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                      {t('barcodeLabels.totalLabels')}:
-                    </span>
-                    <span className={`${isMobile ? 'text-xl' : 'text-2xl'} font-bold text-indigo-500`}>
-                      {totalLabels}
-                    </span>
-                  </div>
-                  <div className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    {t('barcodeLabels.estimatedPages')}: ~{Math.ceil(totalLabels / 21)} {t('barcodeLabels.pages')} (3×7 per page)
-                  </div>
-                </div>
+            <div className="flex items-center gap-2">
+              {totalLabels > 0 && (
+                <Badge
+                  variant="secondary"
+                  className={`gap-1 ${
+                    isMobile ? 'px-2 py-1 text-xs' : 'px-3 py-1.5'
+                  } bg-indigo-500/20 text-indigo-600 dark:text-indigo-400`}
+                >
+                  <Tag className={`${isMobile ? 'w-3 h-3' : 'w-3.5 h-3.5'}`} />
+                  {totalLabels}
+                </Badge>
+              )}
+              {!isMobile && (
+                <Button
+                  onClick={handlePrint}
+                  disabled={selectedItems.size === 0 || isPrinting}
+                  className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600"
+                >
+                  <Printer className="w-4 h-4" />
+                  {isPrinting ? 'Printing…' : 'Print Labels'}
+                </Button>
               )}
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Print Preview Modal - Full screen on mobile */}
-      {isPrintPreview && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className={`w-full ${isMobile ? 'h-full max-h-full rounded-none' : 'max-w-4xl max-h-[90vh] m-4 rounded-2xl'} overflow-auto ${isDark ? 'bg-slate-800' : 'bg-white'}`}>
-            <div className={`sticky top-0 ${isMobile ? 'px-3 py-2' : 'px-4 py-3'} border-b flex items-center justify-between ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'} z-10`}>
-              <h3 className={`font-semibold ${isMobile ? 'text-sm' : ''} ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                {t('barcodeLabels.printPreview')}
-              </h3>
-              <div className="flex items-center gap-2">
-                <Button onClick={executePrint} className={`gap-2 ${isMobile ? 'h-9 px-3 text-sm' : ''}`}>
-                  <Printer className={`${isMobile ? 'w-3.5 h-3.5' : 'w-4 h-4'}`} />
-                  {isMobile ? t('barcodeLabels.print') : t('barcodeLabels.confirmPrint')}
-                </Button>
-                <Button variant="outline" onClick={() => setIsPrintPreview(false)} className={isMobile ? 'h-9 w-9 p-0' : ''}>
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-            
-            {/* Preview Content */}
-            <div className={`${isMobile ? 'p-3' : 'p-6'} bg-white`}>
-              {labelGroups.map(group => (
-                <div key={group.categoryName} className="mb-6">
-                  <div className="text-black px-1 pb-2 mb-3 text-sm font-semibold border-b border-slate-300">
-                    {group.categoryName} ({group.totalLabels} {t('barcodeLabels.labels')})
-                  </div>
-                  <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-3'} gap-2`}>
-                    {group.products.flatMap(({ entry, quantity }) => 
-                      Array.from({ length: Math.min(quantity, isMobile ? 2 : 3) }).map((_, idx) => (
-                        <div 
-                          key={`${entry.id}-${idx}`}
-                          className={`border border-dashed border-slate-300 rounded-md ${isMobile ? 'px-1.5 py-1' : 'px-2 py-1'} flex flex-col items-center text-center`}
+        {/* ── MAIN CONTENT: SPLIT-VIEW DASHBOARD ── */}
+        <div
+          className={`max-w-7xl mx-auto ${isMobile ? 'px-2 py-2' : 'p-4'}`}
+        >
+          <div
+            className={`grid gap-4 ${
+              isMobile ? 'grid-cols-1' : 'grid-cols-[360px_1fr]'
+            }`}
+          >
+            {/* ────────────────────────────────────────────────────────────
+                LEFT PANEL — Settings + Product Search + Queue
+                ──────────────────────────────────────────────────────────── */}
+            <div className="space-y-3">
+
+              {/* ── API status bar ── */}
+              {inventoryError && (
+                <div
+                  className={`flex items-center gap-2 p-2.5 rounded-xl text-xs border ${
+                    isDark
+                      ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                      : 'bg-amber-50 border-amber-200 text-amber-700'
+                  }`}
+                >
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span className="flex-1">API offline — showing cached data</span>
+                  <button
+                    onClick={() => refreshInventory()}
+                    className="flex items-center gap-1 opacity-70 hover:opacity-100"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {/* ── SETTINGS CARD ── */}
+              <div
+                className={`relative overflow-hidden rounded-2xl border ${
+                  isDark
+                    ? 'bg-slate-800/60 backdrop-blur-xl border-slate-700/50 shadow-xl shadow-black/20'
+                    : 'bg-white/80 backdrop-blur-xl border-slate-200/80 shadow-xl shadow-slate-200/50'
+                }`}
+              >
+                {/* Glassmorphism accent */}
+                <div
+                  className={`absolute -top-16 -right-16 w-36 h-36 rounded-full blur-3xl opacity-20 ${
+                    isDark ? 'bg-indigo-500' : 'bg-indigo-300'
+                  }`}
+                />
+
+                <div className="relative p-4 space-y-4">
+                  {/* SECTION: Product Search */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <h3
+                        className={`text-sm font-semibold flex items-center gap-1.5 ${
+                          isDark ? 'text-white' : 'text-slate-800'
+                        }`}
+                      >
+                        <Search className="w-3.5 h-3.5 text-indigo-500" />
+                        Search Products
+                      </h3>
+                      <div className="flex items-center gap-1.5">
+                        {isInventoryLoading && (
+                          <RefreshCw className="w-3 h-3 animate-spin text-indigo-400" />
+                        )}
+                        <span
+                          className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                            isDark
+                              ? 'bg-slate-700 text-slate-400'
+                              : 'bg-slate-100 text-slate-500'
+                          }`}
                         >
-                          <p className={`${isMobile ? 'text-[10px]' : 'text-xs'} font-semibold text-slate-800 w-full ${isMobile ? 'mb-1' : 'mb-2'}`} style={{ display: '-webkit-box' as any, WebkitLineClamp: 2 as any, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>
-                            {entry.name}
-                          </p>
-                          <Code39Barcode value={entry.barcode} height={isMobile ? 28 : 36} narrow={isMobile ? 0.8 : 1} wide={isMobile ? 2.5 : 3} margin={1} />
-                          <p className={`${isMobile ? 'text-[9px]' : 'text-xs'} font-mono text-slate-600 mt-0.5`}>{entry.barcode}</p>
-                          {labelConfig.showPrice && (
-                            <p className={`${isMobile ? 'text-xs' : 'text-sm'} font-bold text-emerald-600 mt-0.5`}>
-                              Rs. {(entry.product.retailPrice || entry.product.price || 0).toLocaleString()}
-                            </p>
-                          )}
-                        </div>
-                      ))
+                          {localEntries.length.toLocaleString()} items
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Search input */}
+                    <div
+                      className={`relative rounded-xl overflow-hidden border transition-all duration-200 focus-within:ring-2 focus-within:ring-indigo-500/50 ${
+                        isDark
+                          ? 'border-slate-600 bg-slate-700/50'
+                          : 'border-slate-200 bg-slate-50'
+                      }`}
+                    >
+                      <Search
+                        className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${
+                          isDark ? 'text-slate-400' : 'text-slate-400'
+                        }`}
+                      />
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Name, SKU, or barcode…"
+                        className={`w-full bg-transparent py-2.5 pl-10 pr-8 text-sm outline-none ${
+                          isDark
+                            ? 'text-white placeholder-slate-500'
+                            : 'text-slate-900 placeholder-slate-400'
+                        }`}
+                      />
+                      {isSearching && (
+                        <RefreshCw className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin text-indigo-400" />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Product list */}
+                  <div
+                    className={`max-h-[260px] overflow-y-auto rounded-xl border ${
+                      isDark ? 'border-slate-700/50' : 'border-slate-200'
+                    }`}
+                  >
+                    {isInventoryLoading && filteredEntries.length === 0 ? (
+                      <div className="p-6 flex flex-col items-center gap-2">
+                        <RefreshCw
+                          className={`w-6 h-6 animate-spin ${
+                            isDark ? 'text-indigo-400' : 'text-indigo-500'
+                          }`}
+                        />
+                        <p
+                          className={`text-xs ${
+                            isDark ? 'text-slate-500' : 'text-slate-400'
+                          }`}
+                        >
+                          Loading inventory…
+                        </p>
+                      </div>
+                    ) : filteredEntries.length === 0 ? (
+                      <div className="p-4 text-center">
+                        <Search
+                          className={`w-7 h-7 mx-auto mb-1.5 opacity-40 ${
+                            isDark ? 'text-slate-500' : 'text-slate-300'
+                          }`}
+                        />
+                        <p
+                          className={`text-xs ${
+                            isDark ? 'text-slate-500' : 'text-slate-400'
+                          }`}
+                        >
+                          {debouncedQuery
+                            ? 'No products match your search'
+                            : 'No products with barcodes found'}
+                        </p>
+                      </div>
+                    ) : (
+                      <div
+                        className={`divide-y ${
+                          isDark ? 'divide-slate-700/40' : 'divide-slate-100'
+                        }`}
+                      >
+                        {filteredEntries.map((entry) => {
+                          const isSelected = selectedItems.has(entry.id);
+                          return (
+                            <button
+                              key={entry.id}
+                              onClick={() => handleAddEntry(entry)}
+                              disabled={isSelected}
+                              className={`w-full text-left px-3 py-2.5 transition-all duration-150 flex items-center gap-2 ${
+                                isSelected
+                                  ? isDark
+                                    ? 'bg-indigo-500/20 cursor-default'
+                                    : 'bg-indigo-50 cursor-default'
+                                  : isDark
+                                  ? 'hover:bg-slate-700/50 active:bg-slate-700'
+                                  : 'hover:bg-slate-50 active:bg-slate-100'
+                              }`}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <p
+                                  className={`text-xs font-medium truncate ${
+                                    isSelected
+                                      ? isDark
+                                        ? 'text-indigo-300'
+                                        : 'text-indigo-600'
+                                      : isDark
+                                      ? 'text-slate-200'
+                                      : 'text-slate-800'
+                                  }`}
+                                >
+                                  {entry.name}
+                                </p>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span
+                                    className={`text-[10px] font-mono ${
+                                      isDark ? 'text-slate-500' : 'text-slate-400'
+                                    }`}
+                                  >
+                                    {entry.sku}
+                                  </span>
+                                  <span
+                                    className={`text-[10px] font-semibold ${
+                                      isDark ? 'text-emerald-400' : 'text-emerald-600'
+                                    }`}
+                                  >
+                                    Rs.{entry.salesPrice.toLocaleString()}
+                                  </span>
+                                  <span
+                                    className={`text-[9px] font-mono ${
+                                      isDark ? 'text-slate-600' : 'text-slate-300'
+                                    }`}
+                                  >
+                                    {entry.barcode}
+                                  </span>
+                                </div>
+                              </div>
+                              {isSelected ? (
+                                <Check className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+                              ) : (
+                                <Plus
+                                  className={`w-4 h-4 flex-shrink-0 ${
+                                    isDark ? 'text-slate-500' : 'text-slate-400'
+                                  }`}
+                                />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
                     )}
                   </div>
-                  {group.totalLabels > (isMobile ? 4 : 9) && (
-                    <p className="text-xs text-slate-400 text-center mt-2">
-                      +{group.totalLabels - Math.min(group.products.reduce((acc, p) => acc + Math.min(p.quantity, isMobile ? 2 : 3), 0), isMobile ? 4 : 9)} more labels...
-                    </p>
+
+                  {/* Global default quantity */}
+                  <div>
+                    <label
+                      className={`text-xs font-medium mb-1.5 block ${
+                        isDark ? 'text-slate-300' : 'text-slate-600'
+                      }`}
+                    >
+                      Default quantity per product
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setGlobalQuantity((q) => Math.max(1, q - 1))}
+                        className={`p-2 rounded-lg transition-colors ${
+                          isDark
+                            ? 'hover:bg-slate-700 text-slate-400'
+                            : 'hover:bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        <Minus className="w-4 h-4" />
+                      </button>
+                      <input
+                        type="number"
+                        min={1}
+                        max={500}
+                        value={globalQuantity}
+                        onChange={(e) =>
+                          setGlobalQuantity(
+                            Math.max(1, Math.min(500, parseInt(e.target.value) || 1))
+                          )
+                        }
+                        className={`w-16 text-center font-bold rounded-lg border py-1.5 text-sm outline-none ${
+                          isDark
+                            ? 'bg-slate-700 border-slate-600 text-white'
+                            : 'bg-white border-slate-300 text-slate-900'
+                        }`}
+                      />
+                      <button
+                        onClick={() => setGlobalQuantity((q) => Math.min(500, q + 1))}
+                        className={`p-2 rounded-lg transition-colors ${
+                          isDark
+                            ? 'hover:bg-slate-700 text-slate-400'
+                            : 'hover:bg-slate-100 text-slate-600'
+                        }`}
+                      >
+                        <Plus className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Store ID */}
+                  <div>
+                    <label
+                      className={`text-xs font-medium mb-1.5 block ${
+                        isDark ? 'text-slate-300' : 'text-slate-600'
+                      }`}
+                    >
+                      Store ID (Label Line 2)
+                    </label>
+                    <input
+                      type="text"
+                      value={labelConfig.storeId}
+                      onChange={(e) =>
+                        setLabelConfig((prev) => ({
+                          ...prev,
+                          storeId: e.target.value,
+                        }))
+                      }
+                      className={`w-full rounded-xl border py-2 px-3 text-sm font-mono outline-none transition-all duration-200 focus:ring-2 focus:ring-indigo-500/50 ${
+                        isDark
+                          ? 'bg-slate-700 border-slate-600 text-white'
+                          : 'bg-white border-slate-200 text-slate-900'
+                      }`}
+                    />
+                  </div>
+
+                  {/* Barcode height slider */}
+                  <div>
+                    <label
+                      className={`text-xs font-medium mb-1.5 flex items-center justify-between ${
+                        isDark ? 'text-slate-300' : 'text-slate-600'
+                      }`}
+                    >
+                      <span>Barcode height</span>
+                      <span
+                        className={`font-mono ${
+                          isDark ? 'text-indigo-400' : 'text-indigo-600'
+                        }`}
+                      >
+                        {labelConfig.barcodeHeight}px
+                      </span>
+                    </label>
+                    <input
+                      type="range"
+                      min={14}
+                      max={32}
+                      step={1}
+                      value={labelConfig.barcodeHeight}
+                      onChange={(e) =>
+                        setLabelConfig((prev) => ({
+                          ...prev,
+                          barcodeHeight: parseInt(e.target.value),
+                        }))
+                      }
+                      className="w-full accent-indigo-500"
+                    />
+                  </div>
+
+                  {/* Print button */}
+                  <Button
+                    onClick={handlePrint}
+                    disabled={selectedItems.size === 0 || isPrinting}
+                    className="w-full gap-2 py-5 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 shadow-lg shadow-indigo-500/25"
+                    size="lg"
+                  >
+                    <Printer className="w-5 h-5" />
+                    {isPrinting
+                      ? 'Preparing…'
+                      : `Print Labels${totalLabels > 0 ? ` (${totalLabels})` : ''}`}
+                  </Button>
+
+                  {/* Info tip */}
+                  <div
+                    className={`flex items-start gap-2 p-2.5 rounded-xl text-[10px] ${
+                      isDark
+                        ? 'bg-indigo-500/10 text-indigo-300'
+                        : 'bg-indigo-50 text-indigo-600'
+                    }`}
+                  >
+                    <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                    <span>
+                      3 columns × 30mm on a 90mm continuous roll. Each row is
+                      16mm tall. Row breaks are avoided automatically.
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* ── PRINT QUEUE CARD ── */}
+              <div
+                className={`relative overflow-hidden rounded-2xl border ${
+                  isDark
+                    ? 'bg-slate-800/60 backdrop-blur-xl border-slate-700/50'
+                    : 'bg-white/80 backdrop-blur-xl border-slate-200/80'
+                }`}
+              >
+                <div className="p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3
+                      className={`text-xs font-semibold flex items-center gap-1.5 ${
+                        isDark ? 'text-white' : 'text-slate-800'
+                      }`}
+                    >
+                      <Layers className="w-3.5 h-3.5 text-indigo-500" />
+                      Print Queue ({selectedItems.size})
+                    </h3>
+                    {selectedItems.size > 0 && (
+                      <button
+                        onClick={clearAll}
+                        className="text-[10px] text-red-500 hover:text-red-600 flex items-center gap-1"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        Clear all
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="max-h-[220px] overflow-y-auto space-y-1">
+                    {selectedItems.size === 0 ? (
+                      <div className="py-5 text-center">
+                        <ShoppingCart
+                          className={`w-6 h-6 mx-auto mb-1 ${
+                            isDark ? 'text-slate-600' : 'text-slate-300'
+                          }`}
+                        />
+                        <p
+                          className={`text-[10px] ${
+                            isDark ? 'text-slate-500' : 'text-slate-400'
+                          }`}
+                        >
+                          Queue is empty
+                        </p>
+                      </div>
+                    ) : (
+                      Array.from(selectedItems.entries()).map(
+                        ([id, { entry, quantity }]) => (
+                          <div
+                            key={id}
+                            className={`flex items-center gap-2 p-2 rounded-xl ${
+                              isDark ? 'bg-slate-700/50' : 'bg-slate-50'
+                            }`}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p
+                                className={`text-[10px] font-medium truncate ${
+                                  isDark ? 'text-slate-200' : 'text-slate-700'
+                                }`}
+                              >
+                                {entry.name}
+                              </p>
+                              <p
+                                className={`text-[9px] font-mono ${
+                                  isDark ? 'text-slate-500' : 'text-slate-400'
+                                }`}
+                              >
+                                {entry.sku} · {entry.barcode}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => updateQuantity(id, -1)}
+                                className={`p-1 rounded-lg ${
+                                  isDark
+                                    ? 'hover:bg-slate-600 text-slate-400'
+                                    : 'hover:bg-slate-200 text-slate-500'
+                                }`}
+                              >
+                                <Minus className="w-3 h-3" />
+                              </button>
+                              <input
+                                type="number"
+                                min={1}
+                                max={500}
+                                value={quantity}
+                                onChange={(e) =>
+                                  setExactQuantity(id, parseInt(e.target.value) || 1)
+                                }
+                                className={`w-10 text-center font-bold rounded-lg border py-0.5 text-[10px] outline-none ${
+                                  isDark
+                                    ? 'bg-slate-600 border-slate-500 text-white'
+                                    : 'bg-white border-slate-200 text-slate-900'
+                                }`}
+                              />
+                              <button
+                                onClick={() => updateQuantity(id, 1)}
+                                className={`p-1 rounded-lg ${
+                                  isDark
+                                    ? 'hover:bg-slate-600 text-slate-400'
+                                    : 'hover:bg-slate-200 text-slate-500'
+                                }`}
+                              >
+                                <Plus className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={() => removeItem(id)}
+                                className={`p-1 rounded-lg ${
+                                  isDark
+                                    ? 'hover:bg-red-500/20 text-red-400'
+                                    : 'hover:bg-red-100 text-red-500'
+                                }`}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      )
+                    )}
+                  </div>
+
+                  {totalLabels > 0 && (
+                    <div
+                      className={`mt-2 pt-2 border-t flex items-center justify-between ${
+                        isDark ? 'border-slate-700' : 'border-slate-200'
+                      }`}
+                    >
+                      <span
+                        className={`text-xs font-medium ${
+                          isDark ? 'text-slate-300' : 'text-slate-600'
+                        }`}
+                      >
+                        Total labels
+                      </span>
+                      <span className="text-lg font-bold text-indigo-500">
+                        {totalLabels}
+                      </span>
+                    </div>
                   )}
                 </div>
-              ))}
+              </div>
+            </div>
+
+            {/* ────────────────────────────────────────────────────────────
+                RIGHT PANEL — Live 3-Column Roll Preview
+                ──────────────────────────────────────────────────────────── */}
+            <div
+              className={`relative overflow-hidden rounded-2xl border ${
+                isDark
+                  ? 'bg-slate-800/30 backdrop-blur border-slate-700/50'
+                  : 'bg-white/80 backdrop-blur-xl border-slate-200/80'
+              }`}
+            >
+              <div
+                className={`p-3 border-b flex items-center justify-between ${
+                  isDark ? 'border-slate-700/50' : 'border-slate-200'
+                }`}
+              >
+                <h3
+                  className={`text-sm font-semibold flex items-center gap-1.5 ${
+                    isDark ? 'text-white' : 'text-slate-800'
+                  }`}
+                >
+                  <Grid3X3 className="w-4 h-4 text-indigo-500" />
+                  Roll Preview — Real-time 3-Column Layout
+                </h3>
+                {totalLabels > 0 && (
+                  <span
+                    className={`text-[10px] px-2 py-0.5 rounded-full ${
+                      isDark
+                        ? 'bg-slate-700 text-slate-300'
+                        : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    {totalLabels} label{totalLabels !== 1 ? 's' : ''}
+                  </span>
+                )}
+              </div>
+
+              <div className="p-3 lg:p-5 overflow-x-auto">
+                <div className="flex justify-center">
+                  <div
+                    className={`${
+                      isMobile ? 'w-full max-w-[340px]' : 'w-[360px]'
+                    } transition-all duration-300`}
+                  >
+                    <PreviewPanel
+                      stickers={allStickers}
+                      isDark={isDark}
+                      barcodeHeight={labelConfig.barcodeHeight}
+                      totalLabels={totalLabels}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      )}
 
-      {/* Mobile Floating Action Button */}
-      {isMobile && selectedEntries.size > 0 && !isPrintPreview && (
-        <div className="fixed bottom-20 left-0 right-0 px-4 z-50">
-          <Button
-            onClick={handlePrint}
-            className="w-full h-14 gap-3 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 shadow-2xl shadow-indigo-500/40 rounded-2xl text-base font-semibold"
-          >
-            <Printer className="w-5 h-5" />
-            {t('barcodeLabels.print')} ({totalLabels} {t('barcodeLabels.labels')})
-          </Button>
-        </div>
-      )}
-    </div>
+        {/* ── MOBILE FLOATING PRINT BUTTON ── */}
+        {isMobile && selectedItems.size > 0 && (
+          <div className="fixed bottom-20 left-0 right-0 px-4 z-50">
+            <Button
+              onClick={handlePrint}
+              disabled={isPrinting}
+              className="w-full h-14 gap-3 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 shadow-2xl shadow-indigo-500/40 rounded-2xl text-base font-semibold"
+            >
+              <Printer className="w-5 h-5" />
+              {isPrinting ? 'Preparing…' : `Print ${totalLabels} Labels`}
+            </Button>
+          </div>
+        )}
+      </div>
+    </>
   );
 };
 

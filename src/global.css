@@ -410,4 +410,64 @@
     -ms-overflow-style: none;
     scrollbar-width: none;
   }
+
+  /* ═══════════════════════════════════════════════════════════
+     BARCODE LABELS – THERMAL PREVIEW COMPONENT STYLES
+     (Layout helpers — theming is handled inline in BarcodeLabels.tsx)
+     ═══════════════════════════════════════════════════════════ */
+
+  /* Sticker cells within preview (on-screen) */
+  .preview-sticker-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    overflow: hidden;
+    width: 100%;
+    border-radius: 2px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    padding: 2px;
+  }
+
+  .preview-sticker-cell .sticker-barcode {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1px;
+  }
+
+  .preview-sticker-cell .sticker-barcode svg {
+    max-width: 100%;
+    height: auto;
+    max-height: 22px;
+  }
+
+  .preview-sticker-cell .sticker-line1 {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 5.5px;
+    font-weight: 700;
+    color: #000000;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+
+  .preview-sticker-cell .sticker-line2 {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 5px;
+    font-weight: 500;
+    color: #000000;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    margin-top: 0.5px;
+  }
 }
