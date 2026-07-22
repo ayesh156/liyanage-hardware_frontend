@@ -478,6 +478,14 @@ export const BarcodeLabels: React.FC = () => {
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // ── Multi-field search scope checkboxes ──
+  const [searchScope, setSearchScope] = useState({
+    searchKey: true,
+    productName: true,
+    productId: false,
+    barcode: false,
+  });
+
   // Additional API search results for paginated deep-search
   const [apiSearchResults, setApiSearchResults] = useState<InventoryProduct[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -583,7 +591,7 @@ export const BarcodeLabels: React.FC = () => {
     return result;
   }, [inventoryItems]);
 
-  // ── Merge local + API search results, filtered ──
+  // ── Merge local + API search results, filtered by search scope ──
   const filteredEntries = useMemo((): StickerEntry[] => {
     const q = debouncedQuery.toLowerCase().trim();
 
@@ -600,14 +608,23 @@ export const BarcodeLabels: React.FC = () => {
     if (!q) return all.slice(0, 25);
 
     return all
-      .filter(
-        (e) =>
-          e.name.toLowerCase().includes(q) ||
-          e.sku.toLowerCase().includes(q) ||
-          e.barcode.toLowerCase().includes(q)
-      )
+      .filter((e) => {
+        const matchesSearchKey =
+          searchScope.searchKey &&
+          (e.sku?.toLowerCase().includes(q) || e.name?.toLowerCase().includes(q));
+        const matchesName =
+          searchScope.productName && e.name?.toLowerCase().includes(q);
+        const matchesId =
+          searchScope.productId &&
+          (e.id?.toLowerCase().includes(q) ||
+            formatShortProductId(e.id).toLowerCase().includes(q));
+        const matchesBarcode =
+          searchScope.barcode && e.barcode?.toLowerCase().includes(q);
+
+        return matchesSearchKey || matchesName || matchesId || matchesBarcode;
+      })
       .slice(0, 40);
-  }, [localEntries, apiSearchResults, debouncedQuery]);
+  }, [localEntries, apiSearchResults, debouncedQuery, searchScope]);
 
   // ── Print queue management ──
   const handleAddEntry = useCallback(
@@ -1017,6 +1034,51 @@ export const BarcodeLabels: React.FC = () => {
                       {isSearching && (
                         <RefreshCw className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 animate-spin text-indigo-400" />
                       )}
+                    </div>
+
+                    {/* ── Multi-field search scope checkboxes ── */}
+                    <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-slate-600 dark:text-slate-400">
+                      <span className="font-semibold text-slate-500 uppercase tracking-wider text-[10px]">SEARCH IN:</span>
+
+                      <label className="flex items-center gap-1.5 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200">
+                        <input
+                          type="checkbox"
+                          checked={searchScope.searchKey}
+                          onChange={(e) => setSearchScope(prev => ({ ...prev, searchKey: e.target.checked }))}
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                        />
+                        <span>Search Key</span>
+                      </label>
+
+                      <label className="flex items-center gap-1.5 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200">
+                        <input
+                          type="checkbox"
+                          checked={searchScope.productName}
+                          onChange={(e) => setSearchScope(prev => ({ ...prev, productName: e.target.checked }))}
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                        />
+                        <span>Product Name</span>
+                      </label>
+
+                      <label className="flex items-center gap-1.5 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200">
+                        <input
+                          type="checkbox"
+                          checked={searchScope.productId}
+                          onChange={(e) => setSearchScope(prev => ({ ...prev, productId: e.target.checked }))}
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                        />
+                        <span>Product ID</span>
+                      </label>
+
+                      <label className="flex items-center gap-1.5 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200">
+                        <input
+                          type="checkbox"
+                          checked={searchScope.barcode}
+                          onChange={(e) => setSearchScope(prev => ({ ...prev, barcode: e.target.checked }))}
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                        />
+                        <span>Barcode</span>
+                      </label>
                     </div>
                   </div>
 
