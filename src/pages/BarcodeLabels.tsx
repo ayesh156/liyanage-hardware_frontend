@@ -44,6 +44,8 @@ import {
   Info,
   RefreshCw,
   AlertCircle,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
@@ -61,7 +63,6 @@ import JsBarcode from 'jsbarcode';
 // ============================================================================
 interface LabelConfig {
   storeId: string;
-  barcodeHeight: number;
 }
 
 interface StickerEntry {
@@ -87,7 +88,6 @@ interface StickerData {
 
 const DEFAULT_CONFIG: LabelConfig = {
   storeId: 'LHD@WBS',
-  barcodeHeight: 22,
 };
 
 // ============================================================================
@@ -98,7 +98,7 @@ function toStickerEntry(p: InventoryProduct): StickerEntry | null {
   return {
     id: p.id,
     name: p.name,
-    sku: p.searchKey || p.id,
+    sku: p.id.replace(/^lhd-pd-/, '') || p.searchKey || p.id,
     barcode: p.barcode,
     salesPrice: p.displayPrice || p.salesPrice || 0,
   };
@@ -199,14 +199,15 @@ function buildPrintDocument(stickers: StickerData[]): string {
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
-    padding: 0.5mm;
+    padding: 0.5mm 1mm;
     overflow: hidden;
     text-align: center;
   }
   .barcode-svg {
-    width: 26mm;
-    height: 8mm;
+    width: 24mm;
+    height: 6mm;
     display: block;
+    margin: 0 auto;
   }
   .line-1 {
     font-size: 7.5pt;
@@ -215,9 +216,13 @@ function buildPrintDocument(stickers: StickerData[]): string {
     line-height: 1;
     margin-top: 0.5mm;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 29mm;
+    display: block;
   }
   .line-2 {
-    font-size: 7pt;
+    font-size: 6.5pt;
     font-weight: bold;
     color: #000;
     line-height: 1;
@@ -241,10 +246,9 @@ ${rowsHtml}
 // ============================================================================
 interface StickerCellProps {
   data: StickerData;
-  barcodeHeight: number;
 }
 
-const StickerCell: React.FC<StickerCellProps> = ({ data, barcodeHeight }) => (
+const StickerCell: React.FC<StickerCellProps> = ({ data }) => (
   <div
     className="group relative flex flex-col items-center justify-center overflow-hidden
       rounded-[3px] border border-slate-200 bg-white px-1.5 py-1.5
@@ -264,18 +268,18 @@ const StickerCell: React.FC<StickerCellProps> = ({ data, barcodeHeight }) => (
       <BarcodeComponent
         value={data.barcode}
         format="CODE128"
-        width={0.7}
-        height={barcodeHeight}
+        width={1.2}
+        height={20}
         displayValue={false}
         margin={0}
         background="#ffffff"
         lineColor="#000000"
       />
     </div>
-    <div className="mt-1 whitespace-nowrap text-[9px] font-bold leading-none tracking-tight text-slate-900 tabular-nums">
+    <div className="mt-0.5 w-full max-w-[120px] truncate text-[7.5pt] font-bold leading-none tracking-tight text-slate-900 tabular-nums">
       {data.line1}
     </div>
-    <div className="mt-0.5 whitespace-nowrap text-[7.5px] font-semibold uppercase leading-none tracking-wider text-slate-400">
+    <div className="mt-0.5 whitespace-nowrap text-[6.5pt] font-semibold uppercase leading-none tracking-wider text-slate-400">
       {data.line2}
     </div>
   </div>
@@ -301,14 +305,12 @@ const PerforationDivider: React.FC = () => (
 interface PreviewPanelProps {
   stickers: StickerData[];
   isDark: boolean;
-  barcodeHeight: number;
   totalLabels: number;
 }
 
 const PreviewPanel: React.FC<PreviewPanelProps> = ({
   stickers,
   isDark,
-  barcodeHeight,
   totalLabels,
 }) => {
   const rows: StickerData[][] = [];
@@ -355,7 +357,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
                   <div className="flex flex-row gap-1">
                     {row.map((s) => (
                       <div key={s.key} className="min-w-0 flex-1">
-                        <StickerCell data={s} barcodeHeight={barcodeHeight} />
+                        <StickerCell data={s} />
                       </div>
                     ))}
                     {row.length < 2 && <div className="min-w-0 flex-1" />}
@@ -439,6 +441,43 @@ export const BarcodeLabels: React.FC = () => {
   const [labelConfig, setLabelConfig] = useState<LabelConfig>(DEFAULT_CONFIG);
   const [globalQuantity, setGlobalQuantity] = useState(1);
   const [isPrinting, setIsPrinting] = useState(false);
+
+  // ── Roll Preview zoom (SCREEN-ONLY — never touches buildPrintDocument) ──
+  // Recalibrated: 100% now renders at the physical size that was previously 200%.
+  // Actual CSS zoom = (previewZoom / 100) * 2.0 — so 100% → 2x base, 50% → 1x, 200% → 4x.
+  const [previewZoom, setPreviewZoom] = useState(100);
+  const zoomIn = useCallback(
+    () => setPreviewZoom((z) => Math.min(200, z + 10)),
+    []
+  );
+  const zoomOut = useCallback(
+    () => setPreviewZoom((z) => Math.max(50, z - 10)),
+    []
+  );
+  const zoomReset = useCallback(() => setPreviewZoom(100), []);
+
+  // ── Match Roll Preview panel height to the left sidebar, scroll inside ──
+  // instead of pushing the page taller and taller as more labels are queued.
+  const leftColumnRef = useRef<HTMLDivElement>(null);
+  const [previewMatchHeight, setPreviewMatchHeight] = useState<number | null>(
+    null
+  );
+  useEffect(() => {
+    const el = leftColumnRef.current;
+    if (!el || isMobile) {
+      setPreviewMatchHeight(null);
+      return;
+    }
+    const update = () => setPreviewMatchHeight(el.offsetHeight);
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    window.addEventListener('resize', update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, [isMobile]);
 
   // ── Debounce search input ──
   useEffect(() => {
@@ -666,8 +705,8 @@ export const BarcodeLabels: React.FC = () => {
                 format: 'CODE128',
                 displayValue: false,
                 margin: 0,
-                width: 1.4,
-                height: 30,
+                width: 1.2,
+                height: 18,
               });
             } catch (barcodeErr) {
               console.error(`Failed to render barcode for "${code}"`, barcodeErr);
@@ -813,7 +852,7 @@ export const BarcodeLabels: React.FC = () => {
             {/* ────────────────────────────────────────────────────────────
                 LEFT PANEL — Settings + Product Search + Queue
                 ──────────────────────────────────────────────────────────── */}
-            <div className="space-y-3">
+            <div className="space-y-3" ref={leftColumnRef}>
 
               {/* ── API status bar ── */}
               {inventoryError && (
@@ -984,23 +1023,23 @@ export const BarcodeLabels: React.FC = () => {
                                 >
                                   {entry.name}
                                 </p>
-                                <div className="flex items-center gap-2 mt-0.5">
+                                <div className="flex items-center gap-2 mt-0.5 min-w-0">
                                   <span
-                                    className={`text-[10px] font-mono ${
+                                    className={`text-[10px] font-mono truncate min-w-0 flex-1 ${
                                       isDark ? 'text-slate-500' : 'text-slate-400'
                                     }`}
                                   >
                                     {entry.sku}
                                   </span>
                                   <span
-                                    className={`text-[10px] font-semibold ${
+                                    className={`text-[10px] font-semibold flex-shrink-0 ${
                                       isDark ? 'text-emerald-400' : 'text-emerald-600'
                                     }`}
                                   >
                                     Rs.{entry.salesPrice.toLocaleString()}
                                   </span>
                                   <span
-                                    className={`text-[9px] font-mono ${
+                                    className={`text-[9px] font-mono flex-shrink-0 ${
                                       isDark ? 'text-slate-600' : 'text-slate-300'
                                     }`}
                                   >
@@ -1099,37 +1138,6 @@ export const BarcodeLabels: React.FC = () => {
                     />
                   </div>
 
-                  {/* Barcode height slider */}
-                  <div>
-                    <label
-                      className={`text-xs font-medium mb-1.5 flex items-center justify-between ${
-                        isDark ? 'text-slate-300' : 'text-slate-600'
-                      }`}
-                    >
-                      <span>Barcode height</span>
-                      <span
-                        className={`font-mono ${
-                          isDark ? 'text-indigo-400' : 'text-indigo-600'
-                        }`}
-                      >
-                        {labelConfig.barcodeHeight}px
-                      </span>
-                    </label>
-                    <input
-                      type="range"
-                      min={14}
-                      max={32}
-                      step={1}
-                      value={labelConfig.barcodeHeight}
-                      onChange={(e) =>
-                        setLabelConfig((prev) => ({
-                          ...prev,
-                          barcodeHeight: parseInt(e.target.value),
-                        }))
-                      }
-                      className="w-full accent-indigo-500"
-                    />
-                  </div>
 
                   {/* Print button */}
                   <Button
@@ -1309,14 +1317,19 @@ export const BarcodeLabels: React.FC = () => {
                 RIGHT PANEL — Live 3-Column Roll Preview
                 ──────────────────────────────────────────────────────────── */}
             <div
-              className={`relative overflow-hidden rounded-2xl border ${
+              className={`relative flex flex-col overflow-hidden rounded-2xl border ${
                 isDark
                   ? 'bg-slate-800/30 backdrop-blur border-slate-700/50'
                   : 'bg-white/80 backdrop-blur-xl border-slate-200/80'
               }`}
+              style={
+                previewMatchHeight
+                  ? { maxHeight: `${previewMatchHeight}px` }
+                  : undefined
+              }
             >
               <div
-                className={`p-3 border-b flex items-center justify-between ${
+                className={`p-3 border-b flex items-center justify-between gap-2 shrink-0 ${
                   isDark ? 'border-slate-700/50' : 'border-slate-200'
                 }`}
               >
@@ -1328,30 +1341,85 @@ export const BarcodeLabels: React.FC = () => {
                   <Grid3X3 className="w-4 h-4 text-indigo-500" />
                   Roll Preview — Real-time 3-Column Layout
                 </h3>
-                {totalLabels > 0 && (
-                  <span
-                    className={`text-[10px] px-2 py-0.5 rounded-full ${
+
+                <div className="flex items-center gap-2">
+                  {/* Screen-only zoom — purely visual, never affects the
+                      physical print document (buildPrintDocument) */}
+                  <div
+                    className={`flex items-center gap-0.5 rounded-lg border p-0.5 ${
                       isDark
-                        ? 'bg-slate-700 text-slate-300'
-                        : 'bg-slate-100 text-slate-600'
+                        ? 'border-slate-700 bg-slate-800/60'
+                        : 'border-slate-200 bg-slate-50'
                     }`}
                   >
-                    {totalLabels} label{totalLabels !== 1 ? 's' : ''}
-                  </span>
-                )}
+                    <button
+                      type="button"
+                      onClick={zoomOut}
+                      disabled={previewZoom <= 50}
+                      title="Zoom out preview"
+                      className={`p-1 rounded-md disabled:opacity-30 disabled:cursor-not-allowed ${
+                        isDark
+                          ? 'hover:bg-slate-600 text-slate-300'
+                          : 'hover:bg-slate-200 text-slate-600'
+                      }`}
+                    >
+                      <ZoomOut className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={zoomReset}
+                      title="Reset zoom"
+                      className={`px-1.5 text-[10px] font-semibold tabular-nums rounded-md ${
+                        isDark
+                          ? 'hover:bg-slate-600 text-slate-300'
+                          : 'hover:bg-slate-200 text-slate-600'
+                      }`}
+                    >
+                      {previewZoom}%
+                    </button>
+                    <button
+                      type="button"
+                      onClick={zoomIn}
+                      disabled={previewZoom >= 200}
+                      title="Zoom in preview"
+                      className={`p-1 rounded-md disabled:opacity-30 disabled:cursor-not-allowed ${
+                        isDark
+                          ? 'hover:bg-slate-600 text-slate-300'
+                          : 'hover:bg-slate-200 text-slate-600'
+                      }`}
+                    >
+                      <ZoomIn className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {totalLabels > 0 && (
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded-full ${
+                        isDark
+                          ? 'bg-slate-700 text-slate-300'
+                          : 'bg-slate-100 text-slate-600'
+                      }`}
+                    >
+                      {totalLabels} label{totalLabels !== 1 ? 's' : ''}
+                    </span>
+                  )}
+                </div>
               </div>
 
-              <div className="p-3 lg:p-5 overflow-x-auto">
+              <div className="p-3 lg:p-5 overflow-auto flex-1 min-h-0">
                 <div className="flex justify-center">
                   <div
                     className={`${
                       isMobile ? 'w-full max-w-[340px]' : 'w-[360px]'
-                    } transition-all duration-300`}
+                    } transition-[zoom] duration-200`}
+                    // `zoom` (not `transform: scale`) so the box reflows and
+                    // never overlaps/clips surrounding UI. Screen-only — has
+                    // no connection whatsoever to buildPrintDocument().
+                    style={{ zoom: (previewZoom / 100) * 2.0 } as React.CSSProperties & { zoom?: number }}
                   >
                     <PreviewPanel
                       stickers={allStickers}
                       isDark={isDark}
-                      barcodeHeight={labelConfig.barcodeHeight}
                       totalLabels={totalLabels}
                     />
                   </div>

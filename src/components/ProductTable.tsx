@@ -28,6 +28,7 @@ const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100];
 interface CellEditState { itemId: string; field: string; rect: DOMRect; }
 
 const columns: { key: keyof InventoryProduct | null; label: string; align: 'left' | 'right' | 'center'; editable: boolean }[] = [
+  { key: 'id', label: 'Product ID', align: 'left', editable: false },
   { key: 'searchKey', label: 'Search Key', align: 'left', editable: false },
   { key: 'name', label: 'Name', align: 'left', editable: false },
   { key: 'productCategory', label: 'Product Category', align: 'left', editable: false },
@@ -645,7 +646,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                     <div className={`flex items-center gap-1 ${col.align === 'right' ? 'justify-end' : col.align === 'center' ? 'justify-center' : ''}`}>
                       {(() => {
                         const labelMap: Record<string, string> = {
-                          'Search Key': t('productTable.searchKey'),
+                          'Product ID': isSinhala ? 'භාණ්ඩ අංකය' : 'Product ID',
                           'Name': t('productTable.name'),
                           'Product Category': t('productTable.category'),
                           'Barcode': t('productTable.barcode'),
@@ -671,6 +672,15 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                 const st = statusConfig[item.status] || statusConfig['Out of Stock'];
                 return (
                   <tr key={item.id} className={`transition-colors ${isDark ? 'hover:bg-slate-700/25' : 'hover:bg-slate-50'}`}>
+                    {(() => {
+                      const numericId = item.id.replace(/^lhd-pd-/, '');
+                      return (
+                        <td className="px-2 py-1.5 relative group">
+                          <span className={`text-[11px] font-mono font-semibold ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>{numericId}</span>
+                        </td>
+                      );
+                    })()}
+
                     {(() => {
                       const field = 'searchKey';
                       const isEditing = inlineEdit?.itemId === item.id && inlineEdit?.field === field;
