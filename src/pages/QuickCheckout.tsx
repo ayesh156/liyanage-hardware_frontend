@@ -2655,12 +2655,14 @@ export const QuickCheckout: React.FC = () => {
                     {filteredProducts.length > 0 ? (
                       <div className="p-1">
                         {filteredProducts.map((flatProduct, index) => (
-                          <button
+                          <div
                             key={flatProduct.flatId}
                             ref={(el) => {
                               if (el) productItemRefs.current.set(index, el);
                               else productItemRefs.current.delete(index);
                             }}
+                            role="button"
+                            tabIndex={0}
                             onClick={() => {
                               setPendingProduct(flatProduct);
                               setProductSearch('');
@@ -2676,7 +2678,8 @@ export const QuickCheckout: React.FC = () => {
                               playBeep('add');
                               toast.info(`${flatProduct.displayName} - ${t('quickCheckout.enterQuantity')}`);
                             }}
-                            className={`w-full flex items-center gap-2 p-2 text-left transition-colors border-b last:border-b-0 rounded-lg ${
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
+                            className={`w-full flex items-center gap-2 p-2 text-left transition-colors border-b last:border-b-0 rounded-lg cursor-pointer outline-none focus:ring-2 focus:ring-amber-500/50 ${
                               index === activeMainSearchIndex
                                 ? isDark ? 'bg-slate-800 border-l-4 border-amber-500 shadow-xl' : 'bg-amber-100 border-l-4 border-amber-500 shadow'
                                 : index === selectedProductIndex
@@ -2767,7 +2770,7 @@ export const QuickCheckout: React.FC = () => {
                                 <Plus className="w-2.5 h-2.5" />
                               </button>
                             </div>
-                          </button>
+                          </div>
                         ))}
                       </div>
                     ) : (

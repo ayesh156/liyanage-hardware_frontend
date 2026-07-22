@@ -17,7 +17,7 @@ import {
   Percent, Tag, Box, Edit3, PackagePlus, Boxes, Calculator, Zap,
   Keyboard, Barcode, Banknote, Sparkles
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from 'react-toastify';
 
 // Extended Invoice Item with discount tracking and Sinhala translation
 interface ExtendedInvoiceItem extends InvoiceItem {
@@ -576,8 +576,7 @@ export const CreateInvoice: React.FC = () => {
 
     // Show success toast
     toast.success(
-      `${t('invoice.invoiceSaved')}: ${finalInvoiceNumber}`,
-      { description: `${t('common.currency')} ${invoice.total.toLocaleString()}` }
+      `${t('invoice.invoiceSaved')}: ${finalInvoiceNumber} — ${t('common.currency')} ${invoice.total.toLocaleString()}`
     );
 
     // Reset form and navigate to invoices

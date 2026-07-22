@@ -230,7 +230,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const [notificationCount] = useState(3);
 
   useEffect(() => { setMobileSidebarOpen(false); }, [location.pathname]);
@@ -511,16 +511,16 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
                     <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-slate-900" />
                   </div>
                   <div className="hidden lg:block text-left">
-                    <p className={`text-sm font-medium ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Admin User</p>
-                    <p className={`text-xs ${theme === 'dark' ? 'text-slate-500' : 'text-slate-500'}`}>admin@liyanage.lk</p>
+                    <p className={`text-sm font-medium ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{user?.name || user?.username || 'User'}</p>
+                    <p className={`text-xs ${theme === 'dark' ? 'text-slate-500' : 'text-slate-500'}`}>{user?.email || user?.username || 'user@liyanage.lk'}</p>
                   </div>
                   <ChevronDown className={`hidden lg:block w-4 h-4 transition-transform ${profileDropdownOpen ? 'rotate-180' : ''} ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`} />
                 </button>
                 {profileDropdownOpen && (
                   <div className={`absolute right-0 top-full mt-2 w-56 rounded-xl border shadow-2xl overflow-hidden ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
                     <div className={`px-4 py-3 border-b ${theme === 'dark' ? 'border-slate-700' : 'border-slate-100'}`}>
-                      <p className={`text-sm font-medium ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>Admin User</p>
-                      <p className={`text-xs ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>admin@liyanage.lk</p>
+                      <p className={`text-sm font-medium ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{user?.name || user?.username || 'User'}</p>
+                      <p className={`text-xs ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>{user?.email || user?.username || 'user@liyanage.lk'}</p>
                     </div>
                     <div className="py-1">
                       <button className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors ${theme === 'dark' ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-50'}`}><User className="w-4 h-4" />{t('header.profileSettings')}</button>

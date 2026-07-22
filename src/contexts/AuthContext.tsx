@@ -2,9 +2,11 @@ import React, { createContext, useContext, useState, useCallback, ReactNode, use
 import api from '../lib/api';
 
 interface AuthUser {
+  id?: number;
   name: string;
   email: string;
   role?: string;
+  username?: string;
 }
 
 interface AuthContextType {
@@ -52,13 +54,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       try {
-        const data = await api.get<{ id: number; name: string; email: string; role: string }>('/auth/me');
+        const data = await api.get<{ id: number; name: string; email: string; role: string; username?: string }>('/auth/me');
         const userData: AuthUser = {
+          id: data.id,
           name: data.name,
           email: data.email || data.name,
           role: data.role,
+          username: data.username || undefined,
         };
         setUser(userData);
+        // Persist updated user info back to sessionStorage
+        sessionStorage.setItem('auth_user', JSON.stringify(userData));
         setToken(storedToken);
         setIsAuthenticated(true);
       } catch {

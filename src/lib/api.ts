@@ -23,7 +23,7 @@ async function request<T>(endpoint: string, options: ApiOptions = {}): Promise<T
 
   // Build headers with optional auth token
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const token = sessionStorage.getItem('auth_token');
+  const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
@@ -40,8 +40,9 @@ async function request<T>(endpoint: string, options: ApiOptions = {}): Promise<T
   if (!res.ok) {
     // If 401 and NOT on auth endpoints, clear auth and redirect to login
     if (res.status === 401 && !endpoint.startsWith('/auth/')) {
-      sessionStorage.removeItem('auth_token');
-      sessionStorage.removeItem('auth_user');
+      localStorage.removeItem('token');
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('auth_user');
       window.location.href = '/login';
     }
     throw new Error(json.error || `HTTP ${res.status}: ${res.statusText}`);

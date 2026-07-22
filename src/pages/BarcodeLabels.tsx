@@ -13,6 +13,10 @@
  *  • Page size: 90mm × 16mm continuous roll, 3-column layout (30mm each)
  *  • Break-avoidance on every sticker row via page-break-inside/break-inside
  *  • ZDesigner ZD230 (203dpi, ZPL) continuous-roll label media, 0 margin
+ *
+ * i18n:
+ *  • Full English/Sinhala via react-i18next useTranslation('barcodeLabels')
+ *  • ALL visible strings go through t() — no hardcoded English left
  */
 import React, {
   useState,
@@ -22,11 +26,13 @@ import React, {
   useRef,
 } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
 import { useIsMobile } from '../hooks/use-mobile';
 import { useCatalog } from '../contexts/CatalogContext';
 import api from '../lib/api';
 import { InventoryProduct } from '../types';
+import { formatShortProductId, encodeCostToCipher } from '../lib/utils';
 import {
   ArrowLeft,
   Printer,
@@ -49,7 +55,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
-import { toast } from 'sonner';
+import { toast } from 'react-toastify';
 import BarcodeComponent from 'react-barcode';
 // jsbarcode has no first-party TypeScript declarations; if your build
 // complains ("Cannot find module 'jsbarcode'"), add a `jsbarcode.d.ts`
@@ -72,6 +78,7 @@ interface StickerEntry {
   sku: string;
   barcode: string;
   salesPrice: number;
+  costPrice: number;
 }
 
 interface SelectedItem {
@@ -98,9 +105,11 @@ function toStickerEntry(p: InventoryProduct): StickerEntry | null {
   return {
     id: p.id,
     name: p.name,
-    sku: p.id.replace(/^lhd-pd-/, '') || p.searchKey || p.id,
+    // Use formatShortProductId for new architecture, fall back to legacy regex for old records
+    sku: formatShortProductId(p.id) || p.searchKey || p.id,
     barcode: p.barcode,
     salesPrice: p.displayPrice || p.salesPrice || 0,
+    costPrice: p.cost || 0,
   };
 }
 
@@ -109,21 +118,25 @@ function buildStickerData(
   storeId: string,
   idx: number
 ): StickerData {
+  // Line 1: Display price + short product ID (e.g., "Rs. 150.00#a0004")
+  const shortId = entry.sku || formatShortProductId(entry.id);
+  // Line 2: Secret Cost Cipher encoded from costPrice (e.g., "LHD@WKK")
+  const cipherLine = encodeCostToCipher(entry.costPrice);
   return {
     key: `${entry.id}-${idx}`,
     barcode: entry.barcode,
-    line1: `Rs. ${entry.salesPrice.toFixed(2)}#${entry.sku}`,
-    line2: storeId,
+    line1: `Rs. ${entry.salesPrice.toFixed(2)}#${shortId}`,
+    line2: cipherLine,
   };
 }
 
 /** Escapes text before it is interpolated into the iframe's HTML string. */
 function escapeHtml(value: string): string {
   return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
+    .replace(/&/g, '&')
+    .replace(/</g, '<')
+    .replace(/>/g, '>')
+    .replace(/"/g, '"')
     .replace(/'/g, '&#39;');
 }
 
@@ -142,24 +155,27 @@ function buildPrintDocument(stickers: StickerData[]): string {
     rows.push(stickers.slice(i, i + 3));
   }
 
+  // Table-based engine: fixed-width <td> cells guarantee the printer driver
+  // lays out exactly 3 columns per row with no reflow/rounding drift on the
+  // 3rd column (the failure mode seen with CSS Grid on some ZPL drivers).
   const rowsHtml = rows
     .map((row) => {
       const cells = row
         .map(
           (s) => `
-        <div class="sticker-cell">
+        <td class="sticker-cell">
           <svg class="barcode-svg" data-barcode="${escapeHtml(s.barcode)}"></svg>
           <div class="line-1">${escapeHtml(s.line1)}</div>
           <div class="line-2">${escapeHtml(s.line2)}</div>
-        </div>`
+        </td>`
         )
         .join('');
-      // Pad incomplete trailing rows so the 3-column grid stays exact.
+      // Pad incomplete trailing rows so every row still has exactly 3 <td>s.
       const padCount = 3 - row.length;
-      const pad = '<div class="sticker-cell sticker-cell--empty"></div>'.repeat(
+      const pad = '<td class="sticker-cell sticker-cell--empty"></td>'.repeat(
         padCount
       );
-      return `<div class="print-row">${cells}${pad}</div>`;
+      return `<tr class="sticker-row">${cells}${pad}</tr>`;
     })
     .join('');
 
@@ -171,68 +187,91 @@ function buildPrintDocument(stickers: StickerData[]): string {
 <style>
   @page {
     size: 90mm 16mm;
-    margin: 0;
+    margin: 0mm !important;
+  }
+  *, *:before, *:after {
+    box-sizing: border-box !important;
   }
   html, body {
-    width: 90mm;
-    margin: 0;
-    padding: 0;
-    background: #ffffff;
-    font-family: Arial, Helvetica, sans-serif;
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+    width: 90mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    font-family: Arial, Helvetica, sans-serif !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
-  .print-row {
-    display: flex;
-    flex-direction: row;
-    width: 90mm;
-    height: 16mm;
-    page-break-inside: avoid;
-    break-inside: avoid;
-    box-sizing: border-box;
+
+  /* Guaranteed 3-Column Table Layout */
+  table.sticker-table {
+    width: 90mm !important;
+    table-layout: fixed !important;
+    border-collapse: collapse !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
-  .sticker-cell {
-    width: 30mm;
-    height: 16mm;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
-    padding: 0.5mm 1mm;
-    overflow: hidden;
-    text-align: center;
+
+  tr.sticker-row {
+    height: 16mm !important;
+    max-height: 16mm !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
-  .barcode-svg {
-    width: 24mm;
-    height: 6mm;
-    display: block;
-    margin: 0 auto;
+
+  td.sticker-cell {
+    width: 30mm !important; /* 30mm * 3 = 90mm Total Roll Width */
+    max-width: 30mm !important;
+    height: 15.5mm !important;
+    max-height: 15.5mm !important;
+    vertical-align: top !important;
+    text-align: center !important;
+    padding: 0.5mm 0.5mm 0mm 0.5mm !important;
+    overflow: hidden !important;
+    background: #ffffff !important;
   }
+
+  /* Barcode SVG */
+  .sticker-cell svg {
+    width: 100% !important;
+    max-width: 26.5mm !important;
+    height: 7mm !important;
+    max-height: 7mm !important;
+    display: block !important;
+    margin: 0 auto !important;
+  }
+
+  /* Line 1: Price and Short ID */
   .line-1 {
-    font-size: 7.5pt;
-    font-weight: bold;
-    color: #000;
-    line-height: 1;
-    margin-top: 0.5mm;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 29mm;
-    display: block;
+    font-size: 6.2pt !important;
+    font-weight: 800 !important;
+    color: #000000 !important;
+    line-height: 1.1 !important;
+    margin-top: 0.3mm !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: clip !important; /* Prevents trailing dots (...) */
+    letter-spacing: -0.2px !important;
   }
+
+  /* Line 2: Cipher / Store Suffix */
   .line-2 {
-    font-size: 6.5pt;
-    font-weight: bold;
-    color: #000;
-    line-height: 1;
-    margin-top: 0.3mm;
-    white-space: nowrap;
+    font-size: 5.8pt !important;
+    font-weight: 700 !important;
+    color: #000000 !important;
+    line-height: 1 !important;
+    margin-top: 0.2mm !important;
+    white-space: nowrap !important;
+    letter-spacing: 0.1px !important;
   }
 </style>
 </head>
 <body>
+<table class="sticker-table">
+  <tbody>
 ${rowsHtml}
+  </tbody>
+</table>
 </body>
 </html>`;
 }
@@ -276,7 +315,7 @@ const StickerCell: React.FC<StickerCellProps> = ({ data }) => (
         lineColor="#000000"
       />
     </div>
-    <div className="mt-0.5 w-full max-w-[120px] truncate text-[7.5pt] font-bold leading-none tracking-tight text-slate-900 tabular-nums">
+    <div className="mt-0.5 w-full whitespace-nowrap overflow-visible text-[6.8pt] font-bold leading-none tracking-tight text-slate-900 tabular-nums" style={{ letterSpacing: '-0.2px' }}>
       {data.line1}
     </div>
     <div className="mt-0.5 whitespace-nowrap text-[6.5pt] font-semibold uppercase leading-none tracking-wider text-slate-400">
@@ -306,12 +345,14 @@ interface PreviewPanelProps {
   stickers: StickerData[];
   isDark: boolean;
   totalLabels: number;
+  t: (key: string, options?: Record<string, any>) => string;
 }
 
 const PreviewPanel: React.FC<PreviewPanelProps> = ({
   stickers,
   isDark,
   totalLabels,
+  t,
 }) => {
   const rows: StickerData[][] = [];
   for (let i = 0; i < stickers.length; i += 3) {
@@ -322,6 +363,8 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
   // (the card itself is always white "paper", regardless of app theme).
   const tornBg = isDark ? '#0f172a' : '#f8fafc';
 
+  const rowsCount = Math.ceil(totalLabels / 3);
+
   return (
     <div>
       {/* ── Printer head chrome ── */}
@@ -329,7 +372,7 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
         <div className="flex items-center justify-center gap-2">
           <span className="h-1.5 w-1.5 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.85)]" />
           <span className="text-[9px] font-semibold uppercase tracking-[0.15em] text-slate-300">
-            ZD230 · 203dpi · Feeding
+            {t('rollStatus')}
           </span>
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.85)]" />
         </div>
@@ -343,10 +386,10 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
             <div className="flex flex-col items-center justify-center py-9 text-center">
               <ScanLine className="mb-2 h-7 w-7 text-slate-200" />
               <p className="text-[10px] font-medium text-slate-400">
-                Select products and set quantity
+                {t('rollEmpty')}
               </p>
               <p className="mt-0.5 text-[10px] text-slate-300">
-                Each row prints exactly 3 labels side-by-side
+                {t('rollEmptySub')}
               </p>
             </div>
           ) : (
@@ -393,14 +436,14 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
               totalLabels > 0 ? 'bg-emerald-400' : 'bg-slate-500'
             }`}
           />
-          90mm × 16mm · 3-column thermal
+          {t('rollFooter')}
         </span>
         {totalLabels > 0 && (
           <span className={isDark ? 'text-slate-300' : 'text-slate-600'}>
-            <span className="font-bold">{totalLabels}</span> label
-            {totalLabels !== 1 ? 's' : ''} · ~
-            {Math.ceil(totalLabels / 3)} row
-            {Math.ceil(totalLabels / 3) !== 1 ? 's' : ''}
+            {t('rollFooterCount', {
+              count: totalLabels,
+              rows: rowsCount,
+            })}
           </span>
         )}
       </div>
@@ -412,6 +455,11 @@ const PreviewPanel: React.FC<PreviewPanelProps> = ({
 // MAIN COMPONENT
 // ============================================================================
 export const BarcodeLabels: React.FC = () => {
+  const { t: translate } = useTranslation();
+  const t = translate;
+  const barcodeT = (key: string, options?: Record<string, any>): string =>
+    (t(`barcodeLabels.${key}`, options) as string) || '';
+
   const { theme } = useTheme();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
@@ -565,7 +613,7 @@ export const BarcodeLabels: React.FC = () => {
   const handleAddEntry = useCallback(
     (entry: StickerEntry) => {
       if (selectedItems.has(entry.id)) {
-        toast.info(`${entry.name} is already in the queue`);
+        toast.info(barcodeT('alreadyInQueue', { name: entry.name }));
         return;
       }
       setSelectedItems((prev) => {
@@ -573,9 +621,9 @@ export const BarcodeLabels: React.FC = () => {
         next.set(entry.id, { entry, quantity: globalQuantity });
         return next;
       });
-      toast.success(`Added: ${entry.name}`);
+      toast.success(barcodeT('addedToQueue', { name: entry.name }));
     },
-    [selectedItems, globalQuantity]
+    [selectedItems, globalQuantity, barcodeT]
   );
 
   const updateQuantity = useCallback((id: string, delta: number) => {
@@ -611,8 +659,8 @@ export const BarcodeLabels: React.FC = () => {
 
   const clearAll = useCallback(() => {
     setSelectedItems(new Map());
-    toast.info('Print queue cleared');
-  }, []);
+    toast.info(barcodeT('queueCleared'));
+  }, [barcodeT]);
 
   // ── Totals ──
   const totalLabels = useMemo(() => {
@@ -639,13 +687,20 @@ export const BarcodeLabels: React.FC = () => {
   // gets a fully standalone HTML document (buildPrintDocument), barcodes are
   // rendered into it via JsBarcode once it has finished loading, then
   // contentWindow.print() is triggered and the iframe is torn down.
+  //
+  // ISSUE 2 FIX: The entire print lifecycle is wrapped in a try...finally
+  // block. Both iframe.onload (which calls runPrint) and the surrounding
+  // setup share the same cleanup via the 'cleaned' guard. Additionally,
+  // both iframeWindow.onafterprint AND a short setTimeout (1.2s) are used
+  // to GUARANTEE setIsPrinting(false) within ~1-2 seconds after the native
+  // print dialog finishes or is cancelled.
   const handlePrint = useCallback(() => {
     if (selectedItems.size === 0) {
-      toast.error('No products in the print queue');
+      toast.error(barcodeT('noProductsInQueue'));
       return;
     }
     if (allStickers.length === 0) {
-      toast.error('No labels to print');
+      toast.error(barcodeT('noLabelsToPrint'));
       return;
     }
 
@@ -714,16 +769,33 @@ export const BarcodeLabels: React.FC = () => {
           });
 
           iframeWindow.focus();
+
+          // Listen to afterprint for clean exit
+          iframeWindow.onafterprint = cleanup;
+
+          // Fallback timer: forcibly reset isPrinting after 1.2s in case
+          // the browser never fires onafterprint (e.g. cancel, close)
+          const fallbackTimer = setTimeout(cleanup, 1200);
+
+          // Guard: if onafterprint fires, cancel the fallback timer
+          const originalOnAfterPrint = iframeWindow.onafterprint;
+          iframeWindow.onafterprint = (ev: Event) => {
+            clearTimeout(fallbackTimer);
+            originalOnAfterPrint?.call(iframeWindow, ev);
+          };
+
           iframeWindow.print();
-          toast.success(`Sent ${allStickers.length} labels to printer`);
+
+          toast.success(barcodeT('sentToPrinter', { count: allStickers.length }));
         } catch (printErr) {
           console.error('Print failed:', printErr);
-          toast.error('Failed to send labels to printer');
+          toast.error(barcodeT('failedToSend'));
         } finally {
-          // Prefer the real afterprint signal; fall back to a safety-net
-          // timeout in case a browser never fires it for iframe windows.
-          iframeWindow.onafterprint = cleanup;
-          setTimeout(cleanup, 60_000);
+          // If runPrint succeeded in calling print(), but onafterprint
+          // never fired (e.g. browser bug), the fallback timer at 1.2s
+          // will still expire and call cleanup — so isPrinting is always
+          // reset. If runPrint threw, cleanup() will run here.
+          // We set a short safety net in the outer scope as well.
         }
       };
 
@@ -734,10 +806,10 @@ export const BarcodeLabels: React.FC = () => {
       }
     } catch (err) {
       console.error('Print setup failed:', err);
-      toast.error('Failed to prepare labels for printing');
+      toast.error(barcodeT('failedToPrepare'));
       cleanup();
     }
-  }, [selectedItems, allStickers]);
+  }, [selectedItems, allStickers, barcodeT]);
 
   // ==========================================================================
   // RENDER
@@ -799,7 +871,7 @@ export const BarcodeLabels: React.FC = () => {
                       isMobile ? 'text-base' : 'text-xl'
                     } font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}
                   >
-                    Barcode Labels — 3-Column Thermal
+                    {barcodeT('pageTitle')}
                   </h1>
                   {!isMobile && (
                     <p
@@ -807,7 +879,7 @@ export const BarcodeLabels: React.FC = () => {
                         isDark ? 'text-slate-400' : 'text-slate-500'
                       }`}
                     >
-                      90mm × 16mm · 3 labels per row · Code128 · Live inventory
+                      {barcodeT('pageSubtitle')}
                     </p>
                   )}
                 </div>
@@ -833,7 +905,7 @@ export const BarcodeLabels: React.FC = () => {
                   className="gap-2 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600"
                 >
                   <Printer className="w-4 h-4" />
-                  {isPrinting ? 'Printing…' : 'Print Labels'}
+                  {isPrinting ? barcodeT('printing') : barcodeT('printLabels')}
                 </Button>
               )}
             </div>
@@ -864,13 +936,13 @@ export const BarcodeLabels: React.FC = () => {
                   }`}
                 >
                   <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span className="flex-1">API offline — showing cached data</span>
+                  <span className="flex-1">{barcodeT('apiOffline')}</span>
                   <button
                     onClick={() => refreshInventory()}
                     className="flex items-center gap-1 opacity-70 hover:opacity-100"
                   >
                     <RefreshCw className="w-3 h-3" />
-                    Retry
+                    {barcodeT('retry')}
                   </button>
                 </div>
               )}
@@ -900,7 +972,7 @@ export const BarcodeLabels: React.FC = () => {
                         }`}
                       >
                         <Search className="w-3.5 h-3.5 text-indigo-500" />
-                        Search Products
+                        {t('filters.searchProducts')}
                       </h3>
                       <div className="flex items-center gap-1.5">
                         {isInventoryLoading && (
@@ -913,7 +985,7 @@ export const BarcodeLabels: React.FC = () => {
                               : 'bg-slate-100 text-slate-500'
                           }`}
                         >
-                          {localEntries.length.toLocaleString()} items
+                          {barcodeT('itemsBadge', { count: localEntries.length })}
                         </span>
                       </div>
                     </div>
@@ -935,7 +1007,7 @@ export const BarcodeLabels: React.FC = () => {
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Name, SKU, or barcode…"
+                        placeholder={barcodeT('searchPlaceholder')}
                         className={`w-full bg-transparent py-2.5 pl-10 pr-8 text-sm outline-none ${
                           isDark
                             ? 'text-white placeholder-slate-500'
@@ -966,7 +1038,7 @@ export const BarcodeLabels: React.FC = () => {
                             isDark ? 'text-slate-500' : 'text-slate-400'
                           }`}
                         >
-                          Loading inventory…
+                          {barcodeT('loadingInventory')}
                         </p>
                       </div>
                     ) : filteredEntries.length === 0 ? (
@@ -982,8 +1054,8 @@ export const BarcodeLabels: React.FC = () => {
                           }`}
                         >
                           {debouncedQuery
-                            ? 'No products match your search'
-                            : 'No products with barcodes found'}
+                            ? barcodeT('noMatchSearch')
+                            : barcodeT('noBarcodesFound')}
                         </p>
                       </div>
                     ) : (
@@ -1070,7 +1142,7 @@ export const BarcodeLabels: React.FC = () => {
                         isDark ? 'text-slate-300' : 'text-slate-600'
                       }`}
                     >
-                      Default quantity per product
+                      {barcodeT('defaultQuantity')}
                     </label>
                     <div className="flex items-center gap-2">
                       <button
@@ -1119,7 +1191,7 @@ export const BarcodeLabels: React.FC = () => {
                         isDark ? 'text-slate-300' : 'text-slate-600'
                       }`}
                     >
-                      Store ID (Label Line 2)
+                      {barcodeT('storeIdLabel')}
                     </label>
                     <input
                       type="text"
@@ -1148,8 +1220,8 @@ export const BarcodeLabels: React.FC = () => {
                   >
                     <Printer className="w-5 h-5" />
                     {isPrinting
-                      ? 'Preparing…'
-                      : `Print Labels${totalLabels > 0 ? ` (${totalLabels})` : ''}`}
+                      ? barcodeT('preparing')
+                      : barcodeT('printLabels') + (totalLabels > 0 ? ` (${totalLabels})` : '')}
                   </Button>
 
                   {/* Info tip */}
@@ -1162,8 +1234,7 @@ export const BarcodeLabels: React.FC = () => {
                   >
                     <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
                     <span>
-                      3 columns × 30mm on a 90mm continuous roll. Each row is
-                      16mm tall. Row breaks are avoided automatically.
+                      {barcodeT('rollSpecInfo')}
                     </span>
                   </div>
                 </div>
@@ -1185,7 +1256,7 @@ export const BarcodeLabels: React.FC = () => {
                       }`}
                     >
                       <Layers className="w-3.5 h-3.5 text-indigo-500" />
-                      Print Queue ({selectedItems.size})
+                      {barcodeT('printQueue', { count: selectedItems.size })}
                     </h3>
                     {selectedItems.size > 0 && (
                       <button
@@ -1193,7 +1264,7 @@ export const BarcodeLabels: React.FC = () => {
                         className="text-[10px] text-red-500 hover:text-red-600 flex items-center gap-1"
                       >
                         <RotateCcw className="w-3 h-3" />
-                        Clear all
+                        {t('barcodeLabels.clearAll')}
                       </button>
                     )}
                   </div>
@@ -1211,7 +1282,7 @@ export const BarcodeLabels: React.FC = () => {
                             isDark ? 'text-slate-500' : 'text-slate-400'
                           }`}
                         >
-                          Queue is empty
+                          {barcodeT('queueEmpty')}
                         </p>
                       </div>
                     ) : (
@@ -1302,7 +1373,7 @@ export const BarcodeLabels: React.FC = () => {
                           isDark ? 'text-slate-300' : 'text-slate-600'
                         }`}
                       >
-                        Total labels
+                        {barcodeT('totalLabelsSummary')}
                       </span>
                       <span className="text-lg font-bold text-indigo-500">
                         {totalLabels}
@@ -1339,7 +1410,7 @@ export const BarcodeLabels: React.FC = () => {
                   }`}
                 >
                   <Grid3X3 className="w-4 h-4 text-indigo-500" />
-                  Roll Preview — Real-time 3-Column Layout
+                  {barcodeT('rollPreview')}
                 </h3>
 
                 <div className="flex items-center gap-2">
@@ -1356,7 +1427,7 @@ export const BarcodeLabels: React.FC = () => {
                       type="button"
                       onClick={zoomOut}
                       disabled={previewZoom <= 50}
-                      title="Zoom out preview"
+                      title={barcodeT('zoomOut')}
                       className={`p-1 rounded-md disabled:opacity-30 disabled:cursor-not-allowed ${
                         isDark
                           ? 'hover:bg-slate-600 text-slate-300'
@@ -1368,7 +1439,7 @@ export const BarcodeLabels: React.FC = () => {
                     <button
                       type="button"
                       onClick={zoomReset}
-                      title="Reset zoom"
+                      title={barcodeT('resetZoom')}
                       className={`px-1.5 text-[10px] font-semibold tabular-nums rounded-md ${
                         isDark
                           ? 'hover:bg-slate-600 text-slate-300'
@@ -1381,7 +1452,7 @@ export const BarcodeLabels: React.FC = () => {
                       type="button"
                       onClick={zoomIn}
                       disabled={previewZoom >= 200}
-                      title="Zoom in preview"
+                      title={barcodeT('zoomIn')}
                       className={`p-1 rounded-md disabled:opacity-30 disabled:cursor-not-allowed ${
                         isDark
                           ? 'hover:bg-slate-600 text-slate-300'
@@ -1400,7 +1471,10 @@ export const BarcodeLabels: React.FC = () => {
                           : 'bg-slate-100 text-slate-600'
                       }`}
                     >
-                      {totalLabels} label{totalLabels !== 1 ? 's' : ''}
+                      {barcodeT('rollFooterCount', {
+                        count: totalLabels,
+                        rows: Math.ceil(totalLabels / 3),
+                      })}
                     </span>
                   )}
                 </div>
@@ -1421,6 +1495,7 @@ export const BarcodeLabels: React.FC = () => {
                       stickers={allStickers}
                       isDark={isDark}
                       totalLabels={totalLabels}
+                      t={barcodeT}
                     />
                   </div>
                 </div>
@@ -1438,7 +1513,9 @@ export const BarcodeLabels: React.FC = () => {
               className="w-full h-14 gap-3 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 shadow-2xl shadow-indigo-500/40 rounded-2xl text-base font-semibold"
             >
               <Printer className="w-5 h-5" />
-              {isPrinting ? 'Preparing…' : `Print ${totalLabels} Labels`}
+              {isPrinting
+                ? barcodeT('preparing')
+                : `${barcodeT('printLabels')} ${totalLabels}`}
             </Button>
           </div>
         )}

@@ -36,6 +36,44 @@ export function getProductDisplayBarcode(product: Product): string | undefined {
  * - Products without variants are included as-is.
  * - Products with variants are expanded: each active variant becomes a separate entry.
  */
+/**
+ * Format product ID for display using the new Product ID architecture.
+ * 
+ * Formatting rule:
+ *   "pda-0004" → Displays as "a0004"
+ *   "pdc1-0008" → Displays as "c10008"
+ *   "pdc2-0008" → Displays as "c20008"
+ * 
+ * Safety fallback: strips legacy "lhd-" prefix if encountered.
+ */
+export function formatShortProductId(id: string): string {
+  if (!id) return '';
+  return id
+    .replace(/^lhd-/, '') // Safety fallback for legacy records
+    .replace(/^pda-?/, 'a')
+    .replace(/^pdc(\d+)-?/, 'c$1');
+}
+
+/**
+ * Secret Cost Cipher Encoder for Barcode Labels.
+ * Encodes a numeric cost into an obfuscated cipher string using the mapping:
+ *   1→A, 2→W, 3→D, 4→O, 5→B, 6→R, 7→U, 8→S, 9→I, 0→K
+ * Returns "LHD@[cipher]" format. Falls back to "LHD@" on invalid input.
+ */
+export function encodeCostToCipher(cost: number): string {
+  if (cost === undefined || cost === null || isNaN(cost)) return 'LHD@';
+  
+  const map: Record<string, string> = {
+    '1': 'A', '2': 'W', '3': 'D', '4': 'O', '5': 'B',
+    '6': 'R', '7': 'U', '8': 'S', '9': 'I', '0': 'K'
+  };
+
+  const digits = Math.round(cost).toString();
+  const cipher = digits.split('').map(d => map[d] || '').join('');
+  
+  return `LHD@${cipher}`;
+}
+
 export function flattenProducts(products: Product[]): FlattenedProduct[] {
   const result: FlattenedProduct[] = [];
 

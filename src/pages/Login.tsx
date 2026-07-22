@@ -55,8 +55,8 @@ export const Login: React.FC = () => {
             alt="Liyanage Hardware"
             className="w-20 h-20 rounded-lg shadow-lg mx-auto mb-4 object-cover"
           />
-          <h1 className="text-3xl font-bold text-white">
-            Liyanage<span className="text-amber-500"> Hardware</span>
+          <h1 className="text-3xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-200 to-slate-400 font-sans">
+            Liyanage<span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400"> Hardware</span>
           </h1>
           <p className="text-slate-400 mt-2 text-sm">
             Enterprise Hardware Management System
@@ -93,7 +93,7 @@ export const Login: React.FC = () => {
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Enter your username"
                 autoFocus
-                className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all text-sm"
+                className="w-full px-4 py-3 bg-slate-800/80 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/50 transition-all text-sm font-medium"
               />
             </div>
 
@@ -108,7 +108,7 @@ export const Login: React.FC = () => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
-                  className="w-full px-4 py-3 bg-slate-700/50 border border-slate-600 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all text-sm pr-10"
+                  className="w-full px-4 py-3 bg-slate-800/80 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/50 transition-all text-sm font-medium pr-10"
                 />
                 <button
                   type="button"
@@ -131,7 +131,7 @@ export const Login: React.FC = () => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-semibold rounded-xl transition-all shadow-lg shadow-amber-500/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-semibold rounded-xl shadow-lg shadow-orange-500/20 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {isLoading ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -143,11 +143,6 @@ export const Login: React.FC = () => {
               )}
             </button>
           </form>
-
-          {/* Quick hint - only admin/admin works */}
-          <p className="text-center text-xs text-slate-500 mt-4">
-            Credentials: admin / admin
-          </p>
         </div>
 
         {/* Footer */}

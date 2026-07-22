@@ -46,20 +46,14 @@ export const Products: React.FC = () => {
       if (response?.success) {
         deleteInventoryItem(id);
         const msg = response.message || 'Product permanently deleted from server database.';
-        toast.success(msg, {
-          style: { backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '12px' }
-        });
+        toast.success(msg);
       } else {
-        toast.error('Server returned an unexpected response. Please try again.', {
-          style: { backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '12px' }
-        });
+        toast.error('Server returned an unexpected response. Please try again.');
       }
     } catch (error: any) {
       console.error('Product deletion failed:', error);
       const errorMsg = error?.message || 'Cannot delete product. It is linked to existing active invoices.';
-      toast.error(errorMsg, {
-        style: { backgroundColor: '#0f172a', color: '#f8fafc', borderRadius: '12px' }
-      });
+      toast.error(errorMsg);
     }
   };
 
@@ -78,7 +72,7 @@ export const Products: React.FC = () => {
         <div className="flex items-center gap-2">
           <button onClick={() => navigate('/products/barcode-labels')} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg font-medium transition-all border text-xs ${isDark ? 'bg-slate-800 border-slate-700 text-indigo-400 hover:bg-slate-700' : 'bg-white border-slate-200 text-indigo-600 hover:bg-indigo-50 shadow-sm'}`}>
             <ScanLine className="w-3.5 h-3.5" />
-            Labels
+            {t('barcodeLabels.labelsTrigger')}
           </button>
           <button onClick={() => setShowAddModal(true)} className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600 text-white rounded-lg font-medium transition-all shadow shadow-orange-500/20 text-xs">
             <Plus className="w-3.5 h-3.5" />

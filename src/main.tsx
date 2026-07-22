@@ -1,16 +1,14 @@
 import "./global.css";
 
-import { Toaster } from "@/components/ui/toaster";
 import { createRoot } from "react-dom/client";
 import { Suspense, lazy } from "react";
-import { Toaster as Sonner } from "@/components/ui/sonner";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import "./lib/i18n";
-import { ThemeProvider, useTheme } from "./contexts/ThemeContext";
+import { ThemeProvider } from "./contexts/ThemeContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { CatalogProvider } from "./contexts/CatalogContext";
 import { AdminLayout } from "./components/AdminLayout";
@@ -41,10 +39,8 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
 };
 
 const AppContent = () => {
-  const { theme } = useTheme();
   return (
     <>
-      <ToastContainer autoClose={3000} closeOnClick draggable hideProgressBar={false} newestOnTop={true} pauseOnFocusLoss pauseOnHover position="top-right" rtl={false} theme={theme} />
       <AuthProvider>
         <CatalogProvider>
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -172,11 +168,21 @@ const AppContent = () => {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <Toaster />
-      <Sonner />
       <ThemeProvider>
         <AppContent />
       </ThemeProvider>
+      <ToastContainer
+        position="top-right"
+        autoClose={3000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="dark"
+        toastClassName="rounded-xl shadow-lg"
+      />
     </TooltipProvider>
   </QueryClientProvider>
 );

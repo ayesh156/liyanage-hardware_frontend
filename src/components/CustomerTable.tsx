@@ -7,7 +7,7 @@ import {
   ChevronsLeft, ChevronsRight, X, CreditCard, Crown, ShoppingBag,
   AlertTriangle, Mail, Phone, MapPin, Eye,
 } from 'lucide-react';
-import { toast } from 'sonner';
+import { toast } from 'react-toastify';
 import api from '../lib/api';
 import { Customer, CustomerType } from '../types';
 

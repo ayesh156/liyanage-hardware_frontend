@@ -13,7 +13,7 @@ import {
 import { DeleteConfirmationModal } from '../components/modals/DeleteConfirmationModal';
 import { SupplierFormModal } from '../components/modals/SupplierFormModal';
 import { SearchableSelect } from '../components/ui/searchable-select';
-import { toast } from 'sonner';
+import { toast } from 'react-toastify';
 
 type TabFilter = 'all' | 'cash' | 'credit';
 
@@ -59,14 +59,14 @@ export default function Suppliers() {
   useEffect(() => {
     creditAlerts.forEach(alert => {
       if (alert.daysUntilDue <= 0) {
-        toast.error(
+      toast.error(
           `${alert.supplier.name}: ${t('suppliers.overdue', { days: Math.abs(alert.daysUntilDue) })}`,
-          { duration: 10000 }
+          { autoClose: 10000 }
         );
       } else if (alert.daysUntilDue <= 3) {
         toast.warning(
           `${alert.supplier.name}: ${t('suppliers.dueIn', { days: alert.daysUntilDue })}`,
-          { duration: 8000 }
+          { autoClose: 8000 }
         );
       }
     });

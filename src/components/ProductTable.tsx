@@ -15,6 +15,7 @@ import { InventoryProduct } from '../types';
 import { CellPopover } from './CellPopover';
 import { ProductFormModal } from './ProductFormModal';
 import { DeleteConfirmationModal } from './modals/DeleteConfirmationModal';
+import { formatShortProductId } from '../lib/utils';
 
 function deriveStatus(storeQty: number): InventoryProduct['status'] {
   if (storeQty === 0) return 'Out of Stock';
@@ -673,10 +674,9 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                 return (
                   <tr key={item.id} className={`transition-colors ${isDark ? 'hover:bg-slate-700/25' : 'hover:bg-slate-50'}`}>
                     {(() => {
-                      const numericId = item.id.replace(/^lhd-pd-/, '');
                       return (
                         <td className="px-2 py-1.5 relative group">
-                          <span className={`text-[11px] font-mono font-semibold ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>{numericId}</span>
+                          <span className={`text-[11px] font-mono font-semibold ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>{item.id}</span>
                         </td>
                       );
                     })()}
