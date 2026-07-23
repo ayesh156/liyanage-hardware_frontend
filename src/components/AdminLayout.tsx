@@ -177,7 +177,7 @@ const OmniboxDropdown: React.FC = () => {
 
       {/* Dropdown Overlay — fully theme-aware */}
       {showDropdown && (
-        <div className={`absolute top-full left-0 z-50 w-full rounded-xl shadow-2xl mt-1 overflow-hidden ${
+        <div className={`absolute top-full left-0 z-[60] w-full rounded-xl shadow-2xl mt-1 overflow-hidden ${
           theme === 'dark'
             ? 'bg-slate-900 border border-slate-800'
             : 'bg-white border border-slate-200 shadow-xl'
@@ -473,7 +473,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
       {isMobile && <MobileSidebar />}
 
       <div className={`transition-all duration-300 ${!isMobile ? (sidebarCollapsed ? 'ml-16' : 'ml-64') : 'ml-0'}`}>
-        <header className={`sticky top-0 z-30 h-16 border-b backdrop-blur-xl transition-colors duration-300 ${theme === 'dark' ? 'border-slate-800/50 bg-[#0a0f1a]/80' : 'border-slate-200 bg-white/80'}`}>
+        <header className={`sticky top-0 z-40 h-16 border-b backdrop-blur-xl transition-colors duration-300 ${theme === 'dark' ? 'border-slate-800/50 bg-[#0a0f1a]/80' : 'border-slate-200 bg-white/80'}`}>
           <div className="flex items-center justify-between h-full px-4 lg:px-6">
             <div className="flex items-center gap-4 flex-1 max-w-lg">
               {isMobile && (

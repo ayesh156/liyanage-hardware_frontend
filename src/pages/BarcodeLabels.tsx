@@ -164,9 +164,11 @@ function buildPrintDocument(stickers: StickerData[]): string {
         .map(
           (s) => `
         <td class="sticker-cell">
-          <svg class="barcode-svg" data-barcode="${escapeHtml(s.barcode)}"></svg>
-          <div class="line-1">${escapeHtml(s.line1)}</div>
-          <div class="line-2">${escapeHtml(s.line2)}</div>
+          <div class="sticker-content-wrapper">
+            <svg class="barcode-svg" data-barcode="${escapeHtml(s.barcode)}"></svg>
+            <div class="line-1">${escapeHtml(s.line1)}</div>
+            <div class="line-2">${escapeHtml(s.line2)}</div>
+          </div>
         </td>`
         )
         .join('');
@@ -208,7 +210,7 @@ function buildPrintDocument(stickers: StickerData[]): string {
     table-layout: fixed !important;
     border-collapse: collapse !important;
     border: none !important;
-    margin: 0 !important;
+    margin: 0 auto !important;
     padding: 0 !important;
   }
 
@@ -220,30 +222,62 @@ function buildPrintDocument(stickers: StickerData[]): string {
   }
 
   td.sticker-cell {
-    width: 30mm !important; /* 30mm * 3 = 90mm Total Roll Width */
+    width: 30mm !important; /* 30mm * 3 = 90mm Total Roll Width, evenly distributed */
     max-width: 30mm !important;
-    height: 15.5mm !important;
-    max-height: 15.5mm !important;
+    height: 16mm !important;
+    max-height: 16mm !important;
     vertical-align: top !important;
     text-align: center !important;
-    padding: 0.5mm 0.5mm 0mm 0.5mm !important;
+    padding: 0.5mm 0.4mm 0mm 0.4mm !important;
     overflow: hidden !important;
     background: #ffffff !important;
   }
 
-  /* Barcode SVG */
+  /* Outer columns get a tighter outward-facing edge so they can sit closer
+     to the true left/right roll edges, while keeping their inner-facing
+     padding normal so a clear gap remains between columns 1↔2 and 2↔3. */
+  tr.sticker-row td.sticker-cell:first-child {
+    padding-left: 1mm !important;
+  }
+  tr.sticker-row td.sticker-cell:last-child {
+    padding-right: 1mm !important;
+  }
+
+  /* Wrapper holds barcode + text together as one block per cell.
+     Column 2 stays centered; columns 1 and 3 are pushed to their
+     outward edge below via nth-child overrides. */
+  .sticker-content-wrapper {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+  }
+
+  /* Column 1: hug the true left roll edge */
+  tr.sticker-row td.sticker-cell:first-child .sticker-content-wrapper {
+    align-items: flex-start !important;
+  }
+  /* Column 3: hug the true right roll edge */
+  tr.sticker-row td.sticker-cell:last-child .sticker-content-wrapper {
+    align-items: flex-end !important;
+  }
+
+  /* Barcode SVG — preserveAspectRatio="none" (set in JS after JsBarcode
+     renders) makes every barcode fill this same physical width regardless
+     of content length, so all three columns line up consistently. Width is
+     kept below the cell width so a real gap remains between columns. */
   .sticker-cell svg {
     width: 100% !important;
-    max-width: 26.5mm !important;
+    max-width: 25.5mm !important;
     height: 7mm !important;
     max-height: 7mm !important;
     display: block !important;
-    margin: 0 auto !important;
   }
 
   /* Line 1: Price and Short ID */
   .line-1 {
-    font-size: 6.2pt !important;
+    font-size: 7.8pt !important; /* +~2px for crystal-clear thermal readability */
     font-weight: 800 !important;
     color: #000000 !important;
     line-height: 1.1 !important;
@@ -256,7 +290,7 @@ function buildPrintDocument(stickers: StickerData[]): string {
 
   /* Line 2: Cipher / Store Suffix */
   .line-2 {
-    font-size: 5.8pt !important;
+    font-size: 7.2pt !important; /* +~2px for crystal-clear thermal readability */
     font-weight: 700 !important;
     color: #000000 !important;
     line-height: 1 !important;
@@ -780,6 +814,17 @@ export const BarcodeLabels: React.FC = () => {
                 width: 1.2,
                 height: 18,
               });
+              // Every barcode has a different natural width depending on how
+              // many characters it encodes, so the browser's default
+              // preserveAspectRatio ("xMidYMid meet") centers each SVG at
+              // its own aspect ratio inside the 30mm cell — leaving a
+              // different amount of blank space on each side per label.
+              // That's what made columns 1 and 3 look "pushed inward"
+              // compared to column 2. Forcing preserveAspectRatio="none"
+              // stretches every barcode to fill the exact same physical
+              // width every time, so all three columns line up edge-to-edge
+              // consistently regardless of the barcode's content/length.
+              svgEl.setAttribute('preserveAspectRatio', 'none');
             } catch (barcodeErr) {
               console.error(`Failed to render barcode for "${code}"`, barcodeErr);
             }
@@ -852,7 +897,7 @@ export const BarcodeLabels: React.FC = () => {
 
         {/* ── HEADER ── */}
         <div
-          className={`sticky top-0 z-40 ${
+          className={`sticky top-[0px] z-20 ${
             isMobile ? 'px-3 py-2' : 'px-4 py-3'
           } ${
             isDark
