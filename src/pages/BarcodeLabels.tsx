@@ -125,7 +125,7 @@ function buildStickerData(
   return {
     key: `${entry.id}-${idx}`,
     barcode: entry.barcode,
-    line1: `Rs. ${entry.salesPrice.toFixed(2)}#${shortId}`,
+    line1: `Rs.${entry.salesPrice.toFixed(2)}#${shortId}`,
     line2: cipherLine,
   };
 }
@@ -165,9 +165,11 @@ function buildPrintDocument(stickers: StickerData[]): string {
           (s) => `
         <td class="sticker-cell">
           <div class="sticker-content-wrapper">
-            <svg class="barcode-svg" data-barcode="${escapeHtml(s.barcode)}"></svg>
-            <div class="line-1">${escapeHtml(s.line1)}</div>
-            <div class="line-2">${escapeHtml(s.line2)}</div>
+            <div class="sticker-inner-wrapper">
+              <svg class="barcode-svg" data-barcode="${escapeHtml(s.barcode)}"></svg>
+              <div class="line-1">${escapeHtml(s.line1)}</div>
+              <div class="line-2">${escapeHtml(s.line2)}</div>
+            </div>
           </div>
         </td>`
         )
@@ -221,31 +223,19 @@ function buildPrintDocument(stickers: StickerData[]): string {
     break-inside: avoid !important;
   }
 
-  td.sticker-cell {
-    width: 30mm !important; /* 30mm * 3 = 90mm Total Roll Width, evenly distributed */
+td.sticker-cell {
+    width: 30mm !important;
     max-width: 30mm !important;
     height: 16mm !important;
     max-height: 16mm !important;
     vertical-align: top !important;
     text-align: center !important;
-    padding: 0.5mm 0.4mm 0mm 0.4mm !important;
+    padding: 0.5mm 0mm 0mm 0mm !important;
     overflow: hidden !important;
     background: #ffffff !important;
   }
 
-  /* Outer columns get a tighter outward-facing edge so they can sit closer
-     to the true left/right roll edges, while keeping their inner-facing
-     padding normal so a clear gap remains between columns 1↔2 and 2↔3. */
-  tr.sticker-row td.sticker-cell:first-child {
-    padding-left: 1mm !important;
-  }
-  tr.sticker-row td.sticker-cell:last-child {
-    padding-right: 1mm !important;
-  }
-
-  /* Wrapper holds barcode + text together as one block per cell.
-     Column 2 stays centered; columns 1 and 3 are pushed to their
-     outward edge below via nth-child overrides. */
+  /* Outer wrapper controls POSITION inside the 30mm cell */
   .sticker-content-wrapper {
     width: 100% !important;
     display: flex !important;
@@ -254,22 +244,31 @@ function buildPrintDocument(stickers: StickerData[]): string {
     justify-content: flex-start !important;
   }
 
-  /* Column 1: hug the true left roll edge */
+  /* Column 1: Pushes entire sticker unit to TRUE LEFT EDGE */
   tr.sticker-row td.sticker-cell:first-child .sticker-content-wrapper {
     align-items: flex-start !important;
   }
-  /* Column 3: hug the true right roll edge */
+  
+  /* Column 3: Pushes entire sticker unit to TRUE RIGHT EDGE */
   tr.sticker-row td.sticker-cell:last-child .sticker-content-wrapper {
     align-items: flex-end !important;
   }
 
-  /* Barcode SVG — preserveAspectRatio="none" (set in JS after JsBarcode
-     renders) makes every barcode fill this same physical width regardless
-     of content length, so all three columns line up consistently. Width is
-     kept below the cell width so a real gap remains between columns. */
+  /* Glued Barcode + Text Unit with Perfect Printable Width */
+  .sticker-inner-wrapper {
+    width: 27mm !important;
+    max-width: 27mm !important;
+    flex-shrink: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+  }
+
+  /* SVG Barcode - Fully readable & edge-safe */
   .sticker-cell svg {
     width: 100% !important;
-    max-width: 25.5mm !important;
+    max-width: 26.5mm !important;
     height: 7mm !important;
     max-height: 7mm !important;
     display: block !important;
@@ -277,26 +276,29 @@ function buildPrintDocument(stickers: StickerData[]): string {
 
   /* Line 1: Price and Short ID */
   .line-1 {
-    font-size: 7.8pt !important; /* +~2px for crystal-clear thermal readability */
+    width: 100% !important;
+    text-align: center !important;
+    font-size: 7.2pt !important;
     font-weight: 800 !important;
     color: #000000 !important;
     line-height: 1.1 !important;
     margin-top: 0.3mm !important;
     white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: clip !important; /* Prevents trailing dots (...) */
-    letter-spacing: -0.2px !important;
+    overflow: visible !important;
+    letter-spacing: -0.3px !important;
   }
 
   /* Line 2: Cipher / Store Suffix */
   .line-2 {
-    font-size: 7.2pt !important; /* +~2px for crystal-clear thermal readability */
+    width: 100% !important;
+    text-align: center !important;
+    font-size: 6.8pt !important;
     font-weight: 700 !important;
     color: #000000 !important;
     line-height: 1 !important;
     margin-top: 0.2mm !important;
     white-space: nowrap !important;
-    letter-spacing: 0.1px !important;
+    letter-spacing: 0px !important;
   }
 </style>
 </head>
