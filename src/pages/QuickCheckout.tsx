@@ -48,7 +48,6 @@ const STEPS: { key: QuickCheckoutStep; labelKey: string }[] = [
 // Keyboard shortcut hints
 const SHORTCUTS = {
   search: 'F2',
-  quantity: 'F3',
   cart: 'F4',
   payment: 'F5',
   discount: 'F6',
@@ -221,33 +220,27 @@ export const QuickCheckout: React.FC = () => {
 
   const [items, setItems] = useState<QuickInvoiceItem[]>([]);
   const [productSearch, setProductSearch] = useState('');
-  const [quantity, setQuantity] = useState<number>(1);
-  const [quantityStr, setQuantityStr] = useState<string>("1");
   const [discount, setDiscount] = useState<number>(0);
   const [bulkDiscountPercent, setBulkDiscountPercent] = useState<number>(0);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showShortcutMap, setShowShortcutMap] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'credit'>('cash');
-  const [pendingProduct, setPendingProduct] = useState<FlattenedProduct | null>(null);
-  // ── TRIPLE CHECKBOX FILTER STATES ──
+  // ── QUADRUPLE CHECKBOX FILTER STATES ──
   // searchByKey:     match against product.searchKey  (default ON)
   // searchBarcode:   match against product.barcode    (default ON — must be strictly true by default)
   // searchByName:    match against product.name       (default OFF)
+  // searchByNo:      match against product.no         (default OFF)
   const [searchByKey,    setSearchByKey]    = useState<boolean>(true);
   const [searchBarcode,  setSearchBarcode]  = useState<boolean>(true);
   const [searchByName,   setSearchByName]   = useState<boolean>(false);
-
-  // ── SEARCH DROPDOWN QUANTITY SYNC STATE (ArrowRight/ArrowLeft in search results) ──
-  const [searchDropdownQty, setSearchDropdownQty] = useState<number>(0);
-  const [searchDropdownQtyStr, setSearchDropdownQtyStr] = useState<string>("0");
+  const [searchByNo,     setSearchByNo]     = useState<boolean>(false);
 
   // Stepped navigation state
   const [currentStep, setCurrentStep] = useState<QuickCheckoutStep>('products');
   const [currentMode, setCurrentMode] = useState<CheckoutMode>('search');
   
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isQuantityFocused, setIsQuantityFocused] = useState(false);
 
   const applyInstantStockSync = useCallback((soldItems: QuickInvoiceItem[]) => {
     const stockDeltaById = new Map<string, number>();
@@ -282,7 +275,6 @@ export const QuickCheckout: React.FC = () => {
   
   // Refs for keyboard navigation
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const quantityInputRef = useRef<HTMLInputElement>(null);
   const discountInputRef = useRef<HTMLInputElement>(null);
   const paymentRef = useRef<HTMLDivElement>(null);
   const productListRef = useRef<HTMLDivElement>(null);
@@ -337,9 +329,8 @@ export const QuickCheckout: React.FC = () => {
 
   // ── Category Popover Keyboard Navigation State ──
   const [activeCategoryItemIndex, setActiveCategoryItemIndex] = useState<number>(0);
-  const [quantityPromptProduct, setQuantityPromptProduct] = useState<any | null>(null);
-  const [categoryPromptQty, setCategoryPromptQty] = useState<string>("1");
   const categoryListContainerRef = useRef<HTMLDivElement>(null);
+  const activeCategoryItemRef = useRef<HTMLDivElement | null>(null);
   
   // ── Display Settings Modal ──
   const [showDisplaySettings, setShowDisplaySettings] = useState(false);
@@ -613,6 +604,7 @@ export const QuickCheckout: React.FC = () => {
       if (searchByKey)   score = Math.max(score, scoreField(item.searchKey || ''));
       if (searchBarcode) score = Math.max(score, scoreField(item.barcode || ''));
       if (searchByName)  score = Math.max(score, scoreField(item.name || ''));
+      if (searchByNo)    score = Math.max(score, scoreField(item.no || ''));
       if (score > 0) scored.push({ item, score });
     }
 
@@ -623,72 +615,74 @@ export const QuickCheckout: React.FC = () => {
 
     filtered.sort((a, b) => b.score - a.score);
     return filtered.map(s => toFlat(s.item));
-  }, [inventoryItems, productSearch, searchByKey, searchBarcode, searchByName]);
+  }, [inventoryItems, productSearch, searchByKey, searchBarcode, searchByName, searchByNo]);
 
-  // Auto-detect barcode scan / direct paste (when field gains input)
-  useEffect(() => {
-    if (filteredProducts.length === 1 && productSearch.length >= 2) {
-      const flatProduct = filteredProducts[0];
-      const isExactMatch =
-        flatProduct.displayBarcode === productSearch ||
-        flatProduct.displaySku.toLowerCase() === productSearch.toLowerCase() ||
-        flatProduct.product.sku.toLowerCase() === productSearch.toLowerCase();
+  // ── Direct add to cart helper with qty 1 ──
+  const addOneToCart = useCallback((flatProduct: FlattenedProduct) => {
+    const masterProduct = inventoryItems.find(
+      inv => inv.id === flatProduct.flatId
+    );
+    const ourPriceVal     = Number(masterProduct?.salesPrice   ?? flatProduct.retailPrice    ?? 0);
+    const displayPriceVal = Number(masterProduct?.displayPrice ?? flatProduct.wholesalePrice ?? 0);
+    const costVal         = Number(masterProduct?.cost         ?? flatProduct.costPrice      ?? 0);
+    const lastPriceVal    = Number(masterProduct?.lastPrice    ?? 0);
+    const storeQtyVal     = Number(masterProduct?.storeQty     ?? flatProduct.stock          ?? 0);
 
-      if (isExactMatch) {
-        setPendingProduct(flatProduct);
-        setProductSearch('');
-        setSelectedProductIndex(-1);
-        setQuantity(1);
-        setQuantityStr("1");
-        setIsQuantityFocused(true);
-        setTimeout(() => {
-          quantityInputRef.current?.focus();
-          quantityInputRef.current?.select();
-        }, 50);
-        playBeep('add');
-        toast.info(`${flatProduct.displayName} - ${t('quickCheckout.enterQuantity')}`);
+    const existingItem = items.find((i) => i.productId === flatProduct.flatId);
+    if (existingItem) {
+      if (existingItem.quantity + 1 > storeQtyVal) {
+        playBeep('error');
+        toast.error(`${t('quickCheckout.insufficientStock')}: ${storeQtyVal} ${t('invoice.available')}`);
+        return;
       }
+      setItems(
+        items.map((i) =>
+          i.productId === flatProduct.flatId
+            ? { ...i, quantity: i.quantity + 1, total: (i.quantity + 1) * ourPriceVal }
+            : i
+        )
+      );
+    } else {
+      if (1 > storeQtyVal) {
+        playBeep('error');
+        toast.error(`${t('quickCheckout.insufficientStock')}: ${storeQtyVal} ${t('invoice.available')}`);
+        return;
+      }
+      const newItem: QuickInvoiceItem = {
+        id:            `item-${Date.now()}`,
+        productId:     flatProduct.flatId,
+        productName:   flatProduct.displayName,
+        productNameSi: flatProduct.product.nameAlt || flatProduct.displayName,
+        variantId:     flatProduct.variant?.id,
+        size:          flatProduct.variant?.size,
+        quantity:      1,
+        unitPrice:     ourPriceVal,
+        originalPrice: displayPriceVal,
+        total:         ourPriceVal,
+        cost:          costVal,
+        lastPrice:     lastPriceVal,
+        salesPrice:    ourPriceVal,
+        displayPrice:  displayPriceVal,
+        ourPrice:      ourPriceVal,
+        storeQty:      storeQtyVal,
+      };
+      setItems([...items, newItem]);
     }
-  }, [filteredProducts, productSearch, playBeep, t]);
 
-  const parseQuantityInput = useCallback((input: string): number => {
-    const trimmed = input.trim();
-    if (!trimmed.length) return NaN;
-    if (trimmed.startsWith('.')) {
-      return parseFloat('0' + trimmed);
-    }
-    const fractionMatch = trimmed.match(/^(\d+)\s*\/\s*(\d+)$/);
-    if (fractionMatch) {
-      const num = parseInt(fractionMatch[1], 10);
-      const den = parseInt(fractionMatch[2], 10);
-      if (den > 0) return num / den;
-    }
-    const mixedMatch = trimmed.match(/^(\d+)\s+(\d+)\s*\/\s*(\d+)$/);
-    if (mixedMatch) {
-      const whole = parseInt(mixedMatch[1], 10);
-      const num = parseInt(mixedMatch[2], 10);
-      const den = parseInt(mixedMatch[3], 10);
-      if (den > 0) return whole + num / den;
-    }
-    return parseFloat(trimmed);
-  }, []);
+    playBeep('add');
+    setProductSearch('');
+    setSelectedProductIndex(-1);
+    searchInputRef.current?.focus();
 
-  const getCartQuantity = useCallback((overrideQty?: number): number => {
-    const raw = overrideQty !== undefined ? String(overrideQty) : quantityStr;
-    const parsed = parseQuantityInput(raw);
-    if (isNaN(parsed) || parsed <= 0) return 0.001;
-    return toTwoDecimals(parsed);
-  }, [quantityStr, parseQuantityInput, toTwoDecimals]);
-
-  const syncQuantityFromStr = useCallback(() => {
-    const parsed = parseQuantityInput(quantityStr);
-    if (!isNaN(parsed) && parsed > 0) {
-      setQuantity(toTwoDecimals(parsed));
-    }
-  }, [quantityStr, parseQuantityInput, toTwoDecimals]);
+    setTimeout(() => {
+      if (cartItemsContainerRef.current) {
+        cartItemsContainerRef.current.scrollTop = cartItemsContainerRef.current.scrollHeight;
+      }
+    }, 50);
+  }, [items, inventoryItems, playBeep, t]);
 
   const addProductToCart = useCallback((flatProduct: FlattenedProduct, overrideQty?: number) => {
-    const addQty = getCartQuantity(overrideQty);
+    const addQty = overrideQty && overrideQty > 0 ? overrideQty : 1;
 
     const masterProduct = inventoryItems.find(
       inv => inv.id === flatProduct.flatId
@@ -741,8 +735,8 @@ export const QuickCheckout: React.FC = () => {
     }
 
     playBeep('add');
-    setQuantity(1);
-    setQuantityStr("1");
+    setProductSearch('');
+    setSelectedProductIndex(-1);
     searchInputRef.current?.focus();
 
     setTimeout(() => {
@@ -750,7 +744,7 @@ export const QuickCheckout: React.FC = () => {
         cartItemsContainerRef.current.scrollTop = cartItemsContainerRef.current.scrollHeight;
       }
     }, 50);
-  }, [items, inventoryItems, getCartQuantity, playBeep, t]);
+  }, [items, inventoryItems, playBeep, t]);
 
   const findExactMatch = useCallback((input: string): FlattenedProduct | undefined => {
     const trimmed = input.trim();
@@ -771,12 +765,11 @@ export const QuickCheckout: React.FC = () => {
     const match = findExactMatch(pasted);
     if (match && match.stock > 0) {
       e.preventDefault();
-      addProductToCart(match, 1);
-      setProductSearch('');
+      addOneToCart(match);
       toast.success(`${match.displayName} ${t('quickCheckout.addedToCart')}`, { autoClose: 1500 });
       playBeep('add');
     }
-  }, [findExactMatch, addProductToCart, playBeep, t]);
+  }, [findExactMatch, addOneToCart, playBeep, t]);
 
   const handleBarcodeScanDispatch = useCallback((scannedValue: string): boolean => {
     const trimmed = scannedValue.trim();
@@ -806,21 +799,60 @@ export const QuickCheckout: React.FC = () => {
       variantLabel: undefined,
     } as FlattenedProduct;
 
-    setPendingProduct(fp);
-    setProductSearch(foundProduct.name);
-    setQuantity(1);
-    setQuantityStr("1");
+    addOneToCart(fp);
+    toast.success(`${foundProduct.name} ${t('quickCheckout.addedToCart')}`, { autoClose: 2000 });
+    setProductSearch('');
     setSelectedProductIndex(-1);
-    playBeep('add');
-    toast.info(`${foundProduct.name} — ${t('quickCheckout.enterQuantity')}`, { autoClose: 2000 });
-
-    setTimeout(() => {
-      quantityInputRef.current?.focus();
-      quantityInputRef.current?.select();
-    }, 30);
+    searchInputRef.current?.focus();
 
     return true;
-  }, [inventoryItems, playBeep, t]);
+  }, [inventoryItems, addOneToCart, t]);
+
+  // Auto-detect barcode scan / direct paste (when field gains input) — direct add to cart
+  useEffect(() => {
+    if (filteredProducts.length === 1 && productSearch.length >= 2) {
+      const flatProduct = filteredProducts[0];
+      const isExactMatch =
+        flatProduct.displayBarcode === productSearch ||
+        flatProduct.displaySku.toLowerCase() === productSearch.toLowerCase() ||
+        flatProduct.product.sku.toLowerCase() === productSearch.toLowerCase();
+
+      if (isExactMatch) {
+        if (flatProduct.stock > 0) {
+          addOneToCart(flatProduct);
+          setProductSearch('');
+          setSelectedProductIndex(-1);
+          playBeep('add');
+          toast.success(`${flatProduct.displayName} ${t('quickCheckout.addedToCart')}`, { autoClose: 1500 });
+        } else {
+          playBeep('error');
+          toast.error(t('quickCheckout.insufficientStock'));
+        }
+      }
+    }
+  }, [filteredProducts, productSearch, addOneToCart, playBeep, t]);
+
+  const parseQuantityInput = useCallback((input: string): number => {
+    const trimmed = input.trim();
+    if (!trimmed.length) return NaN;
+    if (trimmed.startsWith('.')) {
+      return parseFloat('0' + trimmed);
+    }
+    const fractionMatch = trimmed.match(/^(\d+)\s*\/\s*(\d+)$/);
+    if (fractionMatch) {
+      const num = parseInt(fractionMatch[1], 10);
+      const den = parseInt(fractionMatch[2], 10);
+      if (den > 0) return num / den;
+    }
+    const mixedMatch = trimmed.match(/^(\d+)\s+(\d+)\s*\/\s*(\d+)$/);
+    if (mixedMatch) {
+      const whole = parseInt(mixedMatch[1], 10);
+      const num = parseInt(mixedMatch[2], 10);
+      const den = parseInt(mixedMatch[3], 10);
+      if (den > 0) return whole + num / den;
+    }
+    return parseFloat(trimmed);
+  }, []);
 
   const removeItem = useCallback((itemId: string) => {
     setItems(items.filter((i) => i.id !== itemId));
@@ -1048,11 +1080,8 @@ export const QuickCheckout: React.FC = () => {
   const clearCart = useCallback(() => {
     setItems([]);
     setProductSearch('');
-    setQuantity(1);
-    setQuantityStr("1");
     setDiscount(0);
     setReceivedAmount(0);
-    setPendingProduct(null);
     setSelectedProductIndex(-1);
     searchInputRef.current?.focus();
   }, []);
@@ -1376,7 +1405,7 @@ export const QuickCheckout: React.FC = () => {
     searchInputRef.current?.focus();
   }, [items, computedSubtotal, computedFinalTotal, computedDiscount, selectedCustomerId, paymentMethod, playBeep, t, isProcessing, receivedAmount, changeAmount, findCustomerById]);
 
-  // Keyboard event handler (full, preserved as-is)
+  // Keyboard event handler (modified: removed qty field / F3 / arrow qty in search)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // ── DEFEND FORM FIELDS: If user is actively typing in an input, textarea,
@@ -1394,11 +1423,10 @@ export const QuickCheckout: React.FC = () => {
       }
 
       const isInSearchInput = document.activeElement === searchInputRef.current;
-      const isInQuantityInput = document.activeElement === quantityInputRef.current;
       const isInDiscountInput = document.activeElement === discountInputRef.current;
       const isInReceivedInput = document.activeElement === receivedAmountInputRef.current;
       
-      if (e.key === '?' && !isInSearchInput && !isInQuantityInput && !isInDiscountInput && !isInReceivedInput) {
+      if (e.key === '?' && !isInSearchInput && !isInDiscountInput && !isInReceivedInput) {
         e.preventDefault();
         setShowShortcutMap(prev => !prev);
         return;
@@ -1425,23 +1453,10 @@ export const QuickCheckout: React.FC = () => {
           e.preventDefault();
           setIsCartFocused(false);
           setIsPaymentFocused(false);
-          setIsQuantityFocused(false);
           setSelectedCartIndex(-1);
-          setPendingProduct(null);
           setCurrentMode('search');
           searchInputRef.current?.focus();
           searchInputRef.current?.select();
-          break;
-          
-        case 'F3':
-          e.preventDefault();
-          setIsCartFocused(false);
-          setIsPaymentFocused(false);
-          setSelectedCartIndex(-1);
-          setIsQuantityFocused(true);
-          setCurrentMode('quantity');
-          quantityInputRef.current?.focus();
-          quantityInputRef.current?.select();
           break;
           
         case 'F4':
@@ -1449,14 +1464,11 @@ export const QuickCheckout: React.FC = () => {
           if (items.length > 0) {
             setIsCartFocused(true);
             setIsPaymentFocused(false);
-            setIsQuantityFocused(false);
             setSelectedCartIndex(items.length - 1);
             setSelectedProductIndex(-1);
-            setPendingProduct(null);
             setCurrentMode('cart');
             (document.activeElement as HTMLElement)?.blur();
             cartListRef.current?.focus?.({ preventScroll: true } as FocusOptions) ?? cartListRef.current?.focus();
-
             playBeep('add');
           }
           break;
@@ -1464,9 +1476,7 @@ export const QuickCheckout: React.FC = () => {
         case 'F5':
           e.preventDefault();
           setIsCartFocused(false);
-          setIsQuantityFocused(false);
           setIsPaymentFocused(true);
-          setPendingProduct(null);
           setCurrentMode('payment');
           (document.activeElement as HTMLElement)?.blur();
           paymentRef.current?.focus?.({ preventScroll: true } as FocusOptions) ?? paymentRef.current?.focus();
@@ -1477,8 +1487,6 @@ export const QuickCheckout: React.FC = () => {
           e.preventDefault();
           setIsCartFocused(false);
           setIsPaymentFocused(false);
-          setIsQuantityFocused(false);
-          setPendingProduct(null);
           setCurrentMode('discount');
           discountInputRef.current?.focus();
           discountInputRef.current?.select();
@@ -1488,8 +1496,6 @@ export const QuickCheckout: React.FC = () => {
           e.preventDefault();
           setIsCartFocused(false);
           setIsPaymentFocused(false);
-          setIsQuantityFocused(false);
-          setPendingProduct(null);
           setCurrentMode('discount');
           receivedAmountInputRef.current?.focus();
           receivedAmountInputRef.current?.select();
@@ -1500,8 +1506,6 @@ export const QuickCheckout: React.FC = () => {
           e.preventDefault();
           setIsCartFocused(false);
           setIsPaymentFocused(false);
-          setIsQuantityFocused(false);
-          setPendingProduct(null);
           setIsQuickAddMode(true);
           setQuickAddFocusField('name');
           setCurrentMode('search');
@@ -1542,10 +1546,6 @@ export const QuickCheckout: React.FC = () => {
             setIsPaymentFocused(false);
             setCurrentMode('search');
             searchInputRef.current?.focus();
-          } else if (pendingProduct) {
-            setPendingProduct(null);
-            setProductSearch('');
-            searchInputRef.current?.focus();
           } else if (productSearch) {
             setProductSearch('');
             setSelectedProductIndex(-1);
@@ -1559,7 +1559,6 @@ export const QuickCheckout: React.FC = () => {
           if (
             items.length > 0 &&
             !isInSearchInput &&
-            !isInQuantityInput &&
             !isInDiscountInput &&
             !isInReceivedInput
           ) {
@@ -1613,32 +1612,6 @@ export const QuickCheckout: React.FC = () => {
             if (item) {
               updateItemQuantity(item.id, decrementQuantity(item.quantity, 0.01));
             }
-          } else if (isInQuantityInput) {
-            const newQty = decrementQuantity(quantity, 0.01);
-            setQuantity(newQty);
-            setQuantityStr(String(newQty));
-          } else if (isInSearchInput && filteredProducts.length > 0 && activeMainSearchIndex >= 0) {
-            // Search dropdown ArrowLeft — step down quantity
-            const targetedItem = filteredProducts[activeMainSearchIndex];
-            if (targetedItem) {
-              const cartItem = items.find(i => i.productId === targetedItem.flatId);
-              if (cartItem) {
-                // Exists in cart — step down safely
-                const currentQty = cartItem.quantity;
-                let newQty: number;
-                if (currentQty > 1.0) {
-                  newQty = currentQty - 1.0;
-                } else {
-                  newQty = Math.max(0.1, currentQty - 0.1);
-                }
-                const roundedNewQty = parseFloat(newQty.toFixed(1));
-                setSearchDropdownQty(roundedNewQty);
-                setSearchDropdownQtyStr(String(roundedNewQty));
-                // Fire live cart sync
-                updateItemQuantity(cartItem.id, roundedNewQty);
-              }
-              // If not in cart and qty is 0, do nothing
-            }
           } else if (isPaymentFocused) {
             setPaymentMethod('cash');
             playBeep('add');
@@ -1652,36 +1625,6 @@ export const QuickCheckout: React.FC = () => {
             if (item) {
               updateItemQuantity(item.id, incrementQuantity(item.quantity));
             }
-          } else if (isInQuantityInput) {
-            const newQty = incrementQuantity(quantity);
-            setQuantity(newQty);
-            setQuantityStr(String(newQty));
-          } else if (isInSearchInput && filteredProducts.length > 0 && activeMainSearchIndex >= 0) {
-            // Search dropdown ArrowRight — step up quantity and instant cart sync
-            const targetedItem = filteredProducts[activeMainSearchIndex];
-            if (targetedItem) {
-              const cartItem = items.find(i => i.productId === targetedItem.flatId);
-              if (cartItem) {
-                // Already in cart — step up
-                const currentQty = cartItem.quantity;
-                let newQty: number;
-                if (currentQty >= 1.0) {
-                  newQty = currentQty + 1.0;
-                } else {
-                  newQty = currentQty + 0.1;
-                }
-                const roundedNewQty = parseFloat(newQty.toFixed(1));
-                setSearchDropdownQty(roundedNewQty);
-                setSearchDropdownQtyStr(String(roundedNewQty));
-                updateItemQuantity(cartItem.id, roundedNewQty);
-              } else {
-                // Not in cart — initialize at 1.0 and add to cart
-                setSearchDropdownQty(1.0);
-                setSearchDropdownQtyStr("1.0");
-                // Build FlattenedProduct and add to cart with qty 1
-                addProductToCart(targetedItem, 1);
-              }
-            }
           } else if (isPaymentFocused) {
             setPaymentMethod('credit');
             playBeep('add');
@@ -1692,31 +1635,19 @@ export const QuickCheckout: React.FC = () => {
           if (isQuickAddMode) {
             e.preventDefault();
             addQuickAddItem();
-          } else if (pendingProduct && isInQuantityInput) {
-            e.preventDefault();
-            addProductToCart(pendingProduct);
-            setPendingProduct(null);
-            setCurrentMode('search');
-            searchInputRef.current?.focus();
           } else if (isInSearchInput && filteredProducts.length > 0) {
             e.preventDefault();
             const useIndex = activeMainSearchIndex >= 0 ? activeMainSearchIndex : (selectedProductIndex >= 0 ? selectedProductIndex : 0);
             const productToSelect = filteredProducts[useIndex];
             if (productToSelect) {
-              setPendingProduct(productToSelect);
-              setProductSearch('');
-              setSelectedProductIndex(-1);
-              setActiveMainSearchIndex(-1);
-              setQuantity(1);
-              setQuantityStr("1");
-              setIsQuantityFocused(true);
-              setCurrentMode('quantity');
-              setTimeout(() => {
-                quantityInputRef.current?.focus();
-                quantityInputRef.current?.select();
-              }, 50);
-              playBeep('add');
-              toast.info(`${productToSelect.displayName} - ${t('quickCheckout.enterQuantity')}`);
+              if (productToSelect.stock > 0) {
+                addOneToCart(productToSelect);
+                playBeep('add');
+                toast.success(`${productToSelect.displayName} ${t('quickCheckout.addedToCart')}`, { autoClose: 1500 });
+              } else {
+                playBeep('error');
+                toast.error(t('quickCheckout.insufficientStock'));
+              }
             }
           }
           break;
@@ -1760,7 +1691,7 @@ export const QuickCheckout: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [items, productSearch, filteredProducts, selectedProductIndex, selectedCartIndex, isCartFocused, isPaymentFocused, isQuantityFocused, pendingProduct, showShortcuts, showShortcutMap, currentStep, handleCheckout, handleQuickSave, removeItem, addProductToCart, updateItemQuantity, playBeep, t, incrementQuantity, decrementQuantity, isQuickAddMode, quickAddFocusField, addQuickAddItem]);
+  }, [items, productSearch, filteredProducts, selectedProductIndex, selectedCartIndex, isCartFocused, isPaymentFocused, showShortcuts, showShortcutMap, currentStep, handleCheckout, handleQuickSave, removeItem, addOneToCart, updateItemQuantity, playBeep, t, incrementQuantity, decrementQuantity, isQuickAddMode, quickAddFocusField, addQuickAddItem]);
 
   // Auto-focus search on mount
   useEffect(() => {
@@ -1794,6 +1725,15 @@ export const QuickCheckout: React.FC = () => {
     }
   }, [selectedProductIndex]);
 
+  // Auto-scroll category popover active item into view
+  useEffect(() => {
+    if (activeCategoryItemRef.current) {
+      activeCategoryItemRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      });
+    }
+  }, [activeCategoryItemIndex]);
   const isDark = theme === 'dark';
 
   const columnConfigs: ColumnResizeConfig[] = useMemo(() => [
@@ -1875,6 +1815,15 @@ export const QuickCheckout: React.FC = () => {
                     />
                     Product Name
                   </label>
+                  <label className={`flex items-center gap-1 cursor-pointer select-none text-[9px] font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    <input
+                      type="checkbox"
+                      checked={searchByNo}
+                      onChange={e => setSearchByNo(e.target.checked)}
+                      className="accent-amber-500 w-2.5 h-2.5 rounded"
+                    />
+                    Product No
+                  </label>
                 </div>
               </div>
             </div>
@@ -1898,27 +1847,7 @@ export const QuickCheckout: React.FC = () => {
         </div>
 
         <div className={`sticky top-[52px] z-40 px-3 py-2 ${isDark ? 'bg-slate-900/98 backdrop-blur-lg' : 'bg-slate-50/98 backdrop-blur-lg'}`}>
-          {pendingProduct && (
-            <div className={`mb-2 p-2 rounded-xl flex items-center justify-between animate-pulse ${isDark ? 'bg-amber-500/20 border border-amber-500/40' : 'bg-amber-50 border-2 border-amber-300'}`}>
-              <div className="flex items-center gap-2 flex-1 min-w-0">
-                <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${isDark ? 'bg-amber-500/30' : 'bg-amber-200'}`}>
-                  <Package className={`w-4 h-4 ${isDark ? 'text-amber-400' : 'text-amber-700'}`} />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className={`font-semibold text-xs truncate ${isDark ? 'text-amber-300' : 'text-amber-800'}`}>{isSinhala ? (pendingProduct.product.nameAlt || pendingProduct.displayName) : pendingProduct.displayName}</p>
-                  <p className={`text-[10px] ${isDark ? 'text-amber-400/70' : 'text-amber-600'}`}>
-                    {t('common.currency')} {pendingProduct.retailPrice.toLocaleString()}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => { setPendingProduct(null); }}
-                className={`p-1 rounded-xl ${isDark ? 'active:bg-amber-500/30 text-amber-400' : 'active:bg-amber-200 text-amber-700'}`}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
+          {/* ── REMOVED: pending product notification ── */}
           
           <div className="flex gap-2">
             <div className="flex-1 relative">
@@ -2010,66 +1939,7 @@ export const QuickCheckout: React.FC = () => {
                 </button>
               )}
             </div>
-            
-            <div className={`flex items-center gap-1 px-1.5 rounded-xl border-2 ${
-              pendingProduct
-                ? isDark ? 'border-amber-500 bg-amber-500/10' : 'border-amber-400 bg-amber-50'
-                : isDark ? 'border-slate-700 bg-slate-800/80' : 'border-slate-200 bg-white'
-            }`}>
-              <button
-                onClick={() => {
-                  const newQty = decrementQuantity(quantity, 0.01);
-                  setQuantity(newQty);
-                  setQuantityStr(String(newQty));
-                }}
-                className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all active:scale-90 ${isDark ? 'active:bg-slate-700 text-slate-400' : 'active:bg-slate-200 text-slate-600'}`}
-              >
-                <Minus className="w-3 h-3" />
-              </button>
-              <input
-                ref={quantityInputRef}
-                id="main-checkout-qty-input"
-                type="text"
-                inputMode="decimal"
-                value={quantityStr}
-                onChange={(e) => {
-                  setQuantityStr(e.target.value);
-                }}
-                onFocus={() => {
-                  setIsCartFocused(false);
-                  setSelectedCartIndex(-1);
-                  setIsPaymentFocused(false);
-                }}
-                onBlur={() => {
-                  syncQuantityFromStr();
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && pendingProduct) {
-                    e.preventDefault();
-                    syncQuantityFromStr();
-                    addProductToCart(pendingProduct);
-                    setPendingProduct(null);
-                    setProductSearch('');
-                    setQuantityStr("1");
-                    setTimeout(() => {
-                      searchInputRef.current?.focus();
-                      searchInputRef.current?.select();
-                    }, 30);
-                  }
-                }}
-                className={`w-10 py-2 text-center font-bold text-sm bg-transparent focus:outline-none ${isDark ? 'text-white' : 'text-slate-900'}`}
-              />
-              <button
-                onClick={() => {
-                  const newQty = incrementQuantity(quantity);
-                  setQuantity(newQty);
-                  setQuantityStr(String(newQty));
-                }}
-                className={`w-7 h-7 rounded-lg flex items-center justify-center transition-all active:scale-90 ${isDark ? 'active:bg-slate-700 text-slate-400' : 'active:bg-slate-200 text-slate-600'}`}
-              >
-                <Plus className="w-3 h-3" />
-              </button>
-            </div>
+            {/* ── REMOVED: Quantity field next to search ── */}
           </div>
         </div>
 
@@ -2086,19 +1956,16 @@ export const QuickCheckout: React.FC = () => {
                         else productItemRefs.current.delete(index);
                       }}
                       onClick={() => {
-                        setPendingProduct(flatProduct);
-                        setProductSearch('');
-                        setSelectedProductIndex(-1);
-                        setQuantity(1);
-                        setQuantityStr("1");
-                        setIsQuantityFocused(true);
-                        setCurrentMode('quantity');
-                        setTimeout(() => {
-                          quantityInputRef.current?.focus();
-                          quantityInputRef.current?.select();
-                        }, 50);
-                        playBeep('add');
-                        toast.info(`${flatProduct.displayName} - ${t('quickCheckout.enterQuantity')}`);
+                        if (flatProduct.stock > 0) {
+                          addOneToCart(flatProduct);
+                          setProductSearch('');
+                          setSelectedProductIndex(-1);
+                          playBeep('add');
+                          toast.success(`${flatProduct.displayName} ${t('quickCheckout.addedToCart')}`, { autoClose: 1500 });
+                        } else {
+                          playBeep('error');
+                          toast.error(t('quickCheckout.insufficientStock'));
+                        }
                       }}
                       className={`w-full flex items-center gap-2 p-2.5 text-left transition-all active:scale-[0.98] border-b last:border-b-0 ${
                         index === selectedProductIndex
@@ -2487,6 +2354,15 @@ export const QuickCheckout: React.FC = () => {
                 />
                 Product Name
               </label>
+              <label className={`flex items-center gap-1 cursor-pointer select-none text-[10px] font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                <input
+                  type="checkbox"
+                  checked={searchByNo}
+                  onChange={e => setSearchByNo(e.target.checked)}
+                  className="accent-amber-500 w-3 h-3 rounded"
+                />
+                Product No
+              </label>
             </div>
           </div>
           
@@ -2524,27 +2400,8 @@ export const QuickCheckout: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* Left Panel - Main checkout area */}
           <div className="lg:col-span-8 space-y-2">
-            {/* Condensed Search Bar */}
+            {/* Condensed Search Bar — Qty field removed */}
             <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200 shadow-sm'}`}>
-              {pendingProduct && (
-                <div className={`mb-2 p-2 rounded-lg flex items-center justify-between ${isDark ? 'bg-amber-500/20 border border-amber-500/30' : 'bg-amber-50 border border-amber-200'}`}>
-                  <div className="flex items-center gap-2">
-                    <Package className={`w-4 h-4 ${isDark ? 'text-amber-400' : 'text-amber-600'}`} />
-                    <div>
-                      <p className={`text-xs font-medium ${isDark ? 'text-amber-300' : 'text-amber-800'}`}>{isSinhala ? (pendingProduct.product.nameAlt || pendingProduct.displayName) : pendingProduct.displayName}</p>
-                      <p className={`text-[10px] ${isDark ? 'text-amber-400/70' : 'text-amber-600'}`}>
-                        {t('quickCheckout.enterQuantityPrompt')} • Rs. {pendingProduct.retailPrice.toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => { setPendingProduct(null); searchInputRef.current?.focus(); }}
-                    className={`p-0.5 rounded-lg ${isDark ? 'hover:bg-amber-500/30 text-amber-400' : 'hover:bg-amber-200 text-amber-700'}`}
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
               
               <div className="flex gap-2 relative">
                 <div className="flex-1">
@@ -2664,19 +2521,14 @@ export const QuickCheckout: React.FC = () => {
                             role="button"
                             tabIndex={0}
                             onClick={() => {
-                              setPendingProduct(flatProduct);
-                              setProductSearch('');
-                              setSelectedProductIndex(-1);
-                              setQuantity(1);
-                              setQuantityStr("1");
-                              setIsQuantityFocused(true);
-                              setCurrentMode('quantity');
-                              setTimeout(() => {
-                                quantityInputRef.current?.focus();
-                                quantityInputRef.current?.select();
-                              }, 50);
-                              playBeep('add');
-                              toast.info(`${flatProduct.displayName} - ${t('quickCheckout.enterQuantity')}`);
+                              if (flatProduct.stock > 0) {
+                                addOneToCart(flatProduct);
+                                playBeep('add');
+                                toast.success(`${flatProduct.displayName} ${t('quickCheckout.addedToCart')}`, { autoClose: 1500 });
+                              } else {
+                                playBeep('error');
+                                toast.error(t('quickCheckout.insufficientStock'));
+                              }
                             }}
                             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}
                             className={`w-full flex items-center gap-2 p-2 text-left transition-colors border-b last:border-b-0 rounded-lg cursor-pointer outline-none focus:ring-2 focus:ring-amber-500/50 ${
@@ -2718,7 +2570,6 @@ export const QuickCheckout: React.FC = () => {
                                   e.preventDefault();
                                   const currentQty = getItemCartQuantity(items, flatProduct.flatId);
                                   if (currentQty > 0) {
-                                    // Decrement: find the cart item for this product and update quantity
                                     const cartItem = items.find(i => i.productId === flatProduct.flatId);
                                     if (cartItem) {
                                       const newQty = decrementQuantity(cartItem.quantity, 0.01);
@@ -2750,11 +2601,8 @@ export const QuickCheckout: React.FC = () => {
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   e.preventDefault();
-                                  // Always add: increment or append
                                   if (flatProduct.stock > 0) {
                                     addProductToCart(flatProduct, 1);
-                                    // Keep search open — do NOT close the dropdown
-                                    // Keep focus on search
                                     setTimeout(() => searchInputRef.current?.focus(), 10);
                                   } else {
                                     playBeep('error');
@@ -2783,76 +2631,7 @@ export const QuickCheckout: React.FC = () => {
                     )}
                   </div>
                 )}
-                {/* Condensed Quantity Input */}
-                <div className="flex items-center gap-1">
-                  <label className={`text-[10px] font-medium mr-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Qty:</label>
-                  <div className="relative flex items-center">
-                    <button
-                      onClick={() => {
-                        const newQty = decrementQuantity(quantity, 0.01);
-                        setQuantity(newQty);
-                        setQuantityStr(String(newQty));
-                      }}
-                      className={`p-1 rounded ${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'}`}
-                    >
-                      <ChevronDown className="w-3 h-3" />
-                    </button>
-                    <input
-                      ref={quantityInputRef}
-                      id="main-checkout-qty-input"
-                      type="text"
-                      inputMode="decimal"
-                      value={quantityStr}
-                      onChange={(e) => {
-                        setQuantityStr(e.target.value);
-                      }}
-                      onFocus={() => {
-                        setIsQuantityFocused(true);
-                        setIsCartFocused(false);
-                        setSelectedCartIndex(-1);
-                        setIsPaymentFocused(false);
-                        setCurrentMode('quantity');
-                      }}
-                      onBlur={() => {
-                        setIsQuantityFocused(false);
-                        syncQuantityFromStr();
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && pendingProduct) {
-                          e.preventDefault();
-                          syncQuantityFromStr();
-                          addProductToCart(pendingProduct);
-                          setPendingProduct(null);
-                          setProductSearch('');
-                          setQuantityStr("1");
-                          setTimeout(() => {
-                            searchInputRef.current?.focus();
-                            searchInputRef.current?.select();
-                          }, 30);
-                        }
-                      }}
-                      className={`w-14 py-1.5 text-sm text-center font-bold border-2 rounded-lg focus:outline-none transition-all ${
-                        pendingProduct
-                          ? isDark 
-                            ? 'border-amber-500 bg-amber-500/10 text-white ring-1 ring-amber-500/30' 
-                            : 'border-amber-400 bg-amber-50 text-slate-900 ring-1 ring-amber-200'
-                          : isDark
-                            ? 'border-slate-600 bg-slate-700/50 text-white focus:border-amber-500'
-                            : 'border-slate-200 bg-slate-50 text-slate-900 focus:border-amber-500'
-                      }`}
-                    />
-                    <button
-                      onClick={() => {
-                        const newQty = incrementQuantity(quantity);
-                        setQuantity(newQty);
-                        setQuantityStr(String(newQty));
-                      }}
-                      className={`p-1 rounded ${isDark ? 'text-slate-400 hover:text-white' : 'text-slate-500 hover:text-slate-900'}`}
-                    >
-                      <ChevronUp className="w-3 h-3" />
-                    </button>
-                  </div>
-                </div>
+                {/* ── REMOVED: Condensed Quantity Input ── */}
               </div>
             </div>
 
@@ -2997,7 +2776,6 @@ export const QuickCheckout: React.FC = () => {
                         setIsCartFocused(true);
                         setSelectedCartIndex(index);
                         setSelectedProductIndex(-1);
-                        setPendingProduct(null);
                         setCurrentMode('cart');
                         if (document.activeElement instanceof HTMLInputElement) {
                           document.activeElement.blur();
@@ -3260,11 +3038,9 @@ export const QuickCheckout: React.FC = () => {
               />
             )}
 
-          {/* ── CATEGORY PRODUCT POPOVER ── */}
+          {/* ── CATEGORY PRODUCT POPOVER (Updated: uses triple-checkbox search + strip spaces) ── */}
             {activeCategoryPopover && categoryPopoverAnchor && (
               <>
-                {/* Removed: backdrop overlay no longer auto-closes the category popup on click.
-                    Popup now only closes via the explicit X button, Esc key, or checkout completion. */}
                 <div 
                   ref={categoryPopoverRef}
                   className={`fixed z-[201] rounded-xl border shadow-2xl overflow-hidden animate-fade-in ${
@@ -3278,275 +3054,213 @@ export const QuickCheckout: React.FC = () => {
                   }}
                 >
                   {(() => {
+                    // ── Category popover search uses the TRIPLE CHECKBOX filter, same as main search ──
                     const catProducts = inventoryItems
                       .filter(inv => inv.productCategory === activeCategoryPopover)
                       .filter(item => {
                         if (!categoryPopoverFilter.trim()) return true;
                         const q = categoryPopoverFilter.toLowerCase();
-                        return item.name.toLowerCase().includes(q) || 
-                               (item.searchKey && item.searchKey.toLowerCase().includes(q));
+                        const strippedQ = q.replace(/\s+/g, '');
+                        // Match against checked fields with AND/OR — any active checkbox triggers OR across fields
+                        // For simplicity: check searchKey AND/OR name based on checkboxes, with AND logic between checked fields
+                        let matched = false;
+                        
+                        if (searchByKey && item.searchKey) {
+                          const field = item.searchKey.toLowerCase();
+                          if (field.includes(q) || field.replace(/\s+/g, '').includes(strippedQ)) matched = true;
+                        }
+                        if (!matched && searchBarcode && item.barcode) {
+                          const field = item.barcode.toLowerCase();
+                          if (field.includes(q)) matched = true;
+                        }
+                        if (!matched && searchByName && item.name) {
+                          const field = item.name.toLowerCase();
+                          if (field.includes(q) || field.replace(/\s+/g, '').includes(strippedQ)) matched = true;
+                        }
+                        
+                        // Default fallback: if no checkboxes active, search by searchKey AND name
+                        if (!searchByKey && !searchBarcode && !searchByName) {
+                          const nameMatch = item.name && (item.name.toLowerCase().includes(q) || item.name.toLowerCase().replace(/\s+/g, '').includes(strippedQ));
+                          const keyMatch = item.searchKey && item.searchKey.toLowerCase().includes(q);
+                          matched = !!(nameMatch || keyMatch);
+                        }
+                        
+                        return matched;
                       });
                     const filteredCategoryProducts = catProducts;
 
                     return (
                       <div className={`${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border relative`}>
-                        {quantityPromptProduct ? (
-                          <div className={`absolute inset-0 z-50 ${
-                            isDark ? 'bg-slate-950/95' : 'bg-white/95'
-                          } backdrop-blur-sm rounded-2xl flex flex-col items-center justify-center p-6 animate-fade-in`}>
-                            <div className={`${
-                              isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
-                            } border rounded-2xl p-5 max-w-sm w-full text-center shadow-2xl`}>
-                              <span className="text-[10px] text-amber-500 font-black tracking-widest uppercase block mb-1">අවශ්‍ය ප්‍රමාණය ඇතුළත් කරන්න</span>
-                              <h3 className={`text-xs font-black mb-4 line-clamp-2 ${isDark ? 'text-slate-200' : 'text-slate-900'}`}>{quantityPromptProduct.name}</h3>
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                autoFocus
-                                value={categoryPromptQty}
-                                onChange={(e) => setCategoryPromptQty(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    const parsed = parseQuantityInput(categoryPromptQty);
-                                    const finalQty = !isNaN(parsed) && parsed > 0 ? parsed : 1;
-                                    const sinhalaName = quantityPromptProduct.nameSinhala || quantityPromptProduct.nameSi || quantityPromptProduct.name;
-                                    const fp: FlattenedProduct = {
-                                      flatId: quantityPromptProduct.id,
-                                      product: { nameAlt: sinhalaName, sku: quantityPromptProduct.searchKey, category: activeCategoryPopover } as any,
-                                      displayName: quantityPromptProduct.name,
-                                      displaySku: quantityPromptProduct.searchKey,
-                                      retailPrice: Number(quantityPromptProduct.salesPrice),
-                                      wholesalePrice: Number(quantityPromptProduct.displayPrice),
-                                      costPrice: Number(quantityPromptProduct.cost),
-                                      stock: Number(quantityPromptProduct.storeQty),
-                                      hasDiscount: false,
-                                    } as FlattenedProduct;
-                                    addProductToCart(fp, finalQty);
-                                    const displayQtyName = isSinhala
-                                      ? (quantityPromptProduct.nameSinhala || quantityPromptProduct.nameSi || quantityPromptProduct.name)
-                                      : quantityPromptProduct.name;
-                                    toast.success(`${displayQtyName} × ${finalQty} ${t('quickCheckout.addedToCart')}`);
-                                    setQuantityPromptProduct(null);
-                                    setActiveCategoryPopover(null);
-                                    setCategoryPopoverFilter('');
-                                    setActiveCategoryItemIndex(0);
-                                    setTimeout(() => searchInputRef.current?.focus(), 50);
-                                  } else if (e.key === 'Escape') {
-                                    e.preventDefault();
-                                    setQuantityPromptProduct(null);
-                                    setTimeout(() => categoryPopoverInputRef.current?.focus(), 50);
-                                  }
-                                }}
-                                className={`w-full border-2 focus:border-amber-500 rounded-xl p-3 text-center text-lg font-black focus:outline-none tracking-widest mb-4 ${
-                                  isDark 
-                                    ? 'bg-slate-950 border-slate-800 text-white' 
-                                    : 'bg-white border-slate-300 text-slate-900'
-                                }`}
-                              />
-                              <div className={`text-[10px] font-bold ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                                Press <kbd className={`px-1.5 py-0.5 rounded border ${isDark ? 'bg-slate-950 text-slate-400 border-slate-700' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>Enter</kbd> to Add • <kbd className={`px-1.5 py-0.5 rounded border ${isDark ? 'bg-slate-950 text-slate-400 border-slate-700' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>Esc</kbd> to Cancel
+                        <>
+                          <div className={`flex items-center justify-between px-3 py-2 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+                            <div className="flex items-center gap-2">
+                              <div className={`w-6 h-6 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center`}>
+                                <Package className="w-3 h-3 text-white" />
                               </div>
+                          <span className={`text-xs font-bold uppercase tracking-wide ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                {getCategoryDisplayName(activeCategoryEntity, activeCategoryPopover || '')}
+                              </span>
+                              <span className={`text-[9px] font-mono ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                                {filteredCategoryProducts.length} items
+                              </span>
                             </div>
+                            <button 
+                              onClick={() => { setActiveCategoryPopover(null); setActiveCategoryItemIndex(0); }}
+                              className={`p-0.5 rounded transition-colors ${isDark ? 'hover:bg-slate-800 text-slate-500' : 'hover:bg-slate-100 text-slate-400'}`}
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
                           </div>
-                        ) : (
-                          <>
-                            <div className={`flex items-center justify-between px-3 py-2 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-                              <div className="flex items-center gap-2">
-                                <div className={`w-6 h-6 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center`}>
-                                  <Package className="w-3 h-3 text-white" />
-                                </div>
-                            <span className={`text-xs font-bold uppercase tracking-wide ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                                  {getCategoryDisplayName(activeCategoryEntity, activeCategoryPopover || '')}
-                                </span>
-                                <span className={`text-[9px] font-mono ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                                  {filteredCategoryProducts.length} items
-                                </span>
-                              </div>
-                              <button 
-                                onClick={() => { setActiveCategoryPopover(null); setActiveCategoryItemIndex(0); }}
-                                className={`p-0.5 rounded transition-colors ${isDark ? 'hover:bg-slate-800 text-slate-500' : 'hover:bg-slate-100 text-slate-400'}`}
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
 
-                            <div className={`px-3 py-1.5 border-b ${isDark ? 'border-slate-800/50' : 'border-slate-100'}`}>
-                              <div className="relative">
-                                <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
-                                <input
-                                  ref={categoryPopoverInputRef}
-                                  type="text"
-                                  value={categoryPopoverFilter}
-                                  onChange={(e) => {
-                                    e.stopPropagation();
-                                    setCategoryPopoverFilter(e.target.value);
-                                    setActiveCategoryItemIndex(0);
-                                  }}
-                                  onClick={(e) => e.stopPropagation()}
-                                  placeholder={`Filter ${activeCategoryPopover} items...`}
-                                  onKeyDown={(e) => {
-                                    if (filteredCategoryProducts.length === 0) return;
+                          <div className={`px-3 py-1.5 border-b ${isDark ? 'border-slate-800/50' : 'border-slate-100'}`}>
+                            <div className="relative">
+                              <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
+                              <input
+                                ref={categoryPopoverInputRef}
+                                type="text"
+                                value={categoryPopoverFilter}
+                                onChange={(e) => {
+                                  e.stopPropagation();
+                                  setCategoryPopoverFilter(e.target.value);
+                                  setActiveCategoryItemIndex(0);
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                placeholder={`Filter ${activeCategoryPopover} items...`}
+                                onKeyDown={(e) => {
+                                  if (filteredCategoryProducts.length === 0) return;
 
-                                    if (e.key === 'ArrowDown') {
-                                      e.preventDefault();
-                                      setActiveCategoryItemIndex((prev) => 
-                                        prev < filteredCategoryProducts.length - 1 ? prev + 1 : prev
-                                      );
-                                    } else if (e.key === 'ArrowUp') {
-                                      e.preventDefault();
-                                      setActiveCategoryItemIndex((prev) => (prev > 0 ? prev - 1 : 0));
-                                    } else if (e.key === 'ArrowRight') {
-                                      // ── Category Popup ArrowRight — step up quantity and instant cart sync ──
-                                      e.preventDefault();
-                                      const targetedItem = filteredCategoryProducts[activeCategoryItemIndex];
-                                      if (targetedItem) {
-                                        const cartItem = items.find(i => i.productId === targetedItem.id);
-                                        if (cartItem) {
-                                          const currentQty = cartItem.quantity;
-                                          let newQty: number;
-                                          if (currentQty >= 1.0) {
-                                            newQty = currentQty + 1.0;
-                                          } else {
-                                            newQty = currentQty + 0.1;
-                                          }
-                                          const roundedNewQty = parseFloat(newQty.toFixed(1));
-                                          updateItemQuantity(cartItem.id, roundedNewQty);
+                                  if (e.key === 'ArrowDown') {
+                                    e.preventDefault();
+                                    setActiveCategoryItemIndex((prev) => 
+                                      prev < filteredCategoryProducts.length - 1 ? prev + 1 : prev
+                                    );
+                                  } else if (e.key === 'ArrowUp') {
+                                    e.preventDefault();
+                                    setActiveCategoryItemIndex((prev) => (prev > 0 ? prev - 1 : 0));
+                                  } else if (e.key === 'ArrowRight') {
+                                    // ── Category Popup ArrowRight — step up quantity and instant cart sync ──
+                                    e.preventDefault();
+                                    const targetedItem = filteredCategoryProducts[activeCategoryItemIndex];
+                                    if (targetedItem) {
+                                      const cartItem = items.find(i => i.productId === targetedItem.id);
+                                      if (cartItem) {
+                                        const currentQty = cartItem.quantity;
+                                        let newQty: number;
+                                        if (currentQty >= 1.0) {
+                                          newQty = currentQty + 1.0;
                                         } else {
-                                          // Not in cart — add with qty 1
-                                          const sinhalaName = targetedItem.nameSinhala || targetedItem.nameSi || targetedItem.name;
-                                          const fp: FlattenedProduct = {
-                                            flatId: targetedItem.id,
-                                            product: { nameAlt: sinhalaName, sku: targetedItem.searchKey, category: activeCategoryPopover } as any,
-                                            displayName: targetedItem.name,
-                                            displaySku: targetedItem.searchKey,
-                                            retailPrice: Number(targetedItem.salesPrice),
-                                            wholesalePrice: Number(targetedItem.displayPrice),
-                                            costPrice: Number(targetedItem.cost),
-                                            stock: Number(targetedItem.storeQty),
-                                            hasDiscount: false,
-                                          } as FlattenedProduct;
-                                          addProductToCart(fp, 1);
+                                          newQty = currentQty + 0.1;
                                         }
-                                      }
-                                      // FOCUS LOCK: force focus back to category sub-filter input
-                                      setTimeout(() => categoryPopoverInputRef.current?.focus(), 10);
-                                    } else if (e.key === 'ArrowLeft') {
-                                      // ── Category Popup ArrowLeft — step down quantity ──
-                                      e.preventDefault();
-                                      const targetedItem = filteredCategoryProducts[activeCategoryItemIndex];
-                                      if (targetedItem) {
-                                        const cartItem = items.find(i => i.productId === targetedItem.id);
-                                        if (cartItem) {
-                                          const currentQty = cartItem.quantity;
-                                          let newQty: number;
-                                          if (currentQty > 1.0) {
-                                            newQty = currentQty - 1.0;
-                                          } else {
-                                            newQty = Math.max(0.1, currentQty - 0.1);
-                                          }
-                                          const roundedNewQty = parseFloat(newQty.toFixed(1));
-                                          updateItemQuantity(cartItem.id, roundedNewQty);
-                                        }
-                                        // If not in cart, do nothing (floor at 0)
-                                      }
-                                      // FOCUS LOCK: force focus back to category sub-filter input
-                                      setTimeout(() => categoryPopoverInputRef.current?.focus(), 10);
-                                    } else if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      const targetedProduct = filteredCategoryProducts[activeCategoryItemIndex];
-                                      if (targetedProduct) {
-                                          const sinhalaName = targetedProduct.nameSinhala || targetedProduct.nameSi || targetedProduct.name;
-                                          const fp: FlattenedProduct = {
-                                            flatId: targetedProduct.id,
-                                            product: { nameAlt: sinhalaName, sku: targetedProduct.searchKey, category: activeCategoryPopover } as any,
-                                          displayName: targetedProduct.name,
-                                          displaySku: targetedProduct.searchKey,
-                                          retailPrice: Number(targetedProduct.salesPrice),
-                                          wholesalePrice: Number(targetedProduct.displayPrice),
-                                          costPrice: Number(targetedProduct.cost),
-                                          stock: Number(targetedProduct.storeQty),
+                                        const roundedNewQty = parseFloat(newQty.toFixed(1));
+                                        updateItemQuantity(cartItem.id, roundedNewQty);
+                                      } else {
+                                        // Not in cart — add with qty 1
+                                        const sinhalaName = targetedItem.nameSinhala || targetedItem.nameSi || targetedItem.name;
+                                        const fp: FlattenedProduct = {
+                                          flatId: targetedItem.id,
+                                          product: { nameAlt: sinhalaName, sku: targetedItem.searchKey, category: activeCategoryPopover } as any,
+                                          displayName: targetedItem.name,
+                                          displaySku: targetedItem.searchKey,
+                                          retailPrice: Number(targetedItem.salesPrice),
+                                          wholesalePrice: Number(targetedItem.displayPrice),
+                                          costPrice: Number(targetedItem.cost),
+                                          stock: Number(targetedItem.storeQty),
                                           hasDiscount: false,
                                         } as FlattenedProduct;
-
-                                        const searchToken = searchByKey ? targetedProduct.searchKey : targetedProduct.name;
-
-                                        const normToken   = searchToken.toLowerCase();
-                                        const strippedTok = normToken.replace(/\s+/g, '');
-                                        const tokTokens   = normToken.split(/\s+/).filter(Boolean);
-                                        let exactMatchCount = 0;
-                                        for (const inv of inventoryItems) {
-                                          const field         = searchByKey ? (inv.searchKey || '').toLowerCase() : inv.name.toLowerCase();
-                                          const strippedField = field.replace(/\s+/g, '');
-                                          const fieldTokens   = field.split(/\s+/).filter(Boolean);
-                                          const isExact =
-                                            strippedField === strippedTok ||
-                                            (tokTokens.length === fieldTokens.length &&
-                                              tokTokens.every((t, i) => t === fieldTokens[i]));
-                                          if (isExact) exactMatchCount++;
+                                        addOneToCart(fp);
+                                      }
+                                    }
+                                    setTimeout(() => categoryPopoverInputRef.current?.focus(), 10);
+                                  } else if (e.key === 'ArrowLeft') {
+                                    // ── Category Popup ArrowLeft — step down quantity ──
+                                    e.preventDefault();
+                                    const targetedItem = filteredCategoryProducts[activeCategoryItemIndex];
+                                    if (targetedItem) {
+                                      const cartItem = items.find(i => i.productId === targetedItem.id);
+                                      if (cartItem) {
+                                        const currentQty = cartItem.quantity;
+                                        let newQty: number;
+                                        if (currentQty > 1.0) {
+                                          newQty = currentQty - 1.0;
+                                        } else {
+                                          newQty = Math.max(0.1, currentQty - 0.1);
                                         }
-
-                                        setProductSearch(searchToken);
+                                        const roundedNewQty = parseFloat(newQty.toFixed(1));
+                                        updateItemQuantity(cartItem.id, roundedNewQty);
+                                      }
+                                    }
+                                    setTimeout(() => categoryPopoverInputRef.current?.focus(), 10);
+                                  } else if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    const targetedProduct = filteredCategoryProducts[activeCategoryItemIndex];
+                                    if (targetedProduct) {
+                                      // ── DIRECT add to cart with qty 1 ──
+                                      const sinhalaName = targetedProduct.nameSinhala || targetedProduct.nameSi || targetedProduct.name;
+                                      const fp: FlattenedProduct = {
+                                        flatId: targetedProduct.id,
+                                        product: { nameAlt: sinhalaName, sku: targetedProduct.searchKey, category: activeCategoryPopover } as any,
+                                        displayName: targetedProduct.name,
+                                        displaySku: targetedProduct.searchKey,
+                                        retailPrice: Number(targetedProduct.salesPrice),
+                                        wholesalePrice: Number(targetedProduct.displayPrice),
+                                        costPrice: Number(targetedProduct.cost),
+                                        stock: Number(targetedProduct.storeQty),
+                                        hasDiscount: false,
+                                      } as FlattenedProduct;
+                                      
+                                      if (targetedProduct.storeQty > 0) {
+                                        addOneToCart(fp);
                                         setActiveCategoryPopover(null);
                                         setCategoryPopoverFilter('');
                                         setActiveCategoryItemIndex(0);
-
-                                        if (exactMatchCount > 1) {
-                                          setPendingProduct(null);
-                                          setActiveMainSearchIndex(0);
-                                          setCurrentMode('search');
-                                          setTimeout(() => {
-                                            searchInputRef.current?.focus();
-                                          }, 50);
-                                          playBeep('add');
-                                        } else {
-                                          setPendingProduct(fp);
-                                          setQuantity(1);
-                                          setQuantityStr("1");
-                                          setIsQuantityFocused(true);
-                                          setCurrentMode('quantity');
-                                          setTimeout(() => {
-                                            quantityInputRef.current?.focus();
-                                            quantityInputRef.current?.select();
-                                          }, 50);
-                                          playBeep('add');
-                                          const enterQtyName = isSinhala
-                                            ? (targetedProduct.nameSinhala || targetedProduct.nameSi || targetedProduct.name)
-                                            : targetedProduct.name;
-                                          toast.info(`${enterQtyName} - ${t('quickCheckout.enterQuantity')}`);
-                                        }
+                                        playBeep('add');
+                                        const enterQtyName = isSinhala
+                                          ? (targetedProduct.nameSinhala || targetedProduct.nameSi || targetedProduct.name)
+                                          : targetedProduct.name;
+                                        toast.success(`${enterQtyName} ${t('quickCheckout.addedToCart')}`, { autoClose: 1500 });
+                                      } else {
+                                        playBeep('error');
+                                        toast.error(t('quickCheckout.insufficientStock'));
                                       }
-                                    } else if (e.key === 'Escape') {
-                                      e.preventDefault();
-                                      setActiveCategoryPopover(null);
-                                      setActiveCategoryItemIndex(0);
-                                      setCategoryPopoverFilter('');
-                                      searchInputRef.current?.focus();
                                     }
-                                  }}
-                                  className={`w-full border focus:border-amber-500/50 rounded-xl p-3 pl-10 text-xs font-bold focus:outline-none mb-0 ${
-                                    isDark 
-                                      ? 'bg-slate-800 border-slate-700 text-white placeholder-slate-500' 
-                                      : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400'
-                                  }`}
-                                />
-                              </div>
+                                  } else if (e.key === 'Escape') {
+                                    e.preventDefault();
+                                    setActiveCategoryPopover(null);
+                                    setActiveCategoryItemIndex(0);
+                                    setCategoryPopoverFilter('');
+                                    searchInputRef.current?.focus();
+                                  }
+                                }}
+                                className={`w-full border focus:border-amber-500/50 rounded-xl p-3 pl-10 text-xs font-bold focus:outline-none mb-0 ${
+                                  isDark 
+                                    ? 'bg-slate-800 border-slate-700 text-white placeholder-slate-500' 
+                                    : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400'
+                                }`}
+                              />
                             </div>
+                          </div>
 
-                            <div 
-                              ref={categoryListContainerRef}
-                              className="overflow-y-auto custom-scrollbar" 
-                              style={{ maxHeight: 220 }}
-                            >
-                              {filteredCategoryProducts.length > 0 ? (
-                                <div className="flex flex-col gap-0.5 p-1">
-                                  {filteredCategoryProducts.map((item, idx) => {
-                                    const isFocusedRow = idx === activeCategoryItemIndex;
-                                    return (
-                                      <div
-                                        key={item.id}
-                                        data-cat-index={idx}
-                                        onClick={() => {
+                          <div 
+                            ref={categoryListContainerRef}
+                            className="overflow-y-auto custom-scrollbar" 
+                            style={{ maxHeight: 220 }}
+                          >
+                            {filteredCategoryProducts.length > 0 ? (
+                              <div className="flex flex-col gap-0.5 p-1">
+                                {filteredCategoryProducts.map((item, idx) => {
+                                  const isFocusedRow = idx === activeCategoryItemIndex;
+                                  return (
+                                    <div
+                                      key={item.id}
+                                      ref={(el) => {
+                                        if (isFocusedRow) {
+                                          activeCategoryItemRef.current = el;
+                                        }
+                                      }}
+                                      data-cat-index={idx}
+                                      onClick={() => {
+                                        // ── DIRECT add to cart with qty 1 ──
+                                        if (item.storeQty > 0) {
                                           const sinhalaName = item.nameSinhala || item.nameSi || item.name;
                                           const fp: FlattenedProduct = {
                                             flatId: item.id,
@@ -3559,172 +3273,137 @@ export const QuickCheckout: React.FC = () => {
                                             stock: Number(item.storeQty),
                                             hasDiscount: false,
                                           } as FlattenedProduct;
-
-                                          const searchToken = searchByKey ? item.searchKey : item.name;
-
-                                          const normToken   = searchToken.toLowerCase();
-                                          const strippedTok = normToken.replace(/\s+/g, '');
-                                          const tokTokens   = normToken.split(/\s+/).filter(Boolean);
-                                          let exactMatchCount = 0;
-                                          for (const inv of inventoryItems) {
-                                            const field         = searchByKey ? (inv.searchKey || '').toLowerCase() : inv.name.toLowerCase();
-                                            const strippedField = field.replace(/\s+/g, '');
-                                            const fieldTokens   = field.split(/\s+/).filter(Boolean);
-                                            const isExact =
-                                              strippedField === strippedTok ||
-                                              (tokTokens.length === fieldTokens.length &&
-                                                tokTokens.every((t, i) => t === fieldTokens[i]));
-                                            if (isExact) exactMatchCount++;
-                                          }
-
-                                          setProductSearch(searchToken);
+                                          addOneToCart(fp);
                                           setActiveCategoryPopover(null);
                                           setCategoryPopoverFilter('');
                                           setActiveCategoryItemIndex(0);
-
-                                          if (exactMatchCount > 1) {
-                                            setPendingProduct(null);
-                                            setActiveMainSearchIndex(0);
-                                            setCurrentMode('search');
-                                            setTimeout(() => {
-                                              searchInputRef.current?.focus();
-                                            }, 50);
-                                            playBeep('add');
-                                          } else {
-                                            setPendingProduct(fp);
-                                            setQuantity(1);
-                                            setQuantityStr("1");
-                                            setIsQuantityFocused(true);
-                                            setCurrentMode('quantity');
-                                            setTimeout(() => {
-                                              quantityInputRef.current?.focus();
-                                              quantityInputRef.current?.select();
-                                            }, 50);
-                                            playBeep('add');
-                                            const clickEnterQtyName = isSinhala
-                                              ? (item.nameSinhala || item.nameSi || item.name)
-                                              : item.name;
-                                            toast.info(`${clickEnterQtyName} - ${t('quickCheckout.enterQuantity')}`);
-                                          }
-                                        }}
-                                        className={`p-2.5 rounded-xl flex items-center gap-2 transition-all duration-150 cursor-pointer border-l-4 ${
-                                          isFocusedRow 
-                                            ? isDark 
-                                              ? 'bg-slate-800 border-l-4 border-amber-500 shadow-lg translate-x-0.5 scale-[1.01] z-10' 
-                                              : 'bg-amber-50 border-l-4 border-amber-500 shadow-lg translate-x-0.5 scale-[1.01] z-10'
-                                            : isDark 
-                                              ? 'bg-slate-900/40 hover:bg-slate-900/80 border-l-4 border-transparent hover:border-slate-700' 
-                                              : 'bg-slate-50 hover:bg-slate-100 border-l-4 border-transparent hover:border-slate-300'
-                                        }`}
-                                      >
-                                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                                          isFocusedRow 
-                                            ? 'bg-gradient-to-br from-amber-500 to-orange-500 shadow-lg shadow-amber-500/20' 
-                                            : isDark ? 'bg-slate-800' : 'bg-slate-200'
-                                        }`}>
-                                          <Package className={`w-3.5 h-3.5 ${isFocusedRow ? (isDark ? 'text-white' : 'text-amber-900') : isDark ? 'text-slate-400' : 'text-slate-500'}`} />
-                                        </div>
-                                        <div className="flex flex-1 items-center gap-2 min-w-0">
-                                          <span className="inline-flex min-w-[2.35rem] items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[11px] font-bold text-emerald-400">
-                                            {item.storeQty}
-                                          </span>
-                                          <div className="min-w-0 flex-1">
-                                            <p className={`truncate text-[11px] font-semibold ${isFocusedRow ? (isDark ? 'text-white' : 'text-amber-900') : isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-                                              {isSinhala ? (item.nameSinhala || item.nameSi || item.name) : item.name}
-                                            </p>
-                                            <div className="mt-0.5 flex items-center gap-1.5">
-                                              <span className={`text-[8px] font-mono ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                                                {item.searchKey}
-                                              </span>
-                                            </div>
-                                          </div>
-                                        </div>
-                                        <div className="text-right flex-shrink-0 flex items-center gap-1">
-                                          <p className={`text-[11px] font-black ${isFocusedRow ? 'text-amber-400' : isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                                            Rs. {Number(item.salesPrice).toFixed(2)}
+                                          playBeep('add');
+                                          const clickEnterQtyName = isSinhala
+                                            ? (item.nameSinhala || item.nameSi || item.name)
+                                            : item.name;
+                                          toast.success(`${clickEnterQtyName} ${t('quickCheckout.addedToCart')}`, { autoClose: 1500 });
+                                        } else {
+                                          playBeep('error');
+                                          toast.error(t('quickCheckout.insufficientStock'));
+                                        }
+                                      }}
+                                      className={`p-2.5 rounded-xl flex items-center gap-2 transition-all duration-150 cursor-pointer border-l-4 ${
+                                        isFocusedRow 
+                                          ? isDark 
+                                            ? 'bg-slate-800 border-l-4 border-amber-500 shadow-lg translate-x-0.5 scale-[1.01] z-10' 
+                                            : 'bg-amber-50 border-l-4 border-amber-500 shadow-lg translate-x-0.5 scale-[1.01] z-10'
+                                          : isDark 
+                                            ? 'bg-slate-900/40 hover:bg-slate-900/80 border-l-4 border-transparent hover:border-slate-700' 
+                                            : 'bg-slate-50 hover:bg-slate-100 border-l-4 border-transparent hover:border-slate-300'
+                                      }`}
+                                    >
+                                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                                        isFocusedRow 
+                                          ? 'bg-gradient-to-br from-amber-500 to-orange-500 shadow-lg shadow-amber-500/20' 
+                                          : isDark ? 'bg-slate-800' : 'bg-slate-200'
+                                      }`}>
+                                        <Package className={`w-3.5 h-3.5 ${isFocusedRow ? (isDark ? 'text-white' : 'text-amber-900') : isDark ? 'text-slate-400' : 'text-slate-500'}`} />
+                                      </div>
+                                      <div className="flex flex-1 items-center gap-2 min-w-0">
+                                        <span className="inline-flex min-w-[2.35rem] items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-2 py-1 text-[11px] font-bold text-emerald-400">
+                                          {item.storeQty}
+                                        </span>
+                                        <div className="min-w-0 flex-1">
+                                          <p className={`truncate text-[11px] font-semibold ${isFocusedRow ? (isDark ? 'text-white' : 'text-amber-900') : isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                                            {isSinhala ? (item.nameSinhala || item.nameSi || item.name) : item.name}
                                           </p>
-                                          {/* ── INLINE QUANTITY CONTROLS (native, no auto-close) ── */}
-                                          <div className={`flex items-center gap-0.5 p-0.5 rounded-md flex-shrink-0 ${isDark ? 'bg-slate-800/80' : 'bg-slate-100'}`}>
-                                            <button
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                e.preventDefault();
-                                                const currentQty = getItemCartQuantity(items, item.id);
-                                                if (currentQty > 0) {
-                                                  const cartItem = items.find(i => i.productId === item.id);
-                                                  if (cartItem) {
-                                                    const newQty = decrementQuantity(cartItem.quantity, 0.01);
-                                                    if (newQty <= 0) {
-                                                      removeItem(cartItem.id);
-                                                    } else {
-                                                      updateItemQuantity(cartItem.id, newQty);
-                                                    }
-                                                  }
-                                                }
-                                              }}
-                                              className={`w-4 h-4 rounded flex items-center justify-center text-[7px] font-bold transition-all ${
-                                                getItemCartQuantity(items, item.id) > 0
-                                                  ? isDark ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-white hover:bg-slate-200 text-slate-700 shadow-sm'
-                                                  : isDark ? 'text-slate-600 cursor-default' : 'text-slate-300 cursor-default'
-                                              }`}
-                                              disabled={getItemCartQuantity(items, item.id) <= 0}
-                                            >
-                                              <Minus className="w-2 h-2" />
-                                            </button>
-                                            <span className={`w-4 text-center font-bold text-[8px] tabular-nums ${
-                                              getItemCartQuantity(items, item.id) > 0
-                                                ? 'text-amber-500'
-                                                : isDark ? 'text-slate-500' : 'text-slate-400'
-                                            }`}>
-                                              {getItemCartQuantity(items, item.id)}
+                                          <div className="mt-0.5 flex items-center gap-1.5">
+                                            <span className={`text-[8px] font-mono ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                                              {item.searchKey}
                                             </span>
-                                            <button
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                e.preventDefault();
-                                                const sinhalaName = item.nameSinhala || item.nameSi || item.name;
-                                                const fp: FlattenedProduct = {
-                                                  flatId: item.id,
-                                                  product: { nameAlt: sinhalaName, sku: item.searchKey, category: activeCategoryPopover } as any,
-                                                  displayName: item.name,
-                                                  displaySku: item.searchKey,
-                                                  retailPrice: Number(item.salesPrice),
-                                                  wholesalePrice: Number(item.displayPrice),
-                                                  costPrice: Number(item.cost),
-                                                  stock: Number(item.storeQty),
-                                                  hasDiscount: false,
-                                                } as FlattenedProduct;
-                                                if (item.storeQty > 0) {
-                                                  addProductToCart(fp, 1);
-                                                  playBeep('add');
-                                                } else {
-                                                  playBeep('error');
-                                                  toast.error(t('quickCheckout.insufficientStock'));
-                                                }
-                                              }}
-                                              className={`w-4 h-4 rounded flex items-center justify-center text-[7px] font-bold transition-all ${
-                                                isDark
-                                                  ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400'
-                                                  : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'
-                                              }`}
-                                            >
-                                              <Plus className="w-2 h-2" />
-                                            </button>
                                           </div>
                                         </div>
                                       </div>
-                                    );
-                                  })}
-                                </div>
-                              ) : (
-                                <div className={`p-4 text-center ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                                  <Package className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                                  <p className="text-xs font-medium">No items found</p>
-                                </div>
-                              )}
-                            </div>
-                          </>
-                        )}
+                                      <div className="text-right flex-shrink-0 flex items-center gap-1">
+                                        <p className={`text-[11px] font-black ${isFocusedRow ? 'text-amber-400' : isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+                                          Rs. {Number(item.salesPrice).toFixed(2)}
+                                        </p>
+                                        {/* ── INLINE QUANTITY CONTROLS (native, no auto-close) ── */}
+                                        <div className={`flex items-center gap-0.5 p-0.5 rounded-md flex-shrink-0 ${isDark ? 'bg-slate-800/80' : 'bg-slate-100'}`}>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              e.preventDefault();
+                                              const currentQty = getItemCartQuantity(items, item.id);
+                                              if (currentQty > 0) {
+                                                const cartItem = items.find(i => i.productId === item.id);
+                                                if (cartItem) {
+                                                  const newQty = decrementQuantity(cartItem.quantity, 0.01);
+                                                  if (newQty <= 0) {
+                                                    removeItem(cartItem.id);
+                                                  } else {
+                                                    updateItemQuantity(cartItem.id, newQty);
+                                                  }
+                                                }
+                                              }
+                                            }}
+                                            className={`w-4 h-4 rounded flex items-center justify-center text-[7px] font-bold transition-all ${
+                                              getItemCartQuantity(items, item.id) > 0
+                                                ? isDark ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-white hover:bg-slate-200 text-slate-700 shadow-sm'
+                                                : isDark ? 'text-slate-600 cursor-default' : 'text-slate-300 cursor-default'
+                                            }`}
+                                            disabled={getItemCartQuantity(items, item.id) <= 0}
+                                          >
+                                            <Minus className="w-2 h-2" />
+                                          </button>
+                                          <span className={`w-4 text-center font-bold text-[8px] tabular-nums ${
+                                            getItemCartQuantity(items, item.id) > 0
+                                              ? 'text-amber-500'
+                                              : isDark ? 'text-slate-500' : 'text-slate-400'
+                                          }`}>
+                                            {getItemCartQuantity(items, item.id)}
+                                          </span>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              e.preventDefault();
+                                              const sinhalaName = item.nameSinhala || item.nameSi || item.name;
+                                              const fp: FlattenedProduct = {
+                                                flatId: item.id,
+                                                product: { nameAlt: sinhalaName, sku: item.searchKey, category: activeCategoryPopover } as any,
+                                                displayName: item.name,
+                                                displaySku: item.searchKey,
+                                                retailPrice: Number(item.salesPrice),
+                                                wholesalePrice: Number(item.displayPrice),
+                                                costPrice: Number(item.cost),
+                                                stock: Number(item.storeQty),
+                                                hasDiscount: false,
+                                              } as FlattenedProduct;
+                                              if (item.storeQty > 0) {
+                                                addProductToCart(fp, 1);
+                                                playBeep('add');
+                                              } else {
+                                                playBeep('error');
+                                                toast.error(t('quickCheckout.insufficientStock'));
+                                              }
+                                            }}
+                                            className={`w-4 h-4 rounded flex items-center justify-center text-[7px] font-bold transition-all ${
+                                              isDark
+                                                ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400'
+                                                : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'
+                                            }`}
+                                          >
+                                            <Plus className="w-2 h-2" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className={`p-4 text-center ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                                <Package className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                                <p className="text-xs font-medium">No items found</p>
+                              </div>
+                            )}
+                          </div>
+                        </>
                       </div>
                     );
                   })()}

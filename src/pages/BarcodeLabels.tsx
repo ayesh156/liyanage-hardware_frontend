@@ -74,6 +74,7 @@ interface LabelConfig {
 interface StickerEntry {
   /** Unique key: product.id (no variants in InventoryProduct schema) */
   id: string;
+  no: string;
   name: string;
   sku: string;
   barcode: string;
@@ -89,7 +90,7 @@ interface SelectedItem {
 interface StickerData {
   key: string;
   barcode: string;
-  line1: string; // "Rs. [price]#[sku]"
+  line1: string; // "Rs. [price]#[productNo]"
   line2: string; // store identifier
 }
 
@@ -104,6 +105,7 @@ function toStickerEntry(p: InventoryProduct): StickerEntry | null {
   if (!p.barcode) return null;
   return {
     id: p.id,
+    no: p.no || '',
     name: p.name,
     // Use formatShortProductId for new architecture, fall back to legacy regex for old records
     sku: formatShortProductId(p.id) || p.searchKey || p.id,
@@ -118,14 +120,14 @@ function buildStickerData(
   storeId: string,
   idx: number
 ): StickerData {
-  // Line 1: Display price + short product ID (e.g., "Rs. 150.00#a0004")
-  const shortId = entry.sku || formatShortProductId(entry.id);
+  // Line 1: Display price + Product No (e.g., "Rs.475.00#1002")
+  const productNo = entry.no || entry.sku || formatShortProductId(entry.id);
   // Line 2: Secret Cost Cipher encoded from costPrice (e.g., "LHD@WKK")
   const cipherLine = encodeCostToCipher(entry.costPrice);
   return {
     key: `${entry.id}-${idx}`,
     barcode: entry.barcode,
-    line1: `Rs.${entry.salesPrice.toFixed(2)}#${shortId}`,
+    line1: `Rs.${entry.salesPrice.toFixed(2)}#${productNo}`,
     line2: cipherLine,
   };
 }
@@ -518,8 +520,8 @@ export const BarcodeLabels: React.FC = () => {
   const [searchScope, setSearchScope] = useState({
     searchKey: true,
     productName: true,
-    productId: false,
     barcode: false,
+    productNo: false,
   });
 
   // Additional API search results for paginated deep-search
@@ -650,14 +652,15 @@ export const BarcodeLabels: React.FC = () => {
           (e.sku?.toLowerCase().includes(q) || e.name?.toLowerCase().includes(q));
         const matchesName =
           searchScope.productName && e.name?.toLowerCase().includes(q);
-        const matchesId =
-          searchScope.productId &&
-          (e.id?.toLowerCase().includes(q) ||
-            formatShortProductId(e.id).toLowerCase().includes(q));
         const matchesBarcode =
           searchScope.barcode && e.barcode?.toLowerCase().includes(q);
+        const matchesProductNo =
+          searchScope.productNo && (
+            (e.id && inventoryItems.find(inv => inv.id === e.id)?.no?.toLowerCase().includes(q)) ||
+            e.sku?.toLowerCase().includes(q)
+          );
 
-        return matchesSearchKey || matchesName || matchesId || matchesBarcode;
+        return matchesSearchKey || matchesName || matchesBarcode || matchesProductNo;
       })
       .slice(0, 40);
   }, [localEntries, apiSearchResults, debouncedQuery, searchScope]);
@@ -1110,21 +1113,21 @@ export const BarcodeLabels: React.FC = () => {
                       <label className="flex items-center gap-1.5 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200">
                         <input
                           type="checkbox"
-                          checked={searchScope.productId}
-                          onChange={(e) => setSearchScope(prev => ({ ...prev, productId: e.target.checked }))}
-                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
-                        />
-                        <span>Product ID</span>
-                      </label>
-
-                      <label className="flex items-center gap-1.5 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200">
-                        <input
-                          type="checkbox"
                           checked={searchScope.barcode}
                           onChange={(e) => setSearchScope(prev => ({ ...prev, barcode: e.target.checked }))}
                           className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
                         />
                         <span>Barcode</span>
+                      </label>
+
+                      <label className="flex items-center gap-1.5 cursor-pointer hover:text-slate-900 dark:hover:text-slate-200">
+                        <input
+                          type="checkbox"
+                          checked={searchScope.productNo}
+                          onChange={(e) => setSearchScope(prev => ({ ...prev, productNo: e.target.checked }))}
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                        />
+                        <span>Product No</span>
                       </label>
                     </div>
                   </div>
@@ -1210,7 +1213,7 @@ export const BarcodeLabels: React.FC = () => {
                                       isDark ? 'text-slate-500' : 'text-slate-400'
                                     }`}
                                   >
-                                    {entry.sku}
+                                    {entry.no || formatShortProductId(entry.id)}
                                   </span>
                                   <span
                                     className={`text-[10px] font-semibold flex-shrink-0 ${
@@ -1416,7 +1419,7 @@ export const BarcodeLabels: React.FC = () => {
                                   isDark ? 'text-slate-500' : 'text-slate-400'
                                 }`}
                               >
-                                {entry.sku} · {entry.barcode}
+                                {entry.no || formatShortProductId(entry.id)} · {entry.barcode}
                               </p>
                             </div>
                             <div className="flex items-center gap-1">

@@ -148,10 +148,21 @@ const FieldGroup: React.FC<FieldGroupProps & { isDark?: boolean }> = ({ label, i
   </div>
 );
 
+/**
+ * Compute the next product NO suggestion based on existing inventory items.
+ */
+function computeNextProductNo(inventoryItems: InventoryProduct[]): string {
+  const maxNo = inventoryItems.reduce((max, item) => {
+    const no = item.no ? parseInt(item.no, 10) : 0;
+    return no > max ? no : max;
+  }, 0);
+  return String(maxNo > 0 ? maxNo + 1 : 1000);
+}
+
 export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onClose, mode, initialData, prefillCategory }) => {
   const { theme } = useTheme();
   const { t } = useTranslation();
-  const { categories, addCategory, addInventoryItem, updateInventoryItem, syncCategoriesFromServer } = useCatalog();
+  const { categories, inventoryItems, addCategory, addInventoryItem, updateInventoryItem, syncCategoriesFromServer } = useCatalog();
   const categoryMap = useMemo(() => {
     const map = new Map<string, string>();
     categories.forEach((cat) => map.set(cat.name, cat.id));
@@ -162,7 +173,9 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
 
   const getInitialForm = () => {
     if (!initialData || mode === 'create') {
+      const suggestedNo = mode === 'create' ? computeNextProductNo(inventoryItems) : '';
       return {
+        no: suggestedNo,
         searchKey: '',
         name: '',
         nameSinhala: '',
@@ -178,6 +191,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
     }
     const d = initialData as any;
     return {
+      no: d?.no || '',
       searchKey: d?.searchKey || d?.product?.sku || d?.displaySku || '',
       name: d?.name || d?.displayName || '',
       nameSinhala: d?.nameSinhala || d?.nameSi || '',
@@ -248,10 +262,28 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
   const handleSubmit = async () => {
     if (!validate()) return;
 
+    // 🚀 Client-side duplicate Product No validation
+    const noValue = (form as any).no || '';
+    if (noValue.trim()) {
+      const existingNo = inventoryItems.find(
+        (item) =>
+          item.id !== ((initialData as any)?.flatId || (initialData as any)?.id) &&
+          item.no === noValue.trim()
+      );
+      if (existingNo) {
+        toast.error('Product No already exists!', {
+          position: 'top-right',
+          autoClose: 4000,
+        });
+        return;
+      }
+    }
+
     // 🚀 CRITICAL FIX: Resolve categoryId from selected productCategory name
     const selectedCategoryId = form.productCategory ? categoryMap.get(form.productCategory) : undefined;
 
     const productData = {
+      no: (form as any).no || undefined,
       searchKey: form.searchKey,
       name: form.name,
       nameSinhala: form.nameSinhala || undefined,
@@ -305,6 +337,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
       ) {
         const newProduct: InventoryProduct = {
           id: (initialData as any)?.flatId || (initialData as any)?.id || `inv-${Date.now()}`,
+          no: (form as any).no || undefined,
           searchKey: form.searchKey,
           name: form.name,
           productCategory: form.productCategory || 'HARDWARE',
@@ -335,7 +368,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
 
   const handleStrUpdate = (key: string, val: string) => {
     if (val === '') { updateField(key, ''); return; }
-    if (key === 'searchKey' || key === 'name' || key === 'productCategory' || key === 'salesType') {
+    if (key === 'searchKey' || key === 'name' || key === 'productCategory' || key === 'salesType' || key === 'no') {
       updateField(key, val);
     } else {
       updateField(key, parseFloat(val) || 0);
@@ -413,16 +446,30 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
                   <ClearableInput value={form.nameSinhala} isDark={isDark} onChange={(v) => updateField('nameSinhala', v)} placeholder="Enter Sinhala product name" />
                 </FieldGroup>
               </div>
-              {/* Barcode */}
-              <div className="lg:col-span-3">
-                <FieldGroup label={t('addProductModal.barcodeLabel')} isDark={isDark} icon={<ScanLine className="w-3 h-3" />}>
-                  <ClearableInput
-                    value={(form as any).barcode || ''}
-                    isDark={isDark}
-                    onChange={(v) => updateField('barcode', v)}
-                    placeholder={t('addProductModal.barcodePlaceholder')}
-                  />
-                </FieldGroup>
+              {/* NO field + Barcode side by side */}
+              <div className="lg:col-span-3 grid grid-cols-2 gap-4">
+                {/* NO (Product No) — LEFT of Barcode */}
+                <div>
+                  <FieldGroup label="Product No" isDark={isDark} icon={<Hash className="w-3 h-3" />}>
+                    <ClearableInput
+                      value={(form as any).no || ''}
+                      isDark={isDark}
+                      onChange={(v) => updateField('no', v)}
+                      placeholder={mode === 'create' ? 'Auto-generated, can override' : 'No'}
+                    />
+                  </FieldGroup>
+                </div>
+                {/* Barcode */}
+                <div>
+                  <FieldGroup label={t('addProductModal.barcodeLabel')} isDark={isDark} icon={<ScanLine className="w-3 h-3" />}>
+                    <ClearableInput
+                      value={(form as any).barcode || ''}
+                      isDark={isDark}
+                      onChange={(v) => updateField('barcode', v)}
+                      placeholder={t('addProductModal.barcodePlaceholder')}
+                    />
+                  </FieldGroup>
+                </div>
               </div>
               {/* Product Category — dynamic + nested add button */}
               <div className="lg:col-span-2">

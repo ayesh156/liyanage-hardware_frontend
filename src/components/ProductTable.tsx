@@ -29,7 +29,7 @@ const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100];
 interface CellEditState { itemId: string; field: string; rect: DOMRect; }
 
 const columns: { key: keyof InventoryProduct | null; label: string; align: 'left' | 'right' | 'center'; editable: boolean }[] = [
-  { key: 'id', label: 'Product ID', align: 'left', editable: false },
+  { key: 'no', label: 'No', align: 'left', editable: true },
   { key: 'searchKey', label: 'Search Key', align: 'left', editable: false },
   { key: 'name', label: 'Name', align: 'left', editable: false },
   { key: 'productCategory', label: 'Product Category', align: 'left', editable: false },
@@ -248,15 +248,16 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(25);
-  const [sortField, setSortField] = useState<keyof InventoryProduct>('searchKey');
+  const [sortField, setSortField] = useState<keyof InventoryProduct>('no');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
-  // ── TASK 2: 4 CHECKBOX FILTER TOGGLES ──
-  // Search Key defaults to true (ticked) on mount; Barcode, Product Name, Category default false
+  // ── CHECKBOX FILTER TOGGLES ──
+  // Search Key defaults to true (ticked) on mount; Barcode, Product Name, Category, Product No default false
   const [searchByKey, setSearchByKey] = useState<boolean>(true);
   const [searchBarcode, setSearchBarcode] = useState<boolean>(false);
   const [searchByName, setSearchByName] = useState<boolean>(false);
   const [searchByCategory, setSearchByCategory] = useState<boolean>(false);
+  const [searchByNo, setSearchByNo] = useState<boolean>(false);
 
   const [cellEdit, setCellEdit] = useState<CellEditState | null>(null);
   const [rowEditItem, setRowEditItem] = useState<InventoryProduct | null>(null);
@@ -281,9 +282,11 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
   }, [catalogCategories]);
 
   const resolveCategoryLabel = useCallback((item: InventoryProduct): string => {
+    // 🚨 CRITICAL FIX: Handle null/empty productCategory gracefully with fallback
+    if (!item.productCategory && !item.categoryId) return '-';
     const linkedCategory = (item.categoryId && categoryLookup.byId.get(item.categoryId))
       || categoryLookup.byName.get(item.productCategory);
-    const englishName = linkedCategory?.name || item.productCategory;
+    const englishName = linkedCategory?.name || item.productCategory || 'Uncategorized';
     const sinhalaName = linkedCategory?.nameSinhala?.trim();
     if (isSinhala && sinhalaName) return sinhalaName;
     return englishName;
@@ -291,7 +294,9 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
 
   const categories = useMemo(() => {
     const cats = new Set<string>();
-    items.forEach((i) => cats.add(i.productCategory));
+    items.forEach((i) => {
+      if (i.productCategory) cats.add(i.productCategory);
+    });
     return Array.from(cats).sort();
   }, [items]);
 
@@ -311,11 +316,15 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
     barcode: 'PRODUCT BARCODE',
   };
 
-  // ── MODIFIED FILTER: respects 4 checkboxes + space exemption for Search Key ──
+  // ── MODIFIED FILTER: respects 5 checkboxes + space exemption for Search Key ──
+  // 🚨 CRITICAL FIX: Always search the `no` column when searchByKey is active OR
+  // when no scope checkbox is explicitly ticked (fallback). This ensures typing
+  // "1001" returns product 1001 immediately.
   const filteredItems = useMemo(() => {
     let result = [...items];
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
+      const hasAnyScopeSelected = searchByKey || searchBarcode || searchByName || searchByCategory || searchByNo;
       result = result.filter((i) => {
         let match = false;
 
@@ -342,6 +351,13 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
           match = match || (i.productCategory && i.productCategory.toLowerCase().includes(q));
         }
 
+        // Product No (#1000, etc.)
+        // 🚨 FIX: Search `no` when searchByNo is checked, OR when searchByKey
+        // is active (default), OR when no scope is selected at all (fallback).
+        if (searchByNo || searchByKey || !hasAnyScopeSelected) {
+          match = match || (i.no && i.no.toLowerCase().includes(q));
+        }
+
         return match;
       });
     }
@@ -353,7 +369,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
       return sortDir === 'asc' ? String(aVal).toLowerCase().localeCompare(String(bVal).toLowerCase()) : String(bVal).toLowerCase().localeCompare(String(aVal).toLowerCase());
     });
     return result;
-  }, [items, searchQuery, categoryFilter, statusFilter, sortField, sortDir, searchByKey, searchBarcode, searchByName, searchByCategory]);
+  }, [items, searchQuery, categoryFilter, statusFilter, sortField, sortDir, searchByKey, searchBarcode, searchByName, searchByCategory, searchByNo]);
 
   const totalPages = Math.ceil(filteredItems.length / rowsPerPage);
   const paginatedItems = useMemo(() => {
@@ -405,8 +421,14 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
         pauseOnHover: true,
         draggable: true,
       });
-    } catch {
-      // Silent fail — local state already updated
+    } catch (err: any) {
+      const errorMsg = err?.message || '';
+      if (field === 'no' && (errorMsg.includes('already in use') || errorMsg.includes('already exists'))) {
+        toast.error(`Product No already exists!`, {
+          position: 'top-right',
+          autoClose: 4000,
+        });
+      }
     }
   }, [items, syncCategoriesFromServer]);
 
@@ -443,6 +465,20 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
         return;
       }
     }
+
+    // Client-side duplicate 'no' validation
+    if (field === 'no' && typeof value === 'string' && value.trim()) {
+      const duplicate = items.find(i => i.id !== itemId && i.no === value.trim());
+      if (duplicate) {
+        toast.error(`Product No "${value}" already exists!`, {
+          position: 'top-right',
+          autoClose: 4000,
+        });
+        setInlineEdit(null);
+        return;
+      }
+    }
+
     updateCatalogState(itemId, field, value);
     setInlineEdit(null);
     patchBackend(itemId, field, value);
@@ -630,6 +666,15 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
               />
               Category
             </label>
+            <label className={`flex items-center gap-1.5 cursor-pointer select-none text-[11px] font-medium ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
+              <input
+                type="checkbox"
+                checked={searchByNo}
+                onChange={e => setSearchByNo(e.target.checked)}
+                className="accent-amber-500 w-3.5 h-3.5 rounded"
+              />
+              Product No
+            </label>
           </div>
         </div>
       </div>
@@ -640,14 +685,18 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
           <table className="w-full min-w-[1300px]">
             <thead className={isDark ? 'bg-slate-800/80' : 'bg-slate-50'}>
               <tr>
-                {columns.map((col, i) => (
+                {columns.map((col, i) => {
+                  const widthClass = col.key === 'no' ? 'w-[80px] min-w-[80px] max-w-[90px]' : 
+                                     col.key === 'searchKey' ? 'min-w-[140px]' : 
+                                     col.key === 'name' ? 'min-w-[200px]' : '';
+                  return (
                   <th key={i}
-                    className={`px-2 py-2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'} ${isDark ? 'text-slate-400' : 'text-slate-500'} ${col.key ? 'cursor-pointer select-none hover:text-orange-400 transition-colors' : ''}`}
+                    className={`px-2 py-2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${widthClass} ${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'} ${isDark ? 'text-slate-400' : 'text-slate-500'} ${col.key ? 'cursor-pointer select-none hover:text-orange-400 transition-colors' : ''}`}
                     onClick={() => col.key && handleSort(col.key as keyof InventoryProduct)}>
-                    <div className={`flex items-center gap-1 ${col.align === 'right' ? 'justify-end' : col.align === 'center' ? 'justify-center' : ''}`}>
+                    <div className={`flex items-center gap-1 ${col.key === 'no' ? 'justify-center' : col.align === 'right' ? 'justify-end' : col.align === 'center' ? 'justify-center' : ''}`}>
                       {(() => {
                         const labelMap: Record<string, string> = {
-                          'Product ID': isSinhala ? 'භාණ්ඩ අංකය' : 'Product ID',
+                          'No': isSinhala ? 'අංකය' : 'No',
                           'Name': t('productTable.name'),
                           'Product Category': t('productTable.category'),
                           'Barcode': t('productTable.barcode'),
@@ -665,7 +714,8 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                       {col.key && sortField === col.key && <SortIcon className="w-3 h-3 flex-shrink-0" />}
                     </div>
                   </th>
-                ))}
+                );
+                })}
               </tr>
             </thead>
             <tbody className={`divide-y ${isDark ? 'divide-slate-700/40' : 'divide-slate-200'}`}>
@@ -674,9 +724,16 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                 return (
                   <tr key={item.id} className={`transition-colors ${isDark ? 'hover:bg-slate-700/25' : 'hover:bg-slate-50'}`}>
                     {(() => {
+                      const field = 'no';
+                      const isEditing = inlineEdit?.itemId === item.id && inlineEdit?.field === field;
+                      const displayNo = item.no || formatShortProductId(item.id) || '—';
                       return (
-                        <td className="px-2 py-1.5 relative group">
-                          <span className={`text-[11px] font-mono font-semibold ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>{item.id}</span>
+                        <td className="px-2 py-1.5 relative group cursor-pointer w-[80px] min-w-[80px] max-w-[90px] whitespace-nowrap" onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
+                          {isEditing ? (
+                            <InlineTextInput value={item.no || ''} isDark={isDark} onSave={(val) => handleInlineSave(item.id, field, val)} onCancel={() => setInlineEdit(null)} />
+                          ) : (
+                            <span className={`text-[11px] font-mono font-semibold text-center whitespace-nowrap ${isDark ? 'text-amber-400' : 'text-amber-600'} hover:text-orange-400 transition-colors`}>{displayNo}</span>
+                          )}
                         </td>
                       );
                     })()}
@@ -685,7 +742,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                       const field = 'searchKey';
                       const isEditing = inlineEdit?.itemId === item.id && inlineEdit?.field === field;
                       return (
-                        <td className="px-2 py-1.5 relative group cursor-pointer" onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
+                        <td className="px-2 py-1.5 relative group cursor-pointer min-w-[140px]" onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
                           {isEditing ? (
                             <InlineTextInput value={item.searchKey} isDark={isDark} onSave={(val) => handleInlineSave(item.id, field, val)} onCancel={() => setInlineEdit(null)} />
                           ) : (
@@ -700,7 +757,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                       const isEditing = inlineEdit?.itemId === item.id && inlineEdit?.field === field;
                       const displayName = isSinhala ? (item.nameSinhala || item.name) : item.name;
                       return (
-                        <td className="px-2 py-1.5 relative group cursor-pointer" onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
+                        <td className="px-2 py-1.5 relative group cursor-pointer min-w-[200px]" onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
                           {isEditing ? (
                             <InlineTextInput value={item.name} isDark={isDark} onSave={(val) => handleInlineSave(item.id, field, val)} onCancel={() => setInlineEdit(null)} />
                           ) : (
