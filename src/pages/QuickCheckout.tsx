@@ -557,7 +557,35 @@ export const QuickCheckout: React.FC = () => {
       }
     }
 
-    // ── Priority 2: scope-aware tiered text search ──
+    // ── Priority 2: exact product.no match — single result ──
+    // Only triggers if Product No checkbox is active
+    if (searchByNo) {
+      const noHit = inventoryItems.find(
+        item => item.no && String(item.no).trim() === raw
+      );
+      if (noHit) {
+        const sinhalaName = noHit.nameSinhala || noHit.nameSi || noHit.name;
+        return [{
+          flatId: noHit.id,
+          product: { nameAlt: sinhalaName, sku: noHit.searchKey, category: noHit.productCategory } as any,
+          variant: undefined,
+          displayName: noHit.name,
+          displaySku: noHit.searchKey,
+          displayBarcode: noHit.barcode || noHit.searchKey,
+          costPrice:    noHit.cost,
+          wholesalePrice: noHit.displayPrice,
+          retailPrice:  noHit.salesPrice,
+          discountedPrice: undefined,
+          hasDiscount: false,
+          stock: noHit.storeQty,
+          minStock: 0,
+          isVariant: false,
+          variantLabel: undefined,
+        }];
+      }
+    }
+
+    // ── Priority 3: scope-aware tiered text search ──
     const strippedQuery = normalizedQuery.replace(/\s+/g, '');
     const queryTokens   = normalizedQuery.split(/\s+/).filter(Boolean);
 
@@ -775,47 +803,91 @@ export const QuickCheckout: React.FC = () => {
     const trimmed = scannedValue.trim();
     if (!trimmed || trimmed.length < 4) return false;
 
-    const foundProduct = inventoryItems.find(
-      p => p.barcode && p.barcode.trim() === trimmed
-    );
-    if (!foundProduct) return false;
+    // First: try exact barcode match (if Barcode checkbox active)
+    if (searchBarcode) {
+      const foundProduct = inventoryItems.find(
+        p => p.barcode && p.barcode.trim() === trimmed
+      );
+      if (foundProduct) {
+        const sinhalaName = foundProduct.nameSinhala || foundProduct.nameSi || foundProduct.name;
+        const fp: FlattenedProduct = {
+          flatId: foundProduct.id,
+          product: { nameAlt: sinhalaName, sku: foundProduct.searchKey, category: foundProduct.productCategory } as any,
+          variant: undefined,
+          displayName: foundProduct.name,
+          displaySku: foundProduct.searchKey,
+          displayBarcode: foundProduct.barcode,
+          costPrice:      foundProduct.cost,
+          wholesalePrice: foundProduct.displayPrice,
+          retailPrice:    foundProduct.salesPrice,
+          discountedPrice: undefined,
+          hasDiscount: false,
+          stock: foundProduct.storeQty,
+          minStock: 0,
+          isVariant: false,
+          variantLabel: undefined,
+        } as FlattenedProduct;
 
-    const sinhalaName = foundProduct.nameSinhala || foundProduct.nameSi || foundProduct.name;
-    const fp: FlattenedProduct = {
-      flatId: foundProduct.id,
-      product: { nameAlt: sinhalaName, sku: foundProduct.searchKey, category: foundProduct.productCategory } as any,
-      variant: undefined,
-      displayName: foundProduct.name,
-      displaySku: foundProduct.searchKey,
-      displayBarcode: foundProduct.barcode,
-      costPrice:      foundProduct.cost,
-      wholesalePrice: foundProduct.displayPrice,
-      retailPrice:    foundProduct.salesPrice,
-      discountedPrice: undefined,
-      hasDiscount: false,
-      stock: foundProduct.storeQty,
-      minStock: 0,
-      isVariant: false,
-      variantLabel: undefined,
-    } as FlattenedProduct;
+        addOneToCart(fp);
+        toast.success(`${foundProduct.name} ${t('quickCheckout.addedToCart')}`, { autoClose: 2000 });
+        setProductSearch('');
+        setSelectedProductIndex(-1);
+        searchInputRef.current?.focus();
+        return true;
+      }
+    }
 
-    addOneToCart(fp);
-    toast.success(`${foundProduct.name} ${t('quickCheckout.addedToCart')}`, { autoClose: 2000 });
-    setProductSearch('');
-    setSelectedProductIndex(-1);
-    searchInputRef.current?.focus();
+    // Second: try exact product.no match (if Product No checkbox active)
+    if (searchByNo) {
+      const foundByNo = inventoryItems.find(
+        p => p.no && String(p.no).trim() === trimmed
+      );
+      if (foundByNo) {
+        const sinhalaName = foundByNo.nameSinhala || foundByNo.nameSi || foundByNo.name;
+        const fp: FlattenedProduct = {
+          flatId: foundByNo.id,
+          product: { nameAlt: sinhalaName, sku: foundByNo.searchKey, category: foundByNo.productCategory } as any,
+          variant: undefined,
+          displayName: foundByNo.name,
+          displaySku: foundByNo.searchKey,
+          displayBarcode: foundByNo.barcode || foundByNo.searchKey,
+          costPrice:      foundByNo.cost,
+          wholesalePrice: foundByNo.displayPrice,
+          retailPrice:    foundByNo.salesPrice,
+          discountedPrice: undefined,
+          hasDiscount: false,
+          stock: foundByNo.storeQty,
+          minStock: 0,
+          isVariant: false,
+          variantLabel: undefined,
+        } as FlattenedProduct;
 
-    return true;
-  }, [inventoryItems, addOneToCart, t]);
+        addOneToCart(fp);
+        toast.success(`${foundByNo.name} ${t('quickCheckout.addedToCart')}`, { autoClose: 2000 });
+        setProductSearch('');
+        setSelectedProductIndex(-1);
+        searchInputRef.current?.focus();
+        return true;
+      }
+    }
+
+    return false;
+  }, [inventoryItems, addOneToCart, t, searchBarcode, searchByNo]);
 
   // Auto-detect barcode scan / direct paste (when field gains input) — direct add to cart
   useEffect(() => {
     if (filteredProducts.length === 1 && productSearch.length >= 2) {
       const flatProduct = filteredProducts[0];
+      const raw = productSearch.trim();
+      const lower = raw.toLowerCase();
       const isExactMatch =
-        flatProduct.displayBarcode === productSearch ||
-        flatProduct.displaySku.toLowerCase() === productSearch.toLowerCase() ||
-        flatProduct.product.sku.toLowerCase() === productSearch.toLowerCase();
+        flatProduct.displayBarcode === raw ||
+        flatProduct.displaySku.toLowerCase() === lower ||
+        flatProduct.product.sku.toLowerCase() === lower ||
+        // Also check product.no from the master inventory item
+        (searchByNo && inventoryItems.some(inv => 
+          inv.id === flatProduct.flatId && inv.no && String(inv.no).trim() === raw
+        ));
 
       if (isExactMatch) {
         if (flatProduct.stock > 0) {
