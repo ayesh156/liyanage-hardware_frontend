@@ -13,6 +13,31 @@ function formatPrice(n: number): string {
 }
 
 /**
+ * Safely format an invoice date for the thermal receipt.
+ * Guards against "Invalid Date" by falling back to the current date
+ * whenever the raw value is null, undefined, empty, or unparseable.
+ */
+function formatInvoiceDate(rawDate: string | Date | undefined | null): string {
+  const parsed = rawDate ? new Date(rawDate) : new Date();
+  const isValid = !isNaN(parsed.getTime());
+  const safeDate = isValid ? parsed : new Date();
+  return safeDate.toLocaleDateString('si-LK', { day: '2-digit', month: 'short', year: '2-digit' });
+}
+
+/**
+ * Normalize a customer phone number for receipt display.
+ * Returns an empty string when the value is null, undefined, empty,
+ * or a placeholder like "000000000" / "0000000000".
+ */
+function sanitizeCustomerPhone(phone: unknown): string {
+  if (phone === null || phone === undefined) return '';
+  const str = String(phone).trim();
+  if (!str) return '';
+  if (/^0+$/.test(str)) return ''; // all-zeros placeholder
+  return str;
+}
+
+/**
  * Generates the complete 80mm thermal receipt HTML string.
  * Used by both the print executor (PrintInvoiceModal) and the
  * live ThermalReceiptPreview component — single source of truth.
@@ -23,9 +48,18 @@ export const generateReceiptHTML = (
   language: 'en' | 'si' = 'si',
   cashierName: string = 'Admin User'
 ): string => {
-  const isPaid = invoice.status === 'paid';
   const finalDiscount = invoice.discount || 0;
   const receivedAmount = invoice.receivedAmount || 0;
+
+  // DYNAMIC PAYMENT STATUS (Sinhala):
+  //   Pending Balance = Total Amount - Paid Amount
+  //   Condition 1: Paid <  Total  -> "ගෙවිය යුතු" (unpaid / partial)
+  //   Condition 2: Paid >= Total  -> "ගෙවා ඇත"   (fully paid / overpaid)
+  // Computed from amounts (NOT invoice.status) so the live preview and
+  // printed receipt update instantly as the user edits the payment input.
+  const pendingBalance = Number((invoice.total - receivedAmount).toFixed(2));
+  const isPaid = pendingBalance <= 0;
+
   // Signed changeAmount: positive = change (surplus), negative = deficit (amount still due)
   // If the backend stored a negative value, preserve it. Otherwise compute with sign.
   const changeAmount =
@@ -49,7 +83,7 @@ export const generateReceiptHTML = (
   const customerName = customer?.name
     ? ((customer as any).nameSi || translateToSinhala(customer.name))
     : 'සාමාන්‍ය පාරිභෝගිකයා';
-  const customerPhone = !isWalkIn ? (customer?.phone ?? '') : '';
+  const customerPhone = !isWalkIn ? sanitizeCustomerPhone(customer?.phone) : '';
 
   const itemsHtml = invoice.items
     .map((item) => {
@@ -203,7 +237,7 @@ export const generateReceiptHTML = (
     </div>
     <div style="text-align:right;">
       <div style="font-size:11px;font-weight:700;">දිනය</div>
-      <div style="font-size:13px;font-weight:800;">${new Date(invoice.issueDate).toLocaleDateString('si-LK', { day: '2-digit', month: 'short', year: '2-digit' })}</div>
+      <div style="font-size:13px;font-weight:800;">${formatInvoiceDate((invoice as any).issueDate ?? (invoice as any).createdAt)}</div>
     </div>
   </div>
 

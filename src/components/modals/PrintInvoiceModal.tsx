@@ -202,7 +202,12 @@ function formatPrice(n: number): string {
 }
 
 const generate80mmReceiptContent = (invoice: Invoice, customer?: Customer | null, language: 'en' | 'si' = 'en'): string => {
-  const isPaid = invoice.status === 'paid';
+  // DYNAMIC PAYMENT STATUS (Sinhala): Pending Balance = Total - Paid.
+  //   Paid <  Total  => unpaid / partial ("ගෙවිය යුතු")
+  //   Paid >= Total  => fully paid / overpaid ("ගෙවා ඇත")
+  // Computed from amounts to stay in sync with receiptGenerator.ts.
+  const pendingBalance = Number((invoice.total - (invoice.receivedAmount || 0)).toFixed(2));
+  const isPaid = pendingBalance <= 0;
   // Force Sinhala for all printed receipts regardless of system language
   const isSinhala = true;
   

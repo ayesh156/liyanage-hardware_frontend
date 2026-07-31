@@ -71,7 +71,7 @@ const CART_SHORTCUTS = {
 };
 
 // Import concurrency-safe invoice number generator
-import { generateNextInvoiceNumberSync, initializeFromExistingInvoices } from '../lib/invoiceNumberService';
+import { generateNextInvoiceNumberSync, initializeFromExistingInvoices, peekNextInvoiceNumber } from '../lib/invoiceNumberService';
 
 // ── Inline quantity control helpers (for search & category popup rows) ──
 // getItemCartQuantity: returns the current quantity of a product in the cart, or 0 if not present
@@ -127,6 +127,10 @@ export const QuickCheckout: React.FC = () => {
   const editInvoiceId = searchParams.get('edit');
   const [editingInvoice, setEditingInvoice] = useState<any | null>(null);
   const [editingInvoiceLoading, setEditingInvoiceLoading] = useState(false);
+
+  // Live preview invoice number — shows the real next sequential invoice
+  // number (e.g. inva-000024) instead of the hardcoded "PREVIEW" string.
+  const previewInvoiceNumber = editingInvoice?.invoiceNumber || peekNextInvoiceNumber();
 
   // Fetch the invoice from the backend API when edit mode is active
   // This uses the backend's flexible resolver that handles both UUID and invoiceNumber
@@ -3809,7 +3813,7 @@ export const QuickCheckout: React.FC = () => {
                   ? (findCustomerById(selectedCustomerId) ?? null)
                   : null
               }
-              invoiceNumber="PREVIEW"
+              invoiceNumber={previewInvoiceNumber}
               language={isSinhala ? 'si' : 'en'}
               cashierName={currentUser?.name || 'Admin User'}
             />

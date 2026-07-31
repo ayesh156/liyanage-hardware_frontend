@@ -42,7 +42,7 @@ const ThermalReceiptPreview: React.FC<ThermalReceiptPreviewProps> = memo(({
   const isDark = theme === 'dark';
 
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toISOString();
     const changeAmount = receivedAmount > 0 ? receivedAmount - total : 0;
 
     // Build a live Invoice object mirroring what handleCheckout produces

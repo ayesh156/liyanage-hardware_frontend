@@ -78,10 +78,17 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
     ? (invoice.subtotal * (invoice.discountValue || invoice.discount || 0)) / 100
     : (invoice.discountValue || invoice.discount || 0);
 
-  const isPaid = invoice.status === 'paid';
   const isWalkIn = !customer || customer.id === 'walk-in';
 
   const receivedAmount = invoice.receivedAmount || 0;
+
+  // DYNAMIC PAYMENT STATUS (Sinhala): Pending Balance = Total - Paid.
+  //   Paid <  Total  => unpaid / partial
+  //   Paid >= Total  => fully paid / overpaid
+  // Computed from amounts so the badge stays in sync with receiptGenerator.ts.
+  const pendingBalance = Number((invoice.total - receivedAmount).toFixed(2));
+  const isPaid = pendingBalance <= 0;
+
   const changeAmount = invoice.changeAmount || (receivedAmount > 0 ? receivedAmount - invoice.total : 0);
 
   // Customer savings: Σ((displayPrice - ourPrice) × qty) + manual discount — matches receiptGenerator logic
