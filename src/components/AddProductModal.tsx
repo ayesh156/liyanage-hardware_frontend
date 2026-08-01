@@ -176,12 +176,6 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ onSave, onClos
     return () => { document.removeEventListener('keydown', handleKeyDown); document.body.style.overflow = ''; };
   }, [onClose]);
 
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => { if (modalRef.current && !modalRef.current.contains(e.target as Node)) onClose(); };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [onClose]);
-
   const updateField = (key: string, value: string | number) => {
     setForm((prev) => ({ ...prev, [key]: value }));
     if (errors[key]) setErrors((prev) => { const n = { ...prev }; delete n[key]; return n; });
@@ -231,8 +225,8 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ onSave, onClos
   };
 
   // Nested category save: creates category, auto-selects in combobox, closes sub-modal
-  const handleNewCategory = (catData: Partial<Category>) => {
-    const newCat = addCategory(catData as any);
+  const handleNewCategory = async (catData: Partial<Category>) => {
+    const newCat = await addCategory(catData as any);
     updateField('productCategory', newCat.name);
     setShowAddCategory(false);
   };

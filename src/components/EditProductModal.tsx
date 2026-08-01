@@ -176,12 +176,6 @@ export const EditProductModal: React.FC<EditProductModalProps> = ({ item, onSave
     return () => { document.removeEventListener('keydown', handleKeyDown); document.body.style.overflow = ''; };
   }, [onClose]);
 
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => { if (modalRef.current && !modalRef.current.contains(e.target as Node)) onClose(); };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [onClose]);
-
   const updateField = <K extends keyof InventoryProduct>(key: K, value: InventoryProduct[K]) => {
     setForm(prev => ({ ...prev, [key]: value }));
     if (errors[key]) setErrors(prev => { const n = { ...prev }; delete n[key]; return n; });

@@ -234,15 +234,6 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
     return () => { document.removeEventListener('keydown', handleKeyDown); document.body.style.overflow = ''; };
   }, [isOpen, onClose]);
 
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (showAddCategory) return;
-      if (modalRef.current && !modalRef.current.contains(e.target as Node)) onClose();
-    };
-    if (isOpen) document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isOpen, onClose, showAddCategory]);
-
   const updateField = (key: string, value: string | number) => {
     setForm((prev) => ({ ...prev, [key]: value }));
     if (errors[key]) setErrors((prev) => { const n = { ...prev }; delete n[key]; return n; });

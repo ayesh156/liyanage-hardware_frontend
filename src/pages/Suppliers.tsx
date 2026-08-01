@@ -1098,7 +1098,6 @@ export default function Suppliers() {
             {/* Backdrop */}
             <div 
               className="fixed inset-0 bg-black/50 z-50 animate-in fade-in duration-200"
-              onClick={() => setMobileActionSupplier(null)}
             />
             {/* Action Sheet */}
             <div className={`fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl border-t animate-in slide-in-from-bottom duration-300 ${

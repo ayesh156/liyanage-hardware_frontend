@@ -113,7 +113,6 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
       <div
         className="fixed inset-0 z-[100] flex items-center justify-center"
         style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
-        onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
       >
         {/* ── MODAL CONTAINER — locked to receipt width ── */}
         <div

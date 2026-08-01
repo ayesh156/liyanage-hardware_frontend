@@ -3679,10 +3679,7 @@ export const QuickCheckout: React.FC = () => {
               {/* ── API-Backed Quick Customer Modal ── */}
               {showNewCustomerModal && (
                 <>
-                  <div
-                    className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm"
-                    onClick={() => !isSavingCustomer && setShowNewCustomerModal(false)}
-                  />
+                  <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm" />
                   <div className={`fixed z-[201] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm rounded-2xl border shadow-2xl p-5 ${isDark ? 'bg-slate-800 border-slate-700/50' : 'bg-white border-slate-200'}`}>
                     {/* Modal header */}
                     <div className="flex items-center justify-between mb-4">
