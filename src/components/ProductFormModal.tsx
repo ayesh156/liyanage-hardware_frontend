@@ -3,9 +3,9 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from 'react-i18next';
 import { useCatalog } from '../contexts/CatalogContext';
 import { CategoryFormModal } from './modals/CategoryFormModal';
-import { X, Save, AlertTriangle, DollarSign, Package, Hash, Layers, Tag, BarChart3, ShoppingCart, Plus, ScanLine } from 'lucide-react';
+import { X, Save, AlertTriangle, DollarSign, Package, Hash, Layers, Tag, BarChart3, ShoppingCart, Plus, ScanLine, Loader2 } from 'lucide-react';
 import { InventoryProduct, FlattenedProduct, Product, Category } from '../types';
-import api from '../lib/api';
+import api, { isNetworkError, getNetworkErrorMessage } from '../lib/api';
 import { toast } from 'react-toastify';
 
 interface ProductFormModalProps {
@@ -163,6 +163,8 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
   const { theme } = useTheme();
   const { t } = useTranslation();
   const { categories, inventoryItems, addCategory, addInventoryItem, updateInventoryItem, syncCategoriesFromServer } = useCatalog();
+  const isSubmittingRef = useRef(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const categoryMap = useMemo(() => {
     const map = new Map<string, string>();
     categories.forEach((cat) => map.set(cat.name, cat.id));
@@ -262,6 +264,11 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
   const handleSubmit = async () => {
     if (!validate()) return;
 
+    // 🚨 DOUBLE-SUBMIT GUARD: Prevent concurrent API requests on double-click / Ctrl+Enter
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    setIsSubmitting(true);
+
     // 🚀 Client-side duplicate Product No validation
     const noValue = (form as any).no || '';
     if (noValue.trim()) {
@@ -275,6 +282,8 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
           position: 'top-right',
           autoClose: 4000,
         });
+        isSubmittingRef.current = false;
+        setIsSubmitting(false);
         return;
       }
     }
@@ -329,42 +338,33 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
       onClose();
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-      // If API is unavailable, fall back to local-only operation
-      if (
-        errorMessage.includes('Failed to fetch') ||
-        errorMessage.includes('NetworkError') ||
-        errorMessage.includes('HTTP 404')
-      ) {
-        const newProduct: InventoryProduct = {
-          id: (initialData as any)?.flatId || (initialData as any)?.id || `inv-${Date.now()}`,
-          no: (form as any).no || undefined,
-          searchKey: form.searchKey,
-          name: form.name,
-          productCategory: form.productCategory || 'HARDWARE',
-          barcode: (form as any).barcode || undefined,
-          cost: form.cost,
-          lastPrice: form.lastPrice,
-          salesPrice: form.salesPrice,
-          displayPrice: form.displayPrice,
-          storeQty: form.storeQty,
-          salesType: (form.salesType || 'Piece') as InventoryProduct['salesType'],
-          status: derivedStatus,
-        };
-        if (mode === 'create') {
-          addInventoryItem(newProduct);
-          toast.success(`Product "${newProduct.searchKey}" created successfully.`);
-        } else {
-          updateInventoryItem(newProduct.id, newProduct);
-          toast.success(`Product "${newProduct.searchKey}" updated successfully.`);
-        }
-        onClose();
+
+      // 🚨 Explicit Network Error Toast Handling
+      // Show clear Sinhala + English feedback when connection drops/times out
+      if (isNetworkError(err)) {
+        console.warn('[ProductFormModal] Network failure while saving product:', errorMessage);
+        toast.error(getNetworkErrorMessage(), {
+          position: 'top-right',
+          autoClose: 6000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
       } else {
-        toast.error(`Failed to save product: ${errorMessage}`);
+        toast.error(`Failed to save product: ${errorMessage}`, {
+          position: 'top-right',
+          autoClose: 5000,
+        });
       }
+    } finally {
+      // 🚨 Always reset the submitting state — even on success or failure
+      isSubmittingRef.current = false;
+      setIsSubmitting(false);
     }
   };
 
-  const handleKeyDownEvent = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleSubmit(); };
+  const handleKeyDownEvent = (e: React.KeyboardEvent) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !isSubmitting) handleSubmit(); };
 
   const handleStrUpdate = (key: string, val: string) => {
     if (val === '') { updateField(key, ''); return; }
@@ -538,9 +538,24 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
             </div>
             <div className="flex items-center gap-2">
               <button onClick={onClose} className={`px-4 py-2 text-xs font-medium rounded-lg transition-colors ${isDark ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-600 hover:bg-slate-100'}`}>{t('addProductModal.cancel')}</button>
-              <button onClick={handleSubmit} className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600 text-white shadow-lg shadow-orange-500/20 transition-all">
-                <Save className="w-3.5 h-3.5" /> {t(buttonKey)}
-              </button>
+            <button
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+              className={`flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600 text-white shadow-lg shadow-orange-500/20 transition-all ${
+                isSubmitting ? 'opacity-60 cursor-not-allowed pointer-events-none' : 'hover:shadow-orange-500/30 active:scale-95'
+              }`}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>සුරකිමින් පවතී... (Saving...)</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-3.5 h-3.5" /> {t(buttonKey)}
+                </>
+              )}
+            </button>
             </div>
           </div>
         </div>

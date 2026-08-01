@@ -8,7 +8,7 @@ import {
   ChevronsLeft, ChevronsRight, ChevronDown, X,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
-import api from '../lib/api';
+import api, { isNetworkError, getNetworkErrorMessage } from '../lib/api';
 import { useCatalog } from '../contexts/CatalogContext';
 import SortButton from '../components/ui/SortButton';
 import { InventoryProduct } from '../types';
@@ -236,7 +236,7 @@ interface ProductTableProps {
 export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onDelete }) => {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
-  const { categories: catalogCategories, updateInventoryItem, refreshInventory, syncCategoriesFromServer } = useCatalog();
+  const { categories: catalogCategories, updateInventoryItem, syncCategoriesFromServer } = useCatalog();
   const categoryIdMap = useMemo(() => {
     const map = new Map<string, string>();
     catalogCategories.forEach((cat) => map.set(cat.name, cat.id));
@@ -423,8 +423,21 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
       });
     } catch (err: any) {
       const errorMsg = err?.message || '';
-      if (field === 'no' && (errorMsg.includes('already in use') || errorMsg.includes('already exists'))) {
+
+      // 🚨 Explicit Network Error Toast — connection dropped / timeout on inline edit
+      if (isNetworkError(err)) {
+        console.warn('[ProductTable] Network failure while updating field:', errorMsg);
+        toast.error(getNetworkErrorMessage(), {
+          position: 'top-right',
+          autoClose: 6000,
+        });
+      } else if (field === 'no' && (errorMsg.includes('already in use') || errorMsg.includes('already exists'))) {
         toast.error(`Product No already exists!`, {
+          position: 'top-right',
+          autoClose: 4000,
+        });
+      } else {
+        toast.error(errorMsg || 'Failed to update field', {
           position: 'top-right',
           autoClose: 4000,
         });
@@ -512,8 +525,17 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
       if (product) {
         updateCatalogState(itemId, 'barcode', product.barcode || '');
       }
-      const msg = err?.message || 'Failed to update barcode';
-      toast.error(msg, { position: 'top-right', autoClose: 4000 });
+
+      // 🚨 Explicit Network Error Toast — connection dropped / timeout on barcode update
+      if (isNetworkError(err)) {
+        toast.error(getNetworkErrorMessage(), {
+          position: 'top-right',
+          autoClose: 6000,
+        });
+      } else {
+        const msg = err?.message || 'Failed to update barcode';
+        toast.error(msg, { position: 'top-right', autoClose: 4000 });
+      }
     }
   }, [items, updateCatalogState, syncCategoriesFromServer]);
 

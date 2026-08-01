@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useMemo, useEf
 import { Category } from '../types/index';
 import { InventoryProduct } from '../types/index';
 import { CatalogItem } from '../data/mockData';
-import api from '../lib/api';
+import api, { isNetworkError } from '../lib/api';
 import { useAuth } from './AuthContext';
 import { toast } from 'react-toastify';
 
@@ -95,12 +95,7 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
 
-      if (
-        errorMessage.includes('Failed to fetch') ||
-        errorMessage.includes('NetworkError') ||
-        errorMessage.includes('HTTP 404') ||
-        errorMessage.includes('Not Found')
-      ) {
+      if (isNetworkError(err) || errorMessage.includes('HTTP 404') || errorMessage.includes('Not Found')) {
         console.warn('[Catalog] Backend API unavailable — falling back to local inventory data');
         try {
           const localData = await import('../data/inventoryData');
@@ -130,6 +125,34 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
     fetchInventory();
     fetchCategories();
   }, [fetchInventory, fetchCategories, isAuthenticated, token, isInitializing]);
+
+  // ── NETWORK RESILIENCE: Auto-refresh on reconnect & window focus ──
+  // When the device reconnects (e.g., mobile internet / VPN restored), the
+  // inventory and categories are automatically refreshed from the backend
+  // so locally-cached/stale data is replaced with fresh server state.
+  useEffect(() => {
+    if (isInitializing || !isAuthenticated || !token) return;
+
+    const handleOnline = () => {
+      // Silent background refetch when connection is restored
+      console.info('[Catalog] Connection restored — auto-refetching inventory & categories');
+      fetchInventory();
+      fetchCategories();
+    };
+
+    const handleWindowFocus = () => {
+      // Refetch on window focus (covers tab switch, browser restore)
+      fetchInventory();
+      fetchCategories();
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('focus', handleWindowFocus);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('focus', handleWindowFocus);
+    };
+  }, [isInitializing, isAuthenticated, token, fetchInventory, fetchCategories]);
 
   // ── API-backed Category CRUD (server response = single source of truth) ──
 

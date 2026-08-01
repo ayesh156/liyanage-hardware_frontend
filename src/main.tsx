@@ -27,7 +27,21 @@ const Settings = lazy(() => import("./pages/Settings").then(m => ({ default: m.S
 const Help = lazy(() => import("./pages/Help").then(m => ({ default: m.Help })));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // ── Network Resilience: Auto-refetch on reconnect & window focus ──
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+      retry: 2,
+      staleTime: 30_000, // 30s cache freshness for high-latency links
+      gcTime: 5 * 60 * 1000, // 5 min garbage collection
+    },
+    mutations: {
+      retry: 1,
+    },
+  },
+});
 
 // Protected Route wrapper
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
