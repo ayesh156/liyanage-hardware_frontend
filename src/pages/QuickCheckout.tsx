@@ -238,7 +238,7 @@ export const QuickCheckout: React.FC = () => {
   const [searchByKey,    setSearchByKey]    = useState<boolean>(true);
   const [searchBarcode,  setSearchBarcode]  = useState<boolean>(true);
   const [searchByName,   setSearchByName]   = useState<boolean>(false);
-  const [searchByNo,     setSearchByNo]     = useState<boolean>(false);
+  const [searchByNo,     setSearchByNo]     = useState<boolean>(true);
 
   // Stepped navigation state
   const [currentStep, setCurrentStep] = useState<QuickCheckoutStep>('products');

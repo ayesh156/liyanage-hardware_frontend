@@ -552,7 +552,8 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
         </main>
       </div>
 
-      {isMobile && (
+      {/* Bottom floating navbar removed for split-screen usability */}
+      {false && (
         <nav className="fixed bottom-0 left-0 right-0 z-30 px-4 pb-4 pt-2">
           <div className={`relative mx-auto max-w-md rounded-2xl border backdrop-blur-xl shadow-2xl overflow-hidden ${theme === 'dark' ? 'bg-slate-900/90 border-slate-700/50' : 'bg-white/90 border-slate-200'}`}>
             <div className="relative flex items-center justify-around py-2 px-2">

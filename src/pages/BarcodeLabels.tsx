@@ -520,8 +520,8 @@ export const BarcodeLabels: React.FC = () => {
   const [searchScope, setSearchScope] = useState({
     searchKey: true,
     productName: true,
-    barcode: false,
-    productNo: false,
+    barcode: true,
+    productNo: true,
   });
 
   // Additional API search results for paginated deep-search

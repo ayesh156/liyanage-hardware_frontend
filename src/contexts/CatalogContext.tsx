@@ -126,10 +126,15 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
     fetchCategories();
   }, [fetchInventory, fetchCategories, isAuthenticated, token, isInitializing]);
 
-  // ── NETWORK RESILIENCE: Auto-refresh on reconnect & window focus ──
+  // ── NETWORK RESILIENCE: Auto-refresh ONLY on reconnect ──
   // When the device reconnects (e.g., mobile internet / VPN restored), the
   // inventory and categories are automatically refreshed from the backend
   // so locally-cached/stale data is replaced with fresh server state.
+  //
+  // 🚨 FIX: The window `focus` listener has been REMOVED. It previously
+  // triggered fetchInventory() + fetchCategories() on EVERY focus event,
+  // causing the Products table to continuously flash/auto-refresh in an
+  // infinite polling loop.
   useEffect(() => {
     if (isInitializing || !isAuthenticated || !token) return;
 
@@ -140,17 +145,9 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
       fetchCategories();
     };
 
-    const handleWindowFocus = () => {
-      // Refetch on window focus (covers tab switch, browser restore)
-      fetchInventory();
-      fetchCategories();
-    };
-
     window.addEventListener('online', handleOnline);
-    window.addEventListener('focus', handleWindowFocus);
     return () => {
       window.removeEventListener('online', handleOnline);
-      window.removeEventListener('focus', handleWindowFocus);
     };
   }, [isInitializing, isAuthenticated, token, fetchInventory, fetchCategories]);
 

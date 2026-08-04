@@ -127,8 +127,10 @@ export interface InventoryProduct {
   salesPrice: number;
   displayPrice: number;
   storeQty: number;
-  salesType: 'Full' | 'Half' | 'Quarter' | 'Piece' | 'Kg' | 'Box' | 'Set' | string;
-  status: 'Available' | 'Out of Stock' | 'Low Stock' | 'Discontinued';
+  salesType: string;
+  status: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface InvoiceItem {
@@ -163,7 +165,7 @@ export interface Invoice {
   changeAmount?: number;
   issueDate: string;
   dueDate: string;
-  status: 'paid' | 'pending' | 'overdue' | 'cancelled';
+  status: string;
   paymentMethod?: 'cash' | 'card' | 'bank_transfer' | 'credit';
   notes?: string;
 }

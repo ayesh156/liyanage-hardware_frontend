@@ -298,7 +298,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ onSave, onClos
                   <DollarSign className="w-3.5 h-3.5 text-orange-400" />
                   <span className={`text-[10px] font-semibold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{t('addProductModal.pricing')}</span>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <FieldGroup label={t('addProductModal.cost')} icon={<DollarSign className="w-3 h-3" />}>
                     <ClearableInput value={form.cost} type="number" isNumeric isDark={isDark} onChange={(v) => handleStrUpdate('cost', v)} hasError={!!errors.cost} min="0" step="0.01" />
                     {errors.cost && <p className="text-[9px] text-red-400 mt-0.5">{errors.cost}</p>}
@@ -323,7 +323,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ onSave, onClos
                   <Package className="w-3.5 h-3.5 text-orange-400" />
                   <span className={`text-[10px] font-semibold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{t('addProductModal.stock')}</span>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <FieldGroup label={t('addProductModal.storeQty')} icon={<Hash className="w-3 h-3" />}>
                     <ClearableInput value={form.storeQty} type="number" isNumeric isDark={isDark} onChange={(v) => handleStrUpdate('storeQty', v)} hasError={!!errors.storeQty} className="font-bold" min="0" />
                     {errors.storeQty && <p className="text-[9px] text-red-400 mt-0.5">{errors.storeQty}</p>}

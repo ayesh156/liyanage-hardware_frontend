@@ -248,16 +248,16 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(25);
-  const [sortField, setSortField] = useState<keyof InventoryProduct>('no');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [sortField, setSortField] = useState<keyof InventoryProduct>('createdAt');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   // ── CHECKBOX FILTER TOGGLES ──
   // Search Key defaults to true (ticked) on mount; Barcode, Product Name, Category, Product No default false
   const [searchByKey, setSearchByKey] = useState<boolean>(true);
-  const [searchBarcode, setSearchBarcode] = useState<boolean>(false);
+  const [searchBarcode, setSearchBarcode] = useState<boolean>(true);
   const [searchByName, setSearchByName] = useState<boolean>(false);
   const [searchByCategory, setSearchByCategory] = useState<boolean>(false);
-  const [searchByNo, setSearchByNo] = useState<boolean>(false);
+  const [searchByNo, setSearchByNo] = useState<boolean>(true);
 
   const [cellEdit, setCellEdit] = useState<CellEditState | null>(null);
   const [rowEditItem, setRowEditItem] = useState<InventoryProduct | null>(null);

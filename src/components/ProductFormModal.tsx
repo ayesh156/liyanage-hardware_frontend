@@ -150,13 +150,39 @@ const FieldGroup: React.FC<FieldGroupProps & { isDark?: boolean }> = ({ label, i
 
 /**
  * Compute the next product NO suggestion based on existing inventory items.
+ * STRICT LAST-INSERTED INCREMENT:
+ * 1. Use the most recently created item (last in the array when sorted by createdAt desc).
+ * 2. candidate = last.no + 1.
+ * 3. If candidate is free, return it. Otherwise return max numeric no + 1.
+ * 4. Empty DB -> '1001'.
  */
 function computeNextProductNo(inventoryItems: InventoryProduct[]): string {
-  const maxNo = inventoryItems.reduce((max, item) => {
-    const no = item.no ? parseInt(item.no, 10) : 0;
-    return no > max ? no : max;
-  }, 0);
-  return String(maxNo > 0 ? maxNo + 1 : 1000);
+  if (!inventoryItems.length) return '1001';
+
+  // Most recently created item (createdAt desc if timestamps exist, else array order)
+  const sorted = [...inventoryItems].sort((a, b) => {
+    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return bTime - aTime;
+  });
+  const lastItem = sorted[0];
+  const lastNo = lastItem?.no ? parseInt(lastItem.no, 10) : NaN;
+
+  if (!isNaN(lastNo)) {
+    const candidate = lastNo + 1;
+    const candidateStr = String(candidate);
+    if (!inventoryItems.some((i) => i.no === candidateStr)) {
+      return candidateStr;
+    }
+  }
+
+  // Fallback: max numeric no + 1
+  let maxNo = 0;
+  inventoryItems.forEach((item) => {
+    const parsed = item.no ? parseInt(item.no, 10) : NaN;
+    if (!isNaN(parsed) && parsed > maxNo) maxNo = parsed;
+  });
+  return String(maxNo > 0 ? maxNo + 1 : 1001);
 }
 
 export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onClose, mode, initialData, prefillCategory }) => {
@@ -330,9 +356,25 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
 
+      // 🚨 DUPLICATE PRODUCT NO ERROR
+      // Backend returns HTTP 400 with message:
+      //   "Product No '1296' is already taken. Please enter a unique number."
+      // Show a PROMINENT RED toast and PREVENT modal closing / form submission.
+      if (errorMessage.includes('already taken') || errorMessage.includes('already in use')) {
+        toast.error(`⛔ ${errorMessage}`, {
+          position: 'top-right',
+          autoClose: 6000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+          className: '!bg-red-600 !text-white !text-sm !font-semibold !shadow-2xl !border-2 !border-red-800',
+          style: { borderRadius: '12px', boxShadow: '0 8px 32px rgba(220, 38, 38, 0.5)' },
+        });
+      }
       // 🚨 Explicit Network Error Toast Handling
       // Show clear Sinhala + English feedback when connection drops/times out
-      if (isNetworkError(err)) {
+      else if (isNetworkError(err)) {
         console.warn('[ProductFormModal] Network failure while saving product:', errorMessage);
         toast.error(getNetworkErrorMessage(), {
           position: 'top-right',
@@ -480,7 +522,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
                   <DollarSign className="w-3.5 h-3.5 text-orange-400" />
                   <span className={`text-[10px] font-semibold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{t('addProductModal.pricing')}</span>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                   <FieldGroup label={t('addProductModal.cost')} isDark={isDark} icon={<DollarSign className="w-3 h-3" />}>
                     <ClearableInput value={form.cost} type="number" isNumeric isDark={isDark} onChange={(v) => handleStrUpdate('cost', v)} hasError={!!errors.cost} min="0" step="0.01" />
                     {errors.cost && <p className="text-[9px] text-red-400 mt-0.5">{errors.cost}</p>}
@@ -505,7 +547,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
                   <Package className="w-3.5 h-3.5 text-orange-400" />
                   <span className={`text-[10px] font-semibold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{t('addProductModal.stock')}</span>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <FieldGroup label={t('addProductModal.storeQty')} isDark={isDark} icon={<Hash className="w-3 h-3" />}>
                     <ClearableInput value={form.storeQty} type="number" isNumeric isDark={isDark} onChange={(v) => handleStrUpdate('storeQty', v)} hasError={!!errors.storeQty} className="font-bold" min="0" />
                     {errors.storeQty && <p className="text-[9px] text-red-400 mt-0.5">{errors.storeQty}</p>}
