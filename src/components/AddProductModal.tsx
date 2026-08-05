@@ -154,7 +154,8 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ onSave, onClos
   const [form, setForm] = useState({
     searchKey: '',
     name: '',
-    productCategory: prefillCategory || '',
+    // 🚨 FIX: New product form strictly starts with empty category
+    productCategory: '',
     cost: 0,
     lastPrice: 0,
     salesPrice: 0,
@@ -200,7 +201,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ onSave, onClos
         id: `inv-${Date.now()}`,
         searchKey: form.searchKey,
         name: form.name,
-        productCategory: form.productCategory || 'HARDWARE',
+        productCategory: form.productCategory,
         cost: form.cost,
         lastPrice: form.lastPrice,
         salesPrice: form.salesPrice,

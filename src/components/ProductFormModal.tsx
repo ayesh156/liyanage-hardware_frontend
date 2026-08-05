@@ -207,7 +207,9 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
         searchKey: '',
         name: '',
         nameSinhala: '',
-        productCategory: prefillCategory || '',
+        // 🚨 FIX: New product form strictly starts with empty/null category.
+        // No fallback to "HARDWARE" or any previously-used category.
+        productCategory: '',
         barcode: '',
         cost: 0,
         lastPrice: 0,
@@ -313,7 +315,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
       searchKey: form.searchKey,
       name: form.name,
       nameSinhala: form.nameSinhala || undefined,
-      productCategory: form.productCategory || 'HARDWARE',
+      productCategory: form.productCategory,
       categoryId: selectedCategoryId || undefined,
       barcode: (form as any).barcode || undefined,
       cost: form.cost,

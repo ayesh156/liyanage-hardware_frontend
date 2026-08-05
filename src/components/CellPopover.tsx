@@ -2,26 +2,24 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { Check, X } from 'lucide-react';
 
-import { categoryNames } from '../data/mockData';
-// ── Shared category options — dynamically derived from mockData ──
-const CATEGORY_OPTIONS = categoryNames;
-
 // ── Searchable category combobox for inline popover ──
 interface CategoryComboboxProps {
   value: string;
   onSelect: (value: string) => void;
   isDark: boolean;
+  options?: string[];
 }
 
-const CategoryCombobox: React.FC<CategoryComboboxProps> = ({ value, onSelect, isDark }) => {
+const CategoryCombobox: React.FC<CategoryComboboxProps> = ({ value, onSelect, isDark, options = [] }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState(value);
   const [open, setOpen] = useState(true);
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return CATEGORY_OPTIONS;
-    return CATEGORY_OPTIONS.filter((c) => c.toLowerCase().includes(search.toLowerCase()));
-  }, [search]);
+    if (!options || options.length === 0) return [];
+    if (!search.trim()) return options;
+    return options.filter((c) => c.toLowerCase().includes(search.toLowerCase()));
+  }, [search, options]);
 
   useEffect(() => { inputRef.current?.focus(); inputRef.current?.select(); }, []);
 
@@ -140,6 +138,7 @@ interface CellPopoverProps {
   anchorRect: DOMRect;
   onSave: (value: string | number) => void;
   onClose: () => void;
+  options?: string[];
 }
 
 export const CellPopover: React.FC<CellPopoverProps> = ({
@@ -149,6 +148,7 @@ export const CellPopover: React.FC<CellPopoverProps> = ({
   anchorRect,
   onSave,
   onClose,
+  options = [],
 }) => {
   const { theme } = useTheme();
   const isDark = theme === 'dark';
@@ -236,6 +236,7 @@ export const CellPopover: React.FC<CellPopoverProps> = ({
         <CategoryCombobox
           value={String(editValue)}
           isDark={isDark}
+          options={options}
           onSelect={(val) => { onSave(val); }}
         />
       ) : (

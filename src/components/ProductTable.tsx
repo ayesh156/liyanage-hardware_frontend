@@ -15,6 +15,7 @@ import { InventoryProduct } from '../types';
 import { CellPopover } from './CellPopover';
 import { ProductFormModal } from './ProductFormModal';
 import { DeleteConfirmationModal } from './modals/DeleteConfirmationModal';
+import ProductNameTooltip from './ProductNameTooltip';
 import { formatShortProductId } from '../lib/utils';
 
 function deriveStatus(storeQty: number): InventoryProduct['status'] {
@@ -178,21 +179,19 @@ const InlineTextInput: React.FC<InlineTextInputProps> = ({ value, onSave, onCanc
   );
 };
 
-import { categoryNames } from '../data/mockData';
-const INLINE_CATEGORIES = categoryNames;
-
 interface InlineCategorySelectProps {
   value: string; onSave: (value: string) => void; onCancel: () => void; isDark: boolean;
+  options: string[];
 }
-const InlineCategorySelect: React.FC<InlineCategorySelectProps> = ({ value, onSave, onCancel, isDark }) => {
+const InlineCategorySelect: React.FC<InlineCategorySelectProps> = ({ value, onSave, onCancel, isDark, options }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState(value);
   const [open, setOpen] = useState(true);
   const filtered = useMemo(() => {
-    if (!search.trim()) return INLINE_CATEGORIES;
-    return INLINE_CATEGORIES.filter((c) => c.toLowerCase().includes(search.toLowerCase()));
-  }, [search]);
+    if (!search.trim()) return options;
+    return options.filter((c) => c.toLowerCase().includes(search.toLowerCase()));
+  }, [search, options]);
   useEffect(() => { inputRef.current?.focus(); inputRef.current?.select(); }, []);
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -411,6 +410,24 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
       if (response?.syncCategories && Array.isArray(response.syncCategories)) {
         syncCategoriesFromServer(response.syncCategories);
       }
+      // 🚨 INSTANT CATEGORY STATE UPDATE: The backend returns the canonical
+      // product (with resolved categoryId + productCategory) inside response.data.
+      // Apply it back into the CatalogContext state immediately so the table row
+      // badge re-renders with the NEW category name without a manual refresh.
+      const serverProduct = response?.data;
+      if (serverProduct && typeof serverProduct === 'object') {
+        const serverPatch: Partial<InventoryProduct> = {};
+        if (field === 'productCategory') {
+          if (serverProduct.productCategory !== undefined) serverPatch.productCategory = serverProduct.productCategory;
+          if (serverProduct.categoryId !== undefined) serverPatch.categoryId = serverProduct.categoryId;
+          if (serverProduct.categorySi !== undefined) serverPatch.categorySi = serverProduct.categorySi;
+        } else if (serverProduct[field] !== undefined) {
+          (serverPatch as Record<string, any>)[field] = serverProduct[field];
+        }
+        if (typeof updateInventoryItem === 'function' && Object.keys(serverPatch).length > 0) {
+          updateInventoryItem(itemId, serverPatch);
+        }
+      }
       const product = items.find(i => i.id === itemId);
       const productName = product?.name || product?.searchKey || itemId;
       toast.success(`Product "${productName}" - ${field.toUpperCase()} updated successfully.`, {
@@ -443,7 +460,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
         });
       }
     }
-  }, [items, syncCategoriesFromServer]);
+  }, [items, syncCategoriesFromServer, updateInventoryItem]);
 
   const updateCatalogState = useCallback((itemId: string, field: string, value: string | number) => {
     const patchData: Partial<InventoryProduct> = { [field]: value };
@@ -594,7 +611,9 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
       {cellEdit && cellEditItem && cellEditValue !== undefined && (
         <CellPopover value={cellEditValue} fieldLabel={fieldLabels[cellEdit.field] || cellEdit.field}
           type={cellEdit.field === 'productCategory' ? 'category' : editableNumericFields.includes(cellEdit.field as any) ? 'number' : 'text'}
-          anchorRect={cellEdit.rect} onSave={(val) => handleCellSave(cellEdit.itemId, cellEdit.field, val)} onClose={() => setCellEdit(null)} />
+          anchorRect={cellEdit.rect}
+          options={catalogCategories.map(c => c.name)}
+          onSave={(val) => handleCellSave(cellEdit.itemId, cellEdit.field, val)} onClose={() => setCellEdit(null)} />
       )}
 
       {/* Dedicated Barcode CellPopover */}
@@ -702,7 +721,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
       </div>
 
       {/* ── MAIN TABLE ── */}
-      <div className={`rounded-lg border overflow-hidden ${isDark ? 'bg-slate-900/95 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}>
+      <div className={`rounded-lg border overflow-hidden max-w-full overflow-x-hidden ${isDark ? 'bg-slate-900/95 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1300px]">
             <thead className={isDark ? 'bg-slate-800/80' : 'bg-slate-50'}>
@@ -783,12 +802,14 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                           {isEditing ? (
                             <InlineTextInput value={item.name} isDark={isDark} onSave={(val) => handleInlineSave(item.id, field, val)} onCancel={() => setInlineEdit(null)} />
                           ) : (
-                            <div className="flex items-center gap-1.5">
-                              <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}>
-                                <Package className={`w-2.5 h-2.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
+                            <ProductNameTooltip name={item.name} nameSinhala={item.nameSinhala} nameSi={item.nameSi}>
+                              <div className="flex items-center gap-1.5 min-w-0 max-w-full">
+                                <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}>
+                                  <Package className={`w-2.5 h-2.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
+                                </div>
+                                <span className={`text-[11px] font-medium leading-tight truncate ${isDark ? 'text-white' : 'text-slate-900'} hover:text-orange-400 transition-colors`}>{displayName}</span>
                               </div>
-                              <span className={`text-[11px] font-medium leading-tight ${isDark ? 'text-white' : 'text-slate-900'} hover:text-orange-400 transition-colors`}>{displayName}</span>
-                            </div>
+                            </ProductNameTooltip>
                           )}
                         </td>
                       );
@@ -801,7 +822,13 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                       return (
                         <td className="px-2 py-1.5 relative group cursor-pointer" onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
                           {isEditing ? (
-                            <InlineCategorySelect value={item.productCategory} isDark={isDark} onSave={(val) => handleInlineSave(item.id, field, val)} onCancel={() => setInlineEdit(null)} />
+                            <InlineCategorySelect
+                              value={item.productCategory}
+                              isDark={isDark}
+                              options={catalogCategories.map(c => c.name)}
+                              onSave={(val) => handleInlineSave(item.id, field, val)}
+                              onCancel={() => setInlineEdit(null)}
+                            />
                           ) : (
                             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20 hover:bg-purple-500/20 transition-colors cursor-pointer">{categoryLabel}</span>
                           )}

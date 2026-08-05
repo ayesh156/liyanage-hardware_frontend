@@ -17,6 +17,7 @@ import ThermalReceiptPreview from '../components/ThermalReceiptPreview';
 import { ShortcutMapOverlay, ShortcutHintsBar, CheckoutMode, InvoiceStep } from '../components/ShortcutMapOverlay';
 import { CategoryGrid } from '../components/CategoryGrid';
 import { ProductFormModal } from '../components/ProductFormModal';
+import ProductNameTooltip from '../components/ProductNameTooltip';
 import { PosItem, PosCategory } from '../data/mockData';
 import {
   Zap, Search, Plus, Trash2, ArrowLeft, Printer, ShoppingCart,
@@ -2053,9 +2054,11 @@ export const QuickCheckout: React.FC = () => {
                         <Package className={`w-4 h-4 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className={`font-semibold text-xs truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                          {isSinhala ? (flatProduct.product.nameAlt || flatProduct.displayName) : flatProduct.displayName}
-                        </p>
+                        <ProductNameTooltip name={flatProduct.displayName} nameSi={(flatProduct.product as any)?.nameAlt}>
+                          <p className={`font-semibold text-xs truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                            {isSinhala ? (flatProduct.product.nameAlt || flatProduct.displayName) : flatProduct.displayName}
+                          </p>
+                        </ProductNameTooltip>
                         <div className="flex items-center gap-2 mt-0.5">
                           <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                             {flatProduct.displaySku}
@@ -2215,9 +2218,11 @@ export const QuickCheckout: React.FC = () => {
                     
                     <div className="flex items-center gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className={`font-semibold text-xs truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                          {isSinhala ? (item.productNameSi || item.productName) : item.productName}
-                        </p>
+                        <ProductNameTooltip name={item.productName} nameSinhala={item.productNameSi}>
+                          <p className={`font-semibold text-xs truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                            {isSinhala ? (item.productNameSi || item.productName) : item.productName}
+                          </p>
+                        </ProductNameTooltip>
                         <div className={`text-xs flex items-center gap-1.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                           {item.unitPrice !== item.originalPrice && (
                             <span className="line-through text-[10px]">
@@ -2623,9 +2628,11 @@ export const QuickCheckout: React.FC = () => {
                                 {flatProduct.stock}
                               </span>
                               <div className="min-w-0 flex-1">
-                                <p className={`truncate text-xs font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                                  {isSinhala ? (flatProduct.product.nameAlt || flatProduct.displayName) : flatProduct.displayName}
-                                </p>
+                                <ProductNameTooltip name={flatProduct.displayName} nameSi={(flatProduct.product as any)?.nameAlt}>
+                                  <p className={`truncate text-xs font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                                    {isSinhala ? (flatProduct.product.nameAlt || flatProduct.displayName) : flatProduct.displayName}
+                                  </p>
+                                </ProductNameTooltip>
                                 <div className="mt-0.5 flex items-center gap-1.5">
                                   <span className={`text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                                     {flatProduct.displaySku}
@@ -2874,9 +2881,11 @@ export const QuickCheckout: React.FC = () => {
                       style={{ gridTemplateColumns: getGridTemplateColumns() }}
                     >
                       <div className="min-w-0 truncate">
-                        <p className={`text-sm font-semibold truncate leading-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                          {isSinhala ? (item.productNameSi || item.productName) : item.productName}
-                        </p>
+                        <ProductNameTooltip name={item.productName} nameSinhala={item.productNameSi}>
+                          <p className={`text-sm font-semibold truncate leading-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                            {isSinhala ? (item.productNameSi || item.productName) : item.productName}
+                          </p>
+                        </ProductNameTooltip>
                       </div>
                       <div className="text-right truncate">
                         <span className={`text-sm font-mono font-semibold ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
@@ -3119,54 +3128,48 @@ export const QuickCheckout: React.FC = () => {
               <>
                 <div 
                   ref={categoryPopoverRef}
-                  className={`fixed z-[201] rounded-xl border shadow-2xl overflow-hidden animate-fade-in ${
+                  className={`fixed z-[201] rounded-xl border shadow-2xl overflow-hidden overflow-x-hidden animate-fade-in max-w-full w-[600px] max-w-[calc(100vw-16px)] h-auto max-h-[85vh] flex flex-col ${
                     isDark ? 'border-slate-800' : 'border-slate-200'
                   }`}
                   style={{
-                    top: Math.max(8, categoryPopoverAnchor.top - 360),
-                    left: Math.max(8, Math.min(categoryPopoverAnchor.left, window.innerWidth - 360)),
-                    width: 350,
-                    maxHeight: 340,
+                    top: Math.max(8, Math.min(categoryPopoverAnchor.top, window.innerHeight - 640)),
+                    left: Math.max(8, Math.min(categoryPopoverAnchor.left, window.innerWidth - 600)),
                   }}
                 >
                   {(() => {
-                    // ── Category popover search uses the TRIPLE CHECKBOX filter, same as main search ──
+                    // ── Category popover search uses the QUADRUPLE CHECKBOX filter, same as main search ──
                     const catProducts = inventoryItems
                       .filter(inv => inv.productCategory === activeCategoryPopover)
                       .filter(item => {
                         if (!categoryPopoverFilter.trim()) return true;
-                        const q = categoryPopoverFilter.toLowerCase();
-                        const strippedQ = q.replace(/\s+/g, '');
-                        // Match against checked fields with AND/OR — any active checkbox triggers OR across fields
-                        // For simplicity: check searchKey AND/OR name based on checkboxes, with AND logic between checked fields
-                        let matched = false;
-                        
-                        if (searchByKey && item.searchKey) {
-                          const field = item.searchKey.toLowerCase();
-                          if (field.includes(q) || field.replace(/\s+/g, '').includes(strippedQ)) matched = true;
+                        const q = categoryPopoverFilter.toLowerCase().trim();
+
+                        const matchesBarcode = searchBarcode && item.barcode?.toLowerCase().includes(q);
+                        const matchesSearchKey = searchByKey && item.searchKey?.toLowerCase().includes(q);
+                        const matchesName = searchByName && (
+                          item.name?.toLowerCase().includes(q) ||
+                          item.nameSinhala?.toLowerCase().includes(q) ||
+                          item.nameSi?.toLowerCase().includes(q)
+                        );
+                        const matchesNo = searchByNo && item.no?.toString().toLowerCase().includes(q);
+
+                        // Fallback: If no checkbox is explicitly checked, search across all fields by default
+                        const hasAnyScope = searchBarcode || searchByKey || searchByName || searchByNo;
+                        if (!hasAnyScope) {
+                          return (
+                            item.name?.toLowerCase().includes(q) ||
+                            item.no?.toString().toLowerCase().includes(q) ||
+                            item.searchKey?.toLowerCase().includes(q) ||
+                            item.barcode?.toLowerCase().includes(q)
+                          );
                         }
-                        if (!matched && searchBarcode && item.barcode) {
-                          const field = item.barcode.toLowerCase();
-                          if (field.includes(q)) matched = true;
-                        }
-                        if (!matched && searchByName && item.name) {
-                          const field = item.name.toLowerCase();
-                          if (field.includes(q) || field.replace(/\s+/g, '').includes(strippedQ)) matched = true;
-                        }
-                        
-                        // Default fallback: if no checkboxes active, search by searchKey AND name
-                        if (!searchByKey && !searchBarcode && !searchByName) {
-                          const nameMatch = item.name && (item.name.toLowerCase().includes(q) || item.name.toLowerCase().replace(/\s+/g, '').includes(strippedQ));
-                          const keyMatch = item.searchKey && item.searchKey.toLowerCase().includes(q);
-                          matched = !!(nameMatch || keyMatch);
-                        }
-                        
-                        return matched;
+
+                        return matchesBarcode || matchesSearchKey || matchesName || matchesNo;
                       });
                     const filteredCategoryProducts = catProducts;
 
                     return (
-                      <div className={`${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border relative`}>
+                      <div className={`${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border relative flex flex-col min-w-0 w-full max-w-full overflow-x-hidden overflow-x-clip min-h-0`}>
                         <>
                           <div className={`flex items-center justify-between px-3 py-2 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
                             <div className="flex items-center gap-2">
@@ -3188,7 +3191,7 @@ export const QuickCheckout: React.FC = () => {
                             </button>
                           </div>
 
-                          <div className={`px-3 py-1.5 border-b ${isDark ? 'border-slate-800/50' : 'border-slate-100'}`}>
+                          <div className={`px-3 pt-1.5 pb-2.5 border-b ${isDark ? 'border-slate-800/50' : 'border-slate-100'}`}>
                             <div className="relative">
                               <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
                               <input
@@ -3282,13 +3285,11 @@ export const QuickCheckout: React.FC = () => {
                                         costPrice: Number(targetedProduct.cost),
                                         stock: Number(targetedProduct.storeQty),
                                         hasDiscount: false,
-                                      } as FlattenedProduct;
+                                          } as FlattenedProduct;
                                       
                                       if (targetedProduct.storeQty > 0) {
+                                        // NOTE: Menu stays open after Enter add for consecutive adds.
                                         addOneToCart(fp);
-                                        setActiveCategoryPopover(null);
-                                        setCategoryPopoverFilter('');
-                                        setActiveCategoryItemIndex(0);
                                         playBeep('add');
                                         const enterQtyName = isSinhala
                                           ? (targetedProduct.nameSinhala || targetedProduct.nameSi || targetedProduct.name)
@@ -3318,11 +3319,11 @@ export const QuickCheckout: React.FC = () => {
 
                           <div 
                             ref={categoryListContainerRef}
-                            className="overflow-y-auto custom-scrollbar" 
-                            style={{ maxHeight: 220 }}
+                            className="overflow-y-auto overflow-x-hidden custom-scrollbar flex-1 min-h-0 w-full max-w-full" 
+                            style={{ maxHeight: 'calc(85vh - 12rem)' }}
                           >
                             {filteredCategoryProducts.length > 0 ? (
-                              <div className="flex flex-col gap-0.5 p-1">
+                              <div className="flex flex-col gap-0.5 pt-2 px-1 pb-1">
                                 {filteredCategoryProducts.map((item, idx) => {
                                   const isFocusedRow = idx === activeCategoryItemIndex;
                                   return (
@@ -3349,10 +3350,8 @@ export const QuickCheckout: React.FC = () => {
                                             stock: Number(item.storeQty),
                                             hasDiscount: false,
                                           } as FlattenedProduct;
+                                          // NOTE: Menu stays open for consecutive adds — only X or Escape closes it.
                                           addOneToCart(fp);
-                                          setActiveCategoryPopover(null);
-                                          setCategoryPopoverFilter('');
-                                          setActiveCategoryItemIndex(0);
                                           playBeep('add');
                                           const clickEnterQtyName = isSinhala
                                             ? (item.nameSinhala || item.nameSi || item.name)
@@ -3366,8 +3365,8 @@ export const QuickCheckout: React.FC = () => {
                                       className={`p-2.5 rounded-xl flex items-center gap-2 transition-all duration-150 cursor-pointer border-l-4 ${
                                         isFocusedRow 
                                           ? isDark 
-                                            ? 'bg-slate-800 border-l-4 border-amber-500 shadow-lg translate-x-0.5 scale-[1.01] z-10' 
-                                            : 'bg-amber-50 border-l-4 border-amber-500 shadow-lg translate-x-0.5 scale-[1.01] z-10'
+                                            ? 'bg-slate-800 border-l-4 border-amber-500 shadow-lg ring-2 ring-amber-500/40 z-10' 
+                                            : 'bg-amber-50 border-l-4 border-amber-500 shadow-lg ring-2 ring-amber-500/40 z-10'
                                           : isDark 
                                             ? 'bg-slate-900/40 hover:bg-slate-900/80 border-l-4 border-transparent hover:border-slate-700' 
                                             : 'bg-slate-50 hover:bg-slate-100 border-l-4 border-transparent hover:border-slate-300'
@@ -3385,9 +3384,11 @@ export const QuickCheckout: React.FC = () => {
                                           {item.storeQty}
                                         </span>
                                         <div className="min-w-0 flex-1">
-                                          <p className={`truncate text-[11px] font-semibold ${isFocusedRow ? (isDark ? 'text-white' : 'text-amber-900') : isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-                                            {isSinhala ? (item.nameSinhala || item.nameSi || item.name) : item.name}
-                                          </p>
+                                          <ProductNameTooltip name={item.name} nameSinhala={item.nameSinhala} nameSi={item.nameSi}>
+                                            <p className={`truncate text-[11px] font-semibold ${isFocusedRow ? (isDark ? 'text-white' : 'text-amber-900') : isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                                              {isSinhala ? (item.nameSinhala || item.nameSi || item.name) : item.name}
+                                            </p>
+                                          </ProductNameTooltip>
                                           <div className="mt-0.5 flex items-center gap-1.5">
                                             <span className={`text-[8px] font-mono ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                                               {item.searchKey}
