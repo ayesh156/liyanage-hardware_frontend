@@ -22,11 +22,44 @@ function deriveStatus(storeQty: number): InventoryProduct['status'] {
   return 'Available';
 }
 
-const SALES_TYPE_OPTIONS: string[] = ['Full', 'Half', 'Quarter', 'Piece', 'Kg', 'Box', 'Set'];
+// ── Sales Type localization ──
+// The underlying database/form value is the clean English enum string
+// (e.g. 'Piece', 'Kg'), while the dropdown UI renders a localized label
+// based on the active system language.
+interface ComboboxOption {
+  value: string;
+  label: string;
+}
+
+const SALES_TYPE_OPTIONS: ComboboxOption[] = [
+  { value: 'Piece', label: 'Piece' },
+  { value: 'Full', label: 'Full' },
+  { value: 'Half', label: 'Half' },
+  { value: 'Quarter', label: 'Quarter' },
+  { value: 'Kg', label: 'Kg' },
+  { value: 'Meter', label: 'Meter' },
+  { value: 'Liter', label: 'Liter' },
+  { value: 'Packet', label: 'Packet' },
+  { value: 'Box', label: 'Box' },
+  { value: 'Set', label: 'Set' },
+];
+
+const SALES_TYPE_SINHALA_LABELS: Record<string, string> = {
+  Piece: 'කෑල්ල (Piece)',
+  Full: 'සම්පූර්ණ (Full)',
+  Half: 'අර්ධ (Half)',
+  Quarter: 'කාර්තුව (Quarter)',
+  Kg: 'කිලෝග්‍රෑම් (Kg)',
+  Meter: 'මීටර් (Meter)',
+  Liter: 'ලීටර් (Liter)',
+  Packet: 'පැකට් (Packet)',
+  Box: 'පෙට්ටි (Box)',
+  Set: 'කට්ටල (Set)',
+};
 
 // ── Searchable combobox with "+ Add Category" mini button ──
 interface SearchComboboxProps {
-  options: string[];
+  options: ComboboxOption[];
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -37,20 +70,29 @@ interface SearchComboboxProps {
 const SearchCombobox: React.FC<SearchComboboxProps> = ({ options, value, onChange, placeholder, isDark, onAddCategory }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [search, setSearch] = useState(value);
+  const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
 
   // CRITICAL SYNC: Keep the inner search text in perfect lockstep with the
   // parent form state (form.productCategory). Without this, the combobox can
   // visually display a stale category while the actual form state is empty,
   // causing phantom "Please select a category" validation errors on save.
+  // 🚀 LOCALIZATION: When the active language is Sinhala, the input displays
+  // the localized label (nameSinhala / categorySi / sales type Sinhala) while
+  // still storing the clean English database value in the parent form state.
   useEffect(() => {
-    setSearch(value);
-  }, [value]);
+    const match = options.find((o) => o.value === value);
+    setSearch(match ? match.label : value);
+  }, [value, options]);
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return options;
-    return options.filter((o) => o.toLowerCase().includes(search.toLowerCase()));
+    const q = search.trim().toLowerCase();
+    if (!q) return options;
+    // 🔍 Search BOTH the localized label and the raw English value so users can
+    // filter in Sinhala or English regardless of the active display language.
+    return options.filter(
+      (o) => o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q)
+    );
   }, [search, options]);
 
   useEffect(() => { if (open) { inputRef.current?.focus(); inputRef.current?.select(); } }, [open]);
@@ -66,7 +108,7 @@ const SearchCombobox: React.FC<SearchComboboxProps> = ({ options, value, onChang
         <input ref={inputRef} type="text" value={search}
           onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
-          onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false); if (e.key === 'Enter' && filtered.length === 1) { onChange(filtered[0]); setSearch(filtered[0]); setOpen(false); } }}
+          onKeyDown={(e) => { if (e.key === 'Escape') setOpen(false); if (e.key === 'Enter' && filtered.length === 1) { onChange(filtered[0].value); setSearch(filtered[0].label); setOpen(false); } }}
           placeholder={placeholder || 'Search...'}
           className={`w-full px-2.5 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50 transition-all pr-7 ${
             isDark ? 'bg-slate-700/50 border-slate-600 text-white placeholder:text-slate-500' : 'bg-white border-slate-200 text-slate-900 placeholder:text-slate-400'
@@ -81,8 +123,8 @@ const SearchCombobox: React.FC<SearchComboboxProps> = ({ options, value, onChang
         {open && (
           <div className={`absolute left-0 top-full mt-0.5 w-full max-h-32 overflow-y-auto rounded-md border shadow-xl z-50 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
             {filtered.length > 0 ? filtered.map((opt) => (
-              <button key={opt} onMouseDown={(e) => e.preventDefault()} onClick={() => { onChange(opt); setSearch(opt); setOpen(false); }}
-                className={`w-full text-left px-2.5 py-1.5 text-xs font-medium transition-colors ${opt === value ? 'bg-orange-500/20 text-orange-400' : isDark ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-700 hover:bg-slate-100'}`}>{opt}</button>
+              <button key={opt.value} onMouseDown={(e) => e.preventDefault()} onClick={() => { onChange(opt.value); setSearch(opt.label); setOpen(false); }}
+                className={`w-full text-left px-2.5 py-1.5 text-xs font-medium transition-colors ${opt.value === value ? 'bg-orange-500/20 text-orange-400' : isDark ? 'text-slate-300 hover:bg-slate-700' : 'text-slate-700 hover:bg-slate-100'}`}>{opt.label}</button>
             )) : <div className={`px-2.5 py-1.5 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>No results</div>}
           </div>
         )}
@@ -195,10 +237,13 @@ function computeNextProductNo(inventoryItems: InventoryProduct[]): string {
 
 export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onClose, mode, initialData, prefillCategory }) => {
   const { theme } = useTheme();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { categories, inventoryItems, addCategory, addInventoryItem, updateInventoryItem, syncCategoriesFromServer } = useCatalog();
   const isSubmittingRef = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // 🚀 LOCALIZATION: Detect active system language for displaying localized
+  // Category names (nameSinhala / nameSi) and Sales Type labels.
+  const isSinhala = i18n.language?.toLowerCase() === 'si';
   const categoryMap = useMemo(() => {
     const map = new Map<string, string>();
     categories.forEach((cat) => map.set(cat.name, cat.id));
@@ -259,7 +304,27 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
 
   const derivedStatus = deriveStatus(form.storeQty);
 
-  const categoryOptions = useMemo(() => categories.map(c => c.name), [categories]);
+  // 🚀 LOCALIZATION: Build category dropdown options as { value, label } pairs.
+  // The raw English category name (c.name) is the stored database value so
+  // categoryId resolution (categoryMap) and backend payloads stay unchanged.
+  // When Sinhala is active, the dropdown displays nameSinhala / nameSi.
+  const categoryOptions = useMemo((): ComboboxOption[] => {
+    return categories.map((c) => {
+      const sinhalaName = c.nameSinhala || (c as any).nameSi || (c as any).categorySi;
+      const label = isSinhala && sinhalaName ? sinhalaName : c.name;
+      return { value: c.name, label };
+    });
+  }, [categories, isSinhala]);
+
+  // 🚀 LOCALIZATION: Sales Type dropdown — display localized labels in Sinhala
+  // mode (e.g. 'කෑල්ල (Piece)') while keeping the clean enum value ('Piece').
+  const salesTypeOptions = useMemo((): ComboboxOption[] => {
+    if (!isSinhala) return SALES_TYPE_OPTIONS;
+    return SALES_TYPE_OPTIONS.map((opt) => ({
+      value: opt.value,
+      label: SALES_TYPE_SINHALA_LABELS[opt.value] || opt.label,
+    }));
+  }, [isSinhala]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -523,7 +588,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
               {/* Sales Type */}
               <div>
                 <FieldGroup label={t('addProductModal.salesType')} isDark={isDark} icon={<ShoppingCart className="w-3 h-3" />}>
-                  <SearchCombobox options={SALES_TYPE_OPTIONS} value={form.salesType} onChange={(v) => updateField('salesType', v)} placeholder={t('addProductModal.salesTypePlaceholder')} isDark={isDark} />
+                  <SearchCombobox options={salesTypeOptions} value={form.salesType} onChange={(v) => updateField('salesType', v)} placeholder={t('addProductModal.salesTypePlaceholder')} isDark={isDark} />
                 </FieldGroup>
               </div>
               {/* Pricing */}

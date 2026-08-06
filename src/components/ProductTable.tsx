@@ -729,7 +729,10 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                 {columns.map((col, i) => {
                   const widthClass = col.key === 'no' ? 'w-[80px] min-w-[80px] max-w-[90px]' : 
                                      col.key === 'searchKey' ? 'min-w-[140px]' : 
-                                     col.key === 'name' ? 'min-w-[200px]' : '';
+                                     col.key === 'name' ? 'w-[220px] min-w-[200px] max-w-[240px]' : 
+                                     col.key === 'productCategory' ? 'min-w-[140px]' :
+                                     col.key === 'barcode' ? 'min-w-[120px] whitespace-nowrap' :
+                                     col.label === 'Status' ? 'min-w-[100px] whitespace-nowrap' : '';
                   return (
                   <th key={i}
                     className={`px-2 py-2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${widthClass} ${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'} ${isDark ? 'text-slate-400' : 'text-slate-500'} ${col.key ? 'cursor-pointer select-none hover:text-orange-400 transition-colors' : ''}`}
@@ -798,7 +801,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                       const isEditing = inlineEdit?.itemId === item.id && inlineEdit?.field === field;
                       const displayName = isSinhala ? (item.nameSinhala || item.name) : item.name;
                       return (
-                        <td className="px-2 py-1.5 relative group cursor-pointer min-w-[200px]" onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
+                        <td className="w-[220px] max-w-[220px] truncate px-3 py-2 text-sm relative group cursor-pointer" onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
                           {isEditing ? (
                             <InlineTextInput value={item.name} isDark={isDark} onSave={(val) => handleInlineSave(item.id, field, val)} onCancel={() => setInlineEdit(null)} />
                           ) : (
@@ -807,7 +810,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                                 <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${isDark ? 'bg-slate-700' : 'bg-slate-100'}`}>
                                   <Package className={`w-2.5 h-2.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
                                 </div>
-                                <span className={`text-[11px] font-medium leading-tight truncate ${isDark ? 'text-white' : 'text-slate-900'} hover:text-orange-400 transition-colors`}>{displayName}</span>
+                                <span className={`block text-[11px] font-medium leading-tight truncate ${isDark ? 'text-white' : 'text-slate-900'} hover:text-orange-400 transition-colors`}>{displayName}</span>
                               </div>
                             </ProductNameTooltip>
                           )}
@@ -820,7 +823,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                       const isEditing = inlineEdit?.itemId === item.id && inlineEdit?.field === field;
                       const categoryLabel = resolveCategoryLabel(item);
                       return (
-                        <td className="px-2 py-1.5 relative group cursor-pointer" onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
+                        <td className="px-2 py-1.5 relative group cursor-pointer min-w-[140px]" onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
                           {isEditing ? (
                             <InlineCategorySelect
                               value={item.productCategory}
@@ -842,7 +845,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                       const isBarcodeActive = activeBarcodeEditId === item.id;
                       return (
                         <td
-                          className={`px-2 py-1.5 relative group cursor-pointer transition-all ${isBarcodeActive
+                          className={`px-2 py-1.5 relative group cursor-pointer transition-all min-w-[120px] whitespace-nowrap ${isBarcodeActive
                               ? 'ring-2 ring-orange-500 ring-inset rounded-sm'
                               : ''
                             }`}
@@ -892,7 +895,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                       <span className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{item.salesType}</span>
                     </td>
 
-                    <td className="px-2 py-1.5 text-center">
+                    <td className="px-2 py-1.5 text-center min-w-[100px] whitespace-nowrap">
                       <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-medium ${st.bg} ${st.text} ${st.border} border`}>
                         {st.icon}<span>{item.status}</span>
                       </span>
