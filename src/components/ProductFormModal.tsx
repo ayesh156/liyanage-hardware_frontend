@@ -40,6 +40,14 @@ const SearchCombobox: React.FC<SearchComboboxProps> = ({ options, value, onChang
   const [search, setSearch] = useState(value);
   const [open, setOpen] = useState(false);
 
+  // CRITICAL SYNC: Keep the inner search text in perfect lockstep with the
+  // parent form state (form.productCategory). Without this, the combobox can
+  // visually display a stale category while the actual form state is empty,
+  // causing phantom "Please select a category" validation errors on save.
+  useEffect(() => {
+    setSearch(value);
+  }, [value]);
+
   const filtered = useMemo(() => {
     if (!search.trim()) return options;
     return options.filter((o) => o.toLowerCase().includes(search.toLowerCase()));

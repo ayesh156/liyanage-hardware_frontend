@@ -17,7 +17,7 @@ interface ProductNameTooltipProps {
   nameSi?: string;
   /** Force English tooltip regardless of language (default: auto-detect from i18n) */
   language?: 'si' | 'en';
-  /** Max width of the tooltip (default: 260px) */
+  /** Optional inline max-width override. If omitted, responsive Tailwind classes control the width. */
   maxWidth?: number;
   /** Side offset for the tooltip */
   sideOffset?: number;
@@ -29,7 +29,7 @@ const ProductNameTooltip: React.FC<ProductNameTooltipProps> = ({
   nameSinhala,
   nameSi,
   language,
-  maxWidth = 260,
+  maxWidth,
   sideOffset = 4,
 }) => {
   const { i18n } = useTranslation();
@@ -55,8 +55,8 @@ const ProductNameTooltip: React.FC<ProductNameTooltipProps> = ({
       </TooltipTrigger>
       <TooltipContent
         sideOffset={sideOffset}
-        className="rounded-md border px-2.5 py-1 text-sm font-medium leading-relaxed shadow-lg z-50 animate-in fade-in-0 zoom-in-95"
-        style={{ maxWidth }}
+        className="rounded-md border px-2.5 py-1 text-sm font-medium leading-snug shadow-lg z-50 animate-in fade-in-0 zoom-in-95 max-w-[280px] sm:max-w-[340px] whitespace-normal break-words"
+        style={maxWidth ? { maxWidth } : undefined}
       >
         <p>{tooltipText}</p>
       </TooltipContent>
