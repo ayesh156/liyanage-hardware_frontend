@@ -22,6 +22,7 @@ const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100];
 export const Categories: React.FC = () => {
   const { theme } = useTheme();
   const { t } = useTranslation();
+  const { user: currentUser } = useAuth();
   const isMobile = useIsMobile();
   const isDark = theme === 'dark';
 
@@ -399,12 +400,14 @@ export const Categories: React.FC = () => {
                           }`} title="Edit">
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={() => handleDeleteCategory(category)}
-                          className={`p-1.5 rounded-lg transition-all hover:scale-110 active:scale-90 ${
-                            isDark ? 'text-slate-400 hover:text-rose-500 hover:bg-rose-500/15' : 'text-slate-500 hover:text-rose-600 hover:bg-rose-50'
-                          }`} title="Delete">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {currentUser?.role === 'ADMIN' && (
+                          <button onClick={() => handleDeleteCategory(category)}
+                            className={`p-1.5 rounded-lg transition-all hover:scale-110 active:scale-90 ${
+                              isDark ? 'text-slate-400 hover:text-rose-500 hover:bg-rose-500/15' : 'text-slate-500 hover:text-rose-600 hover:bg-rose-50'
+                            }`} title="Delete">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

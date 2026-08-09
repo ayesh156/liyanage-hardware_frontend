@@ -256,13 +256,13 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
                   </div>
                 </div>
 
-                {/* ═══ CUSTOMER ═══ */}
-                {!isWalkIn && (
-                  <div style={{ padding: '3px 0', borderBottom: '2px dashed #000' }}>
-                    <span style={{ fontSize: '10px', ...PB }}>පාරිභෝගිකයා: </span>
-                    <span style={{ fontSize: '12px', ...PBBold }}>{customer?.name || invoice.customerName}</span>
-                  </div>
-                )}
+                {/* ═══ CUSTOMER — ALWAYS rendered, walk-in fallback to match print receipt 1:1 ═══ */}
+                <div style={{ padding: '3px 0', borderBottom: '2px dashed #000' }}>
+                  <span style={{ fontSize: '10px', ...PB }}>පාරිභෝගිකයා: </span>
+                  <span style={{ fontSize: '12px', ...PBBold }}>
+                    {customer?.name || invoice.customerName || 'walk-in customer'}
+                  </span>
+                </div>
 
                 {/* ═══ ITEMS HEADER ═══ */}
                 <div style={{ padding: '3px 0 2px', borderBottom: '2px solid #000' }}>
@@ -382,13 +382,7 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
                   <span style={{ fontSize: '11px', ...PBBold }}>Admin</span>
                 </div>
 
-                {/* ═══ NOTES ═══ */}
-                {invoice.notes && (
-                  <div style={{ padding: '3px 0', borderTop: '1px dashed #000', marginTop: '2px' }}>
-                    <div style={{ fontSize: '10px', fontWeight: 800, color: '#000' }}>සටහන්:</div>
-                    <div style={{ fontSize: '11px', ...PB }}>{invoice.notes}</div>
-                  </div>
-                )}
+                
 
                 {/* ═══ FOOTER ═══ */}
                 <div style={{ textAlign: 'center', paddingTop: '6px', borderTop: '2px dashed #000', marginTop: '3px' }}>

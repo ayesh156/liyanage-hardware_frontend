@@ -10,6 +10,7 @@ import {
 import { toast } from 'react-toastify';
 import api, { isNetworkError, getNetworkErrorMessage } from '../lib/api';
 import { useCatalog } from '../contexts/CatalogContext';
+import { useAuth } from '../contexts/AuthContext';
 import SortButton from '../components/ui/SortButton';
 import { InventoryProduct } from '../types';
 import { CellPopover } from './CellPopover';
@@ -234,6 +235,7 @@ interface ProductTableProps {
 
 export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onDelete }) => {
   const { theme } = useTheme();
+  const { user: currentUser } = useAuth();
   const isDark = theme === 'dark';
   const { categories: catalogCategories, updateInventoryItem, syncCategoriesFromServer } = useCatalog();
   const categoryIdMap = useMemo(() => {
@@ -907,10 +909,12 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                           className={`p-1.5 rounded-lg transition-all hover:scale-110 active:scale-90 ${isDark ? 'text-slate-400 hover:text-orange-400 hover:bg-orange-500/15' : 'text-slate-500 hover:text-orange-600 hover:bg-orange-50'}`} title="Edit full row">
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
-                        <button onClick={() => setDeleteTarget(item)}
+                        {currentUser?.role === 'ADMIN' && (
+                          <button onClick={() => setDeleteTarget(item)}
                           className={`p-1.5 rounded-lg transition-all hover:scale-110 active:scale-90 ${isDark ? 'text-slate-400 hover:text-rose-500 hover:bg-rose-500/15' : 'text-slate-500 hover:text-rose-600 hover:bg-rose-50'}`} title="Delete item">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

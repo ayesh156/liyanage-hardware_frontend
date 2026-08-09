@@ -615,7 +615,7 @@ export const QuickCheckout: React.FC = () => {
       };
     };
 
-    const scoreField = (fieldRaw: string): 0 | 1 | 2 => {
+    const scoreField = (fieldRaw: string, isBarcode: boolean = false): 0 | 1 | 2 => {
       if (!fieldRaw) return 0;
       const field         = fieldRaw.toLowerCase();
       const strippedField = field.replace(/\s+/g, '');
@@ -626,7 +626,16 @@ export const QuickCheckout: React.FC = () => {
         queryTokens.length === fieldTokens.length &&
         queryTokens.every((tok, i) => tok === fieldTokens[i])
       ) return 2;
-      if (strippedQuery.length > 0 && strippedField.includes(strippedQuery)) return 1;
+      // 🚨 BARCODE STRICT PREFIX RULE: Barcodes MUST match from the 1st character onwards.
+      // NEVER use substring `includes()` for barcodes — typing "18" or "186" must NOT
+      // match a longer barcode like "991860" mid-sequence.
+      if (strippedQuery.length > 0) {
+        if (isBarcode) {
+          if (strippedField.startsWith(strippedQuery)) return 1;
+        } else {
+          if (strippedField.includes(strippedQuery)) return 1;
+        }
+      }
       return 0;
     };
 
@@ -635,7 +644,7 @@ export const QuickCheckout: React.FC = () => {
       let score = 0;
       // Conditionally score each field based on which checkboxes are active (OR logic)
       if (searchByKey)   score = Math.max(score, scoreField(item.searchKey || ''));
-      if (searchBarcode) score = Math.max(score, scoreField(item.barcode || ''));
+      if (searchBarcode) score = Math.max(score, scoreField(item.barcode || '', true));
       if (searchByName)  score = Math.max(score, scoreField(item.name || ''));
       if (searchByNo)    score = Math.max(score, scoreField(item.no || ''));
       if (score > 0) scored.push({ item, score });
@@ -1218,9 +1227,6 @@ export const QuickCheckout: React.FC = () => {
           changeAmount: changeAmount !== 0 ? Math.round(changeAmount * 100) / 100 : undefined,
           paymentMethod: paymentMethod,
           status: paymentMethod === 'credit' ? 'pending' : 'paid',
-          notes: invoiceDiscount > 0 
-            ? `${t('quickCheckout.quickSaleNote')} - ${t('quickCheckout.discount')}: ${t('common.currency')} ${invoiceDiscount.toLocaleString()}`
-            : t('quickCheckout.quickSaleNote'),
           items: invoiceItems,
         };
         
@@ -1302,9 +1308,6 @@ export const QuickCheckout: React.FC = () => {
       dueDate: new Date().toISOString(),
       paymentMethod,
       status: paymentMethod === 'credit' ? 'pending' : 'paid',
-      notes: invoiceDiscount > 0 
-        ? `${t('quickCheckout.quickSaleNote')} - ${t('quickCheckout.discount')}: ${t('common.currency')} ${invoiceDiscount.toLocaleString()}`
-        : t('quickCheckout.quickSaleNote'),
       items: invoiceItems,
     };
 
@@ -1404,9 +1407,6 @@ export const QuickCheckout: React.FC = () => {
         changeAmount: changeAmount !== 0 ? Math.round(changeAmount * 100) / 100 : undefined,
         paymentMethod: paymentMethod,
         status: paymentMethod === 'credit' ? 'pending' : 'paid',
-        notes: invoiceDiscount > 0 
-          ? `${t('quickCheckout.quickSaleNote')} - ${t('quickCheckout.discount')}: ${t('common.currency')} ${invoiceDiscount.toLocaleString()}`
-          : t('quickCheckout.quickSaleNote'),
         items: invoiceItems,
       };
       
@@ -1465,9 +1465,6 @@ export const QuickCheckout: React.FC = () => {
       dueDate: new Date().toISOString().split('T')[0],
       status: paymentMethod === 'credit' ? 'pending' : 'paid',
       paymentMethod: paymentMethod,
-      notes: invoiceDiscount > 0 
-        ? `${t('quickCheckout.quickSaleNote')} - ${t('quickCheckout.discount')}: ${t('common.currency')} ${invoiceDiscount.toLocaleString()}`
-        : t('quickCheckout.quickSaleNote'),
     };
 
     playBeep('success');
@@ -3144,7 +3141,8 @@ export const QuickCheckout: React.FC = () => {
                         if (!categoryPopoverFilter.trim()) return true;
                         const q = categoryPopoverFilter.toLowerCase().trim();
 
-                        const matchesBarcode = searchBarcode && item.barcode?.toLowerCase().includes(q);
+                        // 🚨 BARCODE STRICT PREFIX RULE (category popover): must startWith(q), NEVER includes(q)
+                        const matchesBarcode = searchBarcode && item.barcode?.toLowerCase().startsWith(q);
                         const matchesSearchKey = searchByKey && item.searchKey?.toLowerCase().includes(q);
                         const matchesName = searchByName && (
                           item.name?.toLowerCase().includes(q) ||
@@ -3160,7 +3158,7 @@ export const QuickCheckout: React.FC = () => {
                             item.name?.toLowerCase().includes(q) ||
                             item.no?.toString().toLowerCase().includes(q) ||
                             item.searchKey?.toLowerCase().includes(q) ||
-                            item.barcode?.toLowerCase().includes(q)
+                            item.barcode?.toLowerCase().startsWith(q)
                           );
                         }
 
