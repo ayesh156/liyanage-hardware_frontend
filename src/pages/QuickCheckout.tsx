@@ -3580,7 +3580,7 @@ export const QuickCheckout: React.FC = () => {
 
                 {computedCustomerProfit > 0 && (
                   <div className={`flex justify-between items-center ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
-                    <span className="font-semibold">à¶”à¶¶ à¶½à·à¶¶à·– à¶½à·à¶·à¶º</span>
+                    <span className="font-semibold">{t('quickCheckout.customerProfit', 'ඔබ ලැබූ ලාභය')}</span>
                     <span className="font-mono font-bold tabular-nums">
                       Rs. {computedCustomerProfit.toFixed(2)}
                     </span>
