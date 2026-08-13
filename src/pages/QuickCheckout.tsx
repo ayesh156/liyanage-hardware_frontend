@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+﻿import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
@@ -8,7 +8,7 @@ import { useDropdownPosition } from '../hooks/use-dropdown-position';
 import { useColumnResize, ColumnResizeConfig } from '../hooks/useColumnResize';
 import { useCatalog } from '../contexts/CatalogContext';
 import { DisplaySettingsModal } from '../components/modals/DisplaySettingsModal';
-import { mockProducts, mockInvoices } from '../data/mockData';
+import { mockProducts } from '../data/mockData';
 import { api } from '../lib/api';
 import { Product, Invoice, InvoiceItem, FlattenedProduct, InventoryProduct, Customer } from '../types/index';
 import { flattenProducts } from '../lib/utils';
@@ -60,29 +60,25 @@ const SHORTCUTS = {
 
 // Mode-specific shortcuts
 const QUANTITY_SHORTCUTS = {
-  increase: '→',
-  decrease: '←',
+  increase: 'â†’',
+  decrease: 'â†',
 };
 
 const CART_SHORTCUTS = {
-  navUp: '↑',
-  navDown: '↓',
-  increaseQty: '→',
-  decreaseQty: '←',
+  navUp: 'â†‘',
+  navDown: 'â†“',
+  increaseQty: 'â†’',
+  decreaseQty: 'â†',
 };
 
-// Import concurrency-safe invoice number generator
-import { generateNextInvoiceNumberSync, initializeFromExistingInvoices, peekNextInvoiceNumber } from '../lib/invoiceNumberService';
+import { invalidateNextInvoiceNumberCache, loadNextInvoiceNumber } from '../lib/nextInvoiceNumber';
 
-// ── Inline quantity control helpers (for search & category popup rows) ──
+// â”€â”€ Inline quantity control helpers (for search & category popup rows) â”€â”€
 // getItemCartQuantity: returns the current quantity of a product in the cart, or 0 if not present
 const getItemCartQuantity = (items: QuickInvoiceItem[], productId: string): number => {
   const found = items.find(i => i.productId === productId);
   return found ? found.quantity : 0;
 };
-
-// Initialize invoice counter from existing data on module load
-initializeFromExistingInvoices(mockInvoices);
 
 export const QuickCheckout: React.FC = () => {
   const { t, i18n } = useTranslation();
@@ -111,7 +107,7 @@ export const QuickCheckout: React.FC = () => {
     });
     return idx;
   }, [inventoryItems]);
-  // ── Conditional inline-edit tracking state ──
+  // â”€â”€ Conditional inline-edit tracking state â”€â”€
   const [editingCell, setEditingCell] = useState<{ itemId: string; field: 'salesPrice' | 'quantity' } | null>(null);
   const inlineEditInputRef = useRef<HTMLInputElement>(null);
   const [inlineEditStr, setInlineEditStr] = useState<string>('');
@@ -124,14 +120,31 @@ export const QuickCheckout: React.FC = () => {
     }
   }, [editingCell]);
 
-  // ── In-place Edit mode via query param ──
+  // â”€â”€ In-place Edit mode via query param â”€â”€
   const editInvoiceId = searchParams.get('edit');
   const [editingInvoice, setEditingInvoice] = useState<any | null>(null);
   const [editingInvoiceLoading, setEditingInvoiceLoading] = useState(false);
 
-  // Live preview invoice number — shows the real next sequential invoice
+  // Live preview invoice number â€” shows the real next sequential invoice
   // number (e.g. inva-000024) instead of the hardcoded "PREVIEW" string.
-  const previewInvoiceNumber = editingInvoice?.invoiceNumber || peekNextInvoiceNumber();
+  const [dbNextInvoiceNumber, setDbNextInvoiceNumber] = useState<string>('');
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const nextNum = await loadNextInvoiceNumber();
+        if (!cancelled && nextNum) setDbNextInvoiceNumber(nextNum);
+      } catch {
+        // No fake/local fallback — leave empty so the Live Preview shows the
+        // honest 'PREVIEW' placeholder until a real DB value is available.
+        console.warn('[QuickCheckout] Failed to fetch next invoice number from DB.');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const previewInvoiceNumber = editingInvoice?.invoiceNumber || dbNextInvoiceNumber || undefined;
 
   // Fetch the invoice from the backend API when edit mode is active
   // This uses the backend's flexible resolver that handles both UUID and invoiceNumber
@@ -151,7 +164,7 @@ export const QuickCheckout: React.FC = () => {
         }
       } catch (err: any) {
         if (!cancelled) {
-          console.warn('[QuickCheckout] Invoice not found for editing — starting fresh:', editInvoiceId, err);
+          console.warn('[QuickCheckout] Invoice not found for editing â€” starting fresh:', editInvoiceId, err);
           toast.info(
             `Invoice "${editInvoiceId}" not found. Starting with a fresh checkout.`,
             { autoClose: 4000 }
@@ -168,11 +181,11 @@ export const QuickCheckout: React.FC = () => {
     return () => { cancelled = true; };
   }, [editInvoiceId, navigate]);
 
-  // ── Hydrate state when editing an existing invoice ──
+  // â”€â”€ Hydrate state when editing an existing invoice â”€â”€
   useEffect(() => {
     if (!editingInvoice) return;
 
-    // Map invoice items → QuickInvoiceItem, preserving all pricing fields
+    // Map invoice items â†’ QuickInvoiceItem, preserving all pricing fields
     const hydratedItems: QuickInvoiceItem[] = editingInvoice.items.map((item: any) => {
       const ourPrice   = Number(item.unitPrice || 0);
       const dispPrice  = Number(item.originalPrice || item.unitPrice || 0);
@@ -231,9 +244,9 @@ export const QuickCheckout: React.FC = () => {
   const [showShortcutMap, setShowShortcutMap] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'credit'>('cash');
-  // ── QUADRUPLE CHECKBOX FILTER STATES ──
+  // â”€â”€ QUADRUPLE CHECKBOX FILTER STATES â”€â”€
   // searchByKey:     match against product.searchKey  (default ON)
-  // searchBarcode:   match against product.barcode    (default ON — must be strictly true by default)
+  // searchBarcode:   match against product.barcode    (default ON â€” must be strictly true by default)
   // searchByName:    match against product.name       (default OFF)
   // searchByNo:      match against product.no         (default OFF)
   const [searchByKey,    setSearchByKey]    = useState<boolean>(true);
@@ -309,7 +322,7 @@ export const QuickCheckout: React.FC = () => {
   const [isCartFocused, setIsCartFocused] = useState(false);
   const [isPaymentFocused, setIsPaymentFocused] = useState(false);
 
-  // ── Categories from CatalogContext (live, database-backed) ──
+  // â”€â”€ Categories from CatalogContext (live, database-backed) â”€â”€
   // Strict: showInQuickInvoice must be true AND sortOrder must be > 0
   // Sorted numerically by sortOrder ascending
   const quickCheckoutCategories = useMemo(() => {
@@ -325,22 +338,22 @@ export const QuickCheckout: React.FC = () => {
     return englishName;
   }, [isSinhala]);
 
-  // ── Category Popover State ──
+  // â”€â”€ Category Popover State â”€â”€
   const [activeCategoryPopover, setActiveCategoryPopover] = useState<string | null>(null);
   const [categoryPopoverFilter, setCategoryPopoverFilter] = useState('');
   const [categoryPopoverAnchor, setCategoryPopoverAnchor] = useState<DOMRect | null>(null);
   const categoryPopoverRef = useRef<HTMLDivElement>(null);
   const categoryPopoverInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Category Popover Keyboard Navigation State ──
+  // â”€â”€ Category Popover Keyboard Navigation State â”€â”€
   const [activeCategoryItemIndex, setActiveCategoryItemIndex] = useState<number>(0);
   const categoryListContainerRef = useRef<HTMLDivElement>(null);
   const activeCategoryItemRef = useRef<HTMLDivElement | null>(null);
   
-  // ── Display Settings Modal ──
+  // â”€â”€ Display Settings Modal â”€â”€
   const [showDisplaySettings, setShowDisplaySettings] = useState(false);
 
-  // Memoized map of category → products for the Quick Categories grid
+  // Memoized map of category â†’ products for the Quick Categories grid
   const categoryProductMap = useMemo(() => {
     const map = new Map<string, typeof inventoryItems>();
     inventoryItems.forEach(item => {
@@ -367,10 +380,10 @@ export const QuickCheckout: React.FC = () => {
     return quickCategoryByName.get(activeCategoryPopover) || null;
   }, [activeCategoryPopover, quickCategoryByName]);
 
-  // ── Customer dropdown outside-click ref ──
+  // â”€â”€ Customer dropdown outside-click ref â”€â”€
   const customerContainerRef = useRef<HTMLDivElement>(null);
 
-  // ── Outside-click listener for customer dropdown ──
+  // â”€â”€ Outside-click listener for customer dropdown â”€â”€
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent | TouchEvent) => {
       if (customerContainerRef.current && !customerContainerRef.current.contains(event.target as Node)) {
@@ -385,7 +398,7 @@ export const QuickCheckout: React.FC = () => {
     };
   }, []);
 
-  // ── API-driven Customer Directory ──
+  // â”€â”€ API-driven Customer Directory â”€â”€
   const [customers, setCustomers] = useState<any[]>([]);
   const [customersLoading, setCustomersLoading] = useState(false);
 
@@ -411,7 +424,7 @@ export const QuickCheckout: React.FC = () => {
 
   const findCustomerById = useCallback((id: string) => customers.find((c: any) => c.id === id) ?? null, [customers]);
 
-  // Customer selection state — walk-in is default on mount
+  // Customer selection state â€” walk-in is default on mount
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerOpen, setCustomerOpen] = useState(false);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('walk-in');
@@ -422,7 +435,7 @@ export const QuickCheckout: React.FC = () => {
     [customers, customerSearch],
   );
 
-  // ── Inline new-customer registration modal with API POST ──
+  // â”€â”€ Inline new-customer registration modal with API POST â”€â”€
   const [showNewCustomerModal, setShowNewCustomerModal] = useState(false);
   const [newCustName,    setNewCustName]    = useState('');
   const [newCustPhone,   setNewCustPhone]   = useState('');
@@ -430,15 +443,15 @@ export const QuickCheckout: React.FC = () => {
   const [newCustAddress, setNewCustAddress] = useState('');
   const [isSavingCustomer, setIsSavingCustomer] = useState(false);
 
-  // ── ADD BOX live-search filter ──
+  // â”€â”€ ADD BOX live-search filter â”€â”€
   const [addCategorySearch, setAddCategorySearch] = useState('');
   const [addBoxAnchor, setAddBoxAnchor] = useState<DOMRect | null>(null);
 
-  // ═══════════════════════════════════════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // STRICT 2-DECIMAL PRECISION HELPER
   // Uses Number(value.toFixed(2)) for robust nearest-neighbor rounding:
-  //   1.33333... → 1.33    1.66666... → 1.67
-  // ═══════════════════════════════════════════════════════════════════════════
+  //   1.33333... â†’ 1.33    1.66666... â†’ 1.67
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   const toTwoDecimals = useCallback((value: number): number => {
     return Number(value.toFixed(2));
   }, []);
@@ -488,7 +501,7 @@ export const QuickCheckout: React.FC = () => {
     }
   }, [soundEnabled]);
 
-  // ── STRICT parseScanInput: only matches barcode-like scan sequences ──
+  // â”€â”€ STRICT parseScanInput: only matches barcode-like scan sequences â”€â”€
   // This function must NOT match natural product names containing 'x' or 'X'.
   // The code part before/after the separator must be alphanumeric only (no spaces, slashes)
   // to prevent false matches on names like "1/2X1/2 GI BOX".
@@ -527,14 +540,14 @@ export const QuickCheckout: React.FC = () => {
     return null;
   };
 
-  // ── Search inventoryItems directly from live CatalogContext ──
+  // â”€â”€ Search inventoryItems directly from live CatalogContext â”€â”€
   const filteredProducts = useMemo((): any[] => {
     if (!productSearch.trim()) return [];
 
     const raw = productSearch.trim();
     const normalizedQuery = raw.toLowerCase();
 
-    // ── Priority 1: exact barcode match — single result ──
+    // â”€â”€ Priority 1: exact barcode match â€” single result â”€â”€
     // Only triggers if Barcode checkbox is active
     if (searchBarcode) {
       const barcodeHit = inventoryItems.find(
@@ -562,7 +575,7 @@ export const QuickCheckout: React.FC = () => {
       }
     }
 
-    // ── Priority 2: exact product.no match — single result ──
+    // â”€â”€ Priority 2: exact product.no match â€” single result â”€â”€
     // Only triggers if Product No checkbox is active
     if (searchByNo) {
       const noHit = inventoryItems.find(
@@ -590,7 +603,7 @@ export const QuickCheckout: React.FC = () => {
       }
     }
 
-    // ── Priority 3: scope-aware tiered text search ──
+    // â”€â”€ Priority 3: scope-aware tiered text search â”€â”€
     const strippedQuery = normalizedQuery.replace(/\s+/g, '');
     const queryTokens   = normalizedQuery.split(/\s+/).filter(Boolean);
 
@@ -626,8 +639,8 @@ export const QuickCheckout: React.FC = () => {
         queryTokens.length === fieldTokens.length &&
         queryTokens.every((tok, i) => tok === fieldTokens[i])
       ) return 2;
-      // 🚨 BARCODE STRICT PREFIX RULE: Barcodes MUST match from the 1st character onwards.
-      // NEVER use substring `includes()` for barcodes — typing "18" or "186" must NOT
+      // ðŸš¨ BARCODE STRICT PREFIX RULE: Barcodes MUST match from the 1st character onwards.
+      // NEVER use substring `includes()` for barcodes â€” typing "18" or "186" must NOT
       // match a longer barcode like "991860" mid-sequence.
       if (strippedQuery.length > 0) {
         if (isBarcode) {
@@ -659,7 +672,7 @@ export const QuickCheckout: React.FC = () => {
     return filtered.map(s => toFlat(s.item));
   }, [inventoryItems, productSearch, searchByKey, searchBarcode, searchByName, searchByNo]);
 
-  // ── Direct add to cart helper with qty 1 ──
+  // â”€â”€ Direct add to cart helper with qty 1 â”€â”€
   const addOneToCart = useCallback((flatProduct: FlattenedProduct) => {
     const masterProduct = inventoryItems.find(
       inv => inv.id === flatProduct.flatId
@@ -888,7 +901,7 @@ export const QuickCheckout: React.FC = () => {
     return false;
   }, [inventoryItems, addOneToCart, t, searchBarcode, searchByNo]);
 
-  // Auto-detect barcode scan / direct paste (when field gains input) — direct add to cart
+  // Auto-detect barcode scan / direct paste (when field gains input) â€” direct add to cart
   useEffect(() => {
     if (filteredProducts.length === 1 && productSearch.length >= 2) {
       const flatProduct = filteredProducts[0];
@@ -969,7 +982,7 @@ export const QuickCheckout: React.FC = () => {
     playBeep('add');
   }, [items, t, playBeep]);
 
-  // Lightweight direct state setter — NO validation, NO toast
+  // Lightweight direct state setter â€” NO validation, NO toast
   const setCartItemPrice = useCallback((itemId: string, newPrice: number) => {
     const sanitizedPrice = Number(newPrice || 0);
     setItems((prevItems) =>
@@ -987,12 +1000,12 @@ export const QuickCheckout: React.FC = () => {
     );
   }, []);
 
-  // Silent live state update — NO validation during keystroke typing
+  // Silent live state update â€” NO validation during keystroke typing
   const handleUpdateCartItemPrice = useCallback((itemId: string, newPrice: number) => {
     setCartItemPrice(itemId, newPrice);
   }, [setCartItemPrice]);
 
-  // Commit-time deferred price validation + auto-correction — fires ONLY on Enter or Blur
+  // Commit-time deferred price validation + auto-correction â€” fires ONLY on Enter or Blur
   const commitCartItemPrice = useCallback((itemId: string) => {
     const targetItem = items.find(i => i.id === itemId);
     if (!targetItem) {
@@ -1004,7 +1017,7 @@ export const QuickCheckout: React.FC = () => {
     const sanitizedPrice = parseFloat(inlineEditStr);
 
     if (isNaN(sanitizedPrice) || sanitizedPrice < 0) {
-      // Invalid input — reset to last valid price
+      // Invalid input â€” reset to last valid price
       const resetPrice = Number(targetItem.salesPrice || targetItem.ourPrice || 0);
       setInlineEditStr(String(resetPrice));
       setEditingCell(null);
@@ -1119,7 +1132,7 @@ export const QuickCheckout: React.FC = () => {
     
     setItems(prev => [...prev, newItem]);
     playBeep('add');
-    toast.success(`${quickAddName} × ${qtyParsed} ${t('quickCheckout.addedToCart')}`);
+    toast.success(`${quickAddName} Ã— ${qtyParsed} ${t('quickCheckout.addedToCart')}`);
     
     setQuickAddName('');
     setQuickAddPrice(0);
@@ -1173,6 +1186,10 @@ export const QuickCheckout: React.FC = () => {
   }, []);
 
   const finalizeSale = useCallback((invoiceNumber?: string) => {
+    invalidateNextInvoiceNumberCache();
+    loadNextInvoiceNumber().then((next) => {
+      if (next) setDbNextInvoiceNumber(next);
+    }).catch(() => {});
     setItems([]);
     setDiscount(0);
     setReceivedAmount(0);
@@ -1200,7 +1217,7 @@ export const QuickCheckout: React.FC = () => {
         const invoiceDiscount = Math.round(computedDiscount * 100) / 100;
         
         // Dispatch exact aligned payload structure via PUT to update instead of duplicating rows
-        // ⚠️ CRITICAL: Use absolute array index position for item matching, NOT productId-based
+        // âš ï¸ CRITICAL: Use absolute array index position for item matching, NOT productId-based
         // lookups. This eliminates ALL hash collisions when multiple custom/temporary items
         // share productId: null. The backend update() now uses the same index-based protocol.
         const invoiceItems = items.map((item, index) => {
@@ -1279,7 +1296,7 @@ export const QuickCheckout: React.FC = () => {
     
     setIsProcessing(true);
     
-    const invoiceNumber = generateNextInvoiceNumberSync();
+    const invoiceNumber = dbNextInvoiceNumber;
     const invoiceDiscount = Math.round(computedDiscount * 100) / 100;
     const invoiceItems = items.map(item => ({
       productId: item.productId,
@@ -1312,7 +1329,7 @@ export const QuickCheckout: React.FC = () => {
     };
 
     try {
-      // 1. POST to backend — this is the actual database write
+      // 1. POST to backend â€” this is the actual database write
       const response: any = await api.post('/invoices', payload);
       const savedInvoice = response?.data ?? response;
       const savedInvoiceNumber = savedInvoice?.invoiceNumber || invoiceNumber;
@@ -1360,9 +1377,9 @@ export const QuickCheckout: React.FC = () => {
       toast.error(err?.response?.data?.message || err?.message || 'Failed to save invoice');
       playBeep('error');
     }
-  }, [items, computedSubtotal, computedFinalTotal, computedDiscount, selectedCustomerId, paymentMethod, playBeep, t, finalizeSale, receivedAmount, changeAmount, isSinhala, findCustomerById, editInvoiceId, navigate, applyInstantStockSync]);
+  }, [items, computedSubtotal, computedFinalTotal, computedDiscount, selectedCustomerId, paymentMethod, playBeep, t, finalizeSale, receivedAmount, changeAmount, isSinhala, findCustomerById, editInvoiceId, navigate, applyInstantStockSync, dbNextInvoiceNumber]);
 
-  // ── Update existing invoice via PUT /api/invoices/:id ──
+  // â”€â”€ Update existing invoice via PUT /api/invoices/:id â”€â”€
   const handleUpdateInvoice = useCallback(async () => {
     if (items.length === 0 || isProcessing || !editInvoiceId) return;
     
@@ -1379,7 +1396,7 @@ export const QuickCheckout: React.FC = () => {
       const invoiceDiscount = Math.round(computedDiscount * 100) / 100;
 
       // Hydrate item payload with database UUIDs from the resolved invoice.
-      // ⚠️ CRITICAL: Use absolute array index position for item matching, NOT
+      // âš ï¸ CRITICAL: Use absolute array index position for item matching, NOT
       // productId-based lookups. This eliminates ALL hash collisions when multiple
       // custom/temporary items share productId: null. The backend update() now
       // uses the same index-based protocol for final alignment.
@@ -1436,7 +1453,7 @@ export const QuickCheckout: React.FC = () => {
     
     setIsProcessing(true);
     
-    const invoiceNumber = generateNextInvoiceNumberSync();
+    const invoiceNumber = dbNextInvoiceNumber;
     const invoiceDiscount = Math.round(computedDiscount * 100) / 100;
     const invoiceItems = items.map(item => ({
       ...item,
@@ -1477,12 +1494,12 @@ export const QuickCheckout: React.FC = () => {
     setReceivedAmount(0);
     setIsProcessing(false);
     searchInputRef.current?.focus();
-  }, [items, computedSubtotal, computedFinalTotal, computedDiscount, selectedCustomerId, paymentMethod, playBeep, t, isProcessing, receivedAmount, changeAmount, findCustomerById]);
+  }, [items, computedSubtotal, computedFinalTotal, computedDiscount, selectedCustomerId, paymentMethod, playBeep, t, isProcessing, receivedAmount, changeAmount, findCustomerById, dbNextInvoiceNumber]);
 
   // Keyboard event handler (modified: removed qty field / F3 / arrow qty in search)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // ── DEFEND FORM FIELDS: If user is actively typing in an input, textarea,
+      // â”€â”€ DEFEND FORM FIELDS: If user is actively typing in an input, textarea,
       //    or contentEditable block, DO NOT trigger cart removal on Delete/Backspace!
       const target = e.target as HTMLElement;
       if (
@@ -1492,7 +1509,7 @@ export const QuickCheckout: React.FC = () => {
       ) {
         // Allow native text erasure for Backspace/Delete; skip all cart logic.
         if (e.key === 'Delete' || e.key === 'Backspace') {
-          return; // Safe bypass — let native text erasure happen
+          return; // Safe bypass â€” let native text erasure happen
         }
       }
 
@@ -1861,7 +1878,7 @@ export const QuickCheckout: React.FC = () => {
                   {t('quickCheckout.title')}
                 </h1>
                 <div className="flex items-center gap-2 mt-0.5">
-                  {/* ── TRIPLE CHECKBOX FILTER ROW (Mobile) ── */}
+                  {/* â”€â”€ TRIPLE CHECKBOX FILTER ROW (Mobile) â”€â”€ */}
                   <label className={`flex items-center gap-1 cursor-pointer select-none text-[9px] font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                     <input
                       type="checkbox"
@@ -1921,7 +1938,7 @@ export const QuickCheckout: React.FC = () => {
         </div>
 
         <div className={`sticky top-[52px] z-40 px-3 py-2 ${isDark ? 'bg-slate-900/98 backdrop-blur-lg' : 'bg-slate-50/98 backdrop-blur-lg'}`}>
-          {/* ── REMOVED: pending product notification ── */}
+          {/* â”€â”€ REMOVED: pending product notification â”€â”€ */}
           
           <div className="flex gap-2">
             <div className="flex-1 relative">
@@ -2013,7 +2030,7 @@ export const QuickCheckout: React.FC = () => {
                 </button>
               )}
             </div>
-            {/* ── REMOVED: Quantity field next to search ── */}
+            {/* â”€â”€ REMOVED: Quantity field next to search â”€â”€ */}
           </div>
         </div>
 
@@ -2087,7 +2104,7 @@ export const QuickCheckout: React.FC = () => {
                           </p>
                         )}
                       </div>
-                      {/* ── INLINE QUANTITY CONTROLS (mobile search) ── */}
+                      {/* â”€â”€ INLINE QUANTITY CONTROLS (mobile search) â”€â”€ */}
                       <div className={`flex items-center gap-0.5 p-0.5 rounded-lg flex-shrink-0 ${isDark ? 'bg-slate-700/50' : 'bg-slate-100'}`}>
                         <button
                           onClick={(e) => {
@@ -2229,7 +2246,7 @@ export const QuickCheckout: React.FC = () => {
                           <span className={item.unitPrice !== item.originalPrice ? 'text-emerald-500 font-medium' : ''}>
                             Rs. {item.unitPrice.toLocaleString()}
                           </span>
-                          <span>× {item.quantity}</span>
+                          <span>Ã— {item.quantity}</span>
                         </div>
                       </div>
                       
@@ -2327,7 +2344,7 @@ export const QuickCheckout: React.FC = () => {
                 />
                 {receivedAmount > 0 && (
                   <span className={`text-xs font-bold ${changeAmount >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                    Δ {changeAmount.toLocaleString()}
+                    Î” {changeAmount.toLocaleString()}
                   </span>
                 )}
               </div>
@@ -2351,7 +2368,7 @@ export const QuickCheckout: React.FC = () => {
                 )}
               </button>
             </div>
-            {/* ── Update Invoice button (mobile, visible only in Edit Mode) ── */}
+            {/* â”€â”€ Update Invoice button (mobile, visible only in Edit Mode) â”€â”€ */}
             {editInvoiceId && (
               <div className="mt-1.5">
                 <button
@@ -2404,7 +2421,7 @@ export const QuickCheckout: React.FC = () => {
               {t('quickCheckout.title')}
             </span>
             <div className="flex items-center gap-2 ml-2">
-              {/* ── TRIPLE CHECKBOX FILTER ROW (Desktop) ── */}
+              {/* â”€â”€ TRIPLE CHECKBOX FILTER ROW (Desktop) â”€â”€ */}
               <label className={`flex items-center gap-1 cursor-pointer select-none text-[10px] font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                 <input
                   type="checkbox"
@@ -2473,12 +2490,12 @@ export const QuickCheckout: React.FC = () => {
 
       <div className="w-full px-6 py-3">
         <div className="flex gap-4 items-start">
-          {/* ── LEFT + CENTRE: 12-col grid ── */}
+          {/* â”€â”€ LEFT + CENTRE: 12-col grid â”€â”€ */}
           <div className="flex-1 min-w-0">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
           {/* Left Panel - Main checkout area */}
           <div className="lg:col-span-8 space-y-2">
-            {/* Condensed Search Bar — Qty field removed */}
+            {/* Condensed Search Bar â€” Qty field removed */}
             <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200 shadow-sm'}`}>
               
               <div className="flex gap-2 relative">
@@ -2642,7 +2659,7 @@ export const QuickCheckout: React.FC = () => {
                                 Rs. {flatProduct.retailPrice.toLocaleString()}
                               </p>
                             </div>
-                            {/* ── INLINE QUANTITY CONTROLS (native, no auto-close) ── */}
+                            {/* â”€â”€ INLINE QUANTITY CONTROLS (native, no auto-close) â”€â”€ */}
                             <div className={`flex items-center gap-0.5 p-0.5 rounded-lg flex-shrink-0 ${isDark ? 'bg-slate-800/80' : 'bg-slate-100'}`}>
                               <button
                                 onClick={(e) => {
@@ -2711,7 +2728,7 @@ export const QuickCheckout: React.FC = () => {
                     )}
                   </div>
                 )}
-                {/* ── REMOVED: Condensed Quantity Input ── */}
+                {/* â”€â”€ REMOVED: Condensed Quantity Input â”€â”€ */}
               </div>
             </div>
 
@@ -2737,7 +2754,7 @@ export const QuickCheckout: React.FC = () => {
                   {t('quickCheckout.cartItems')} ({items.length})
                   {isCartFocused && (
                     <span className={`ml-1 text-[9px] px-1.5 py-0.5 rounded-full ${isDark ? 'bg-purple-500/20 text-purple-400' : 'bg-purple-100 text-purple-700'}`}>
-                      ↑↓ → ← 0-9
+                      â†‘â†“ â†’ â† 0-9
                     </span>
                   )}
                 </h2>
@@ -2801,7 +2818,7 @@ export const QuickCheckout: React.FC = () => {
                 </div>
               ) : (
                 <>
-                {/* Cart table header — fluid column resizing */}
+                {/* Cart table header â€” fluid column resizing */}
                 <div
                   className={`grid px-2 py-2.5 mb-1 rounded-lg text-xs font-black uppercase tracking-wider select-none ${isDark ? 'text-slate-400 bg-slate-800/50' : 'text-slate-500 bg-slate-100'}`}
                   style={{ gridTemplateColumns: getGridTemplateColumns() }}
@@ -2894,7 +2911,7 @@ export const QuickCheckout: React.FC = () => {
                           {Number(item.lastPrice || 0).toFixed(2)}
                         </span>
                       </div>
-                      {/* ══════ INLINE SALES PRICE — click-to-edit toggle ── REFACTORED ── */}
+                      {/* â•â•â•â•â•â• INLINE SALES PRICE â€” click-to-edit toggle â”€â”€ REFACTORED â”€â”€ */}
                       <div className="text-right truncate">
                         {editingCell?.itemId === item.id && editingCell?.field === 'salesPrice' ? (
                           <input
@@ -2909,7 +2926,7 @@ export const QuickCheckout: React.FC = () => {
                             }`}
                             value={inlineEditStr}
                             onChange={(e) => {
-                              // No live validation — just update the string for display
+                              // No live validation â€” just update the string for display
                               setInlineEditStr(e.target.value);
                             }}
                             onKeyDown={(e) => {
@@ -2937,7 +2954,7 @@ export const QuickCheckout: React.FC = () => {
                           </span>
                         )}
                       </div>
-                      {/* DISPLAY — displayPrice */}
+                      {/* DISPLAY â€” displayPrice */}
                       {/* CASHIER COLUMN RULE: If salesPrice > displayPrice, keep the numeric value visible
                           but apply line-through + muted opacity so the cashier can audit the baseline
                           rate while visually flagging it as overridden. */}
@@ -2954,10 +2971,10 @@ export const QuickCheckout: React.FC = () => {
                       </div>
                       <div className="text-center truncate">
                         <span className={`text-sm font-mono font-semibold ${item.storeQty !== undefined && item.storeQty < 10 ? 'text-amber-500 font-bold animate-pulse' : isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                          {item.storeQty ?? '—'}
+                          {item.storeQty ?? 'â€”'}
                         </span>
                       </div>
-                      {/* ══════ INLINE QUANTITY — click-to-edit toggle ── REFACTORED ── */}
+                      {/* â•â•â•â•â•â• INLINE QUANTITY â€” click-to-edit toggle â”€â”€ REFACTORED â”€â”€ */}
                       <div className="flex justify-center items-center">
                         {editingCell?.itemId === item.id && editingCell?.field === 'quantity' ? (
                           <input
@@ -2972,7 +2989,7 @@ export const QuickCheckout: React.FC = () => {
                             }`}
                             value={inlineEditStr}
                             onChange={(e) => {
-                              // No live mutation — just track the string
+                              // No live mutation â€” just track the string
                               setInlineEditStr(e.target.value);
                             }}
                             onKeyDown={(e) => {
@@ -3030,7 +3047,7 @@ export const QuickCheckout: React.FC = () => {
               )}
             </div>
 
-            {/* ── Quick Categories (live from DB, scrollable fixed-height grid) ── */}
+            {/* â”€â”€ Quick Categories (live from DB, scrollable fixed-height grid) â”€â”€ */}
             <div className={`rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-900' : 'bg-white border-slate-200 shadow-sm'}`}>
               <div className="p-2.5 pb-0">
                 <div className="flex justify-between items-center mb-2 border-b border-slate-900 pb-2">
@@ -3112,7 +3129,7 @@ export const QuickCheckout: React.FC = () => {
               </div>
             </div>
 
-            {/* ── Display Settings Modal ── */}
+            {/* â”€â”€ Display Settings Modal â”€â”€ */}
             {showDisplaySettings && (
               <DisplaySettingsModal
                 isOpen={showDisplaySettings}
@@ -3120,7 +3137,7 @@ export const QuickCheckout: React.FC = () => {
               />
             )}
 
-          {/* ── CATEGORY PRODUCT POPOVER (Updated: uses triple-checkbox search + strip spaces) ── */}
+          {/* â”€â”€ CATEGORY PRODUCT POPOVER (Updated: uses triple-checkbox search + strip spaces) â”€â”€ */}
             {activeCategoryPopover && categoryPopoverAnchor && (
               <>
                 <div 
@@ -3134,14 +3151,14 @@ export const QuickCheckout: React.FC = () => {
                   }}
                 >
                   {(() => {
-                    // ── Category popover search uses the QUADRUPLE CHECKBOX filter, same as main search ──
+                    // â”€â”€ Category popover search uses the QUADRUPLE CHECKBOX filter, same as main search â”€â”€
                     const catProducts = inventoryItems
                       .filter(inv => inv.productCategory === activeCategoryPopover)
                       .filter(item => {
                         if (!categoryPopoverFilter.trim()) return true;
                         const q = categoryPopoverFilter.toLowerCase().trim();
 
-                        // 🚨 BARCODE STRICT PREFIX RULE (category popover): must startWith(q), NEVER includes(q)
+                        // ðŸš¨ BARCODE STRICT PREFIX RULE (category popover): must startWith(q), NEVER includes(q)
                         const matchesBarcode = searchBarcode && item.barcode?.toLowerCase().startsWith(q);
                         const matchesSearchKey = searchByKey && item.searchKey?.toLowerCase().includes(q);
                         const matchesName = searchByName && (
@@ -3215,7 +3232,7 @@ export const QuickCheckout: React.FC = () => {
                                     e.preventDefault();
                                     setActiveCategoryItemIndex((prev) => (prev > 0 ? prev - 1 : 0));
                                   } else if (e.key === 'ArrowRight') {
-                                    // ── Category Popup ArrowRight — step up quantity and instant cart sync ──
+                                    // â”€â”€ Category Popup ArrowRight â€” step up quantity and instant cart sync â”€â”€
                                     e.preventDefault();
                                     const targetedItem = filteredCategoryProducts[activeCategoryItemIndex];
                                     if (targetedItem) {
@@ -3231,7 +3248,7 @@ export const QuickCheckout: React.FC = () => {
                                         const roundedNewQty = parseFloat(newQty.toFixed(1));
                                         updateItemQuantity(cartItem.id, roundedNewQty);
                                       } else {
-                                        // Not in cart — add with qty 1
+                                        // Not in cart â€” add with qty 1
                                         const sinhalaName = targetedItem.nameSinhala || targetedItem.nameSi || targetedItem.name;
                                         const fp: FlattenedProduct = {
                                           flatId: targetedItem.id,
@@ -3249,7 +3266,7 @@ export const QuickCheckout: React.FC = () => {
                                     }
                                     setTimeout(() => categoryPopoverInputRef.current?.focus(), 10);
                                   } else if (e.key === 'ArrowLeft') {
-                                    // ── Category Popup ArrowLeft — step down quantity ──
+                                    // â”€â”€ Category Popup ArrowLeft â€” step down quantity â”€â”€
                                     e.preventDefault();
                                     const targetedItem = filteredCategoryProducts[activeCategoryItemIndex];
                                     if (targetedItem) {
@@ -3271,7 +3288,7 @@ export const QuickCheckout: React.FC = () => {
                                     e.preventDefault();
                                     const targetedProduct = filteredCategoryProducts[activeCategoryItemIndex];
                                     if (targetedProduct) {
-                                      // ── DIRECT add to cart with qty 1 ──
+                                      // â”€â”€ DIRECT add to cart with qty 1 â”€â”€
                                       const sinhalaName = targetedProduct.nameSinhala || targetedProduct.nameSi || targetedProduct.name;
                                       const fp: FlattenedProduct = {
                                         flatId: targetedProduct.id,
@@ -3334,7 +3351,7 @@ export const QuickCheckout: React.FC = () => {
                                       }}
                                       data-cat-index={idx}
                                       onClick={() => {
-                                        // ── DIRECT add to cart with qty 1 ──
+                                        // â”€â”€ DIRECT add to cart with qty 1 â”€â”€
                                         if (item.storeQty > 0) {
                                           const sinhalaName = item.nameSinhala || item.nameSi || item.name;
                                           const fp: FlattenedProduct = {
@@ -3348,7 +3365,7 @@ export const QuickCheckout: React.FC = () => {
                                             stock: Number(item.storeQty),
                                             hasDiscount: false,
                                           } as FlattenedProduct;
-                                          // NOTE: Menu stays open for consecutive adds — only X or Escape closes it.
+                                          // NOTE: Menu stays open for consecutive adds â€” only X or Escape closes it.
                                           addOneToCart(fp);
                                           playBeep('add');
                                           const clickEnterQtyName = isSinhala
@@ -3398,7 +3415,7 @@ export const QuickCheckout: React.FC = () => {
                                         <p className={`text-[11px] font-black ${isFocusedRow ? 'text-amber-400' : isDark ? 'text-slate-300' : 'text-slate-700'}`}>
                                           Rs. {Number(item.salesPrice).toFixed(2)}
                                         </p>
-                                        {/* ── INLINE QUANTITY CONTROLS (native, no auto-close) ── */}
+                                        {/* â”€â”€ INLINE QUANTITY CONTROLS (native, no auto-close) â”€â”€ */}
                                         <div className={`flex items-center gap-0.5 p-0.5 rounded-md flex-shrink-0 ${isDark ? 'bg-slate-800/80' : 'bg-slate-100'}`}>
                                           <button
                                             onClick={(e) => {
@@ -3563,7 +3580,7 @@ export const QuickCheckout: React.FC = () => {
 
                 {computedCustomerProfit > 0 && (
                   <div className={`flex justify-between items-center ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
-                    <span className="font-semibold">ඔබ ලැබූ ලාභය</span>
+                    <span className="font-semibold">à¶”à¶¶ à¶½à·à¶¶à·– à¶½à·à¶·à¶º</span>
                     <span className="font-mono font-bold tabular-nums">
                       Rs. {computedCustomerProfit.toFixed(2)}
                     </span>
@@ -3590,7 +3607,7 @@ export const QuickCheckout: React.FC = () => {
               <kbd className="ml-1 px-1.5 py-0.5 rounded bg-white/20 text-[10px] font-mono">F12</kbd>
             </button>
             
-            {/* ── Update Invoice button (visible only in Edit Mode) ── */}
+            {/* â”€â”€ Update Invoice button (visible only in Edit Mode) â”€â”€ */}
             {editInvoiceId && (
               <button onClick={handleUpdateInvoice} disabled={items.length === 0 || isProcessing} className={`w-full py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all ${items.length > 0 ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white shadow-lg shadow-emerald-500/30' : isDark ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>
                 <CheckCircle className="w-4 h-4" />
@@ -3598,7 +3615,7 @@ export const QuickCheckout: React.FC = () => {
               </button>
             )}
 
-            {/* ── CUSTOMER SELECTION: Searchable Combobox ── */}
+            {/* â”€â”€ CUSTOMER SELECTION: Searchable Combobox â”€â”€ */}
             <div ref={customerContainerRef} className={`p-3 rounded-xl border ${isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-white border-slate-200 shadow-sm'}`}>
               <div className="flex items-center justify-between mb-1.5">
                 <h3 className={`text-xs font-semibold flex items-center gap-1.5 ${isDark ? 'text-white' : 'text-slate-900'}`}>
@@ -3630,7 +3647,7 @@ export const QuickCheckout: React.FC = () => {
                     <div className="max-h-32 overflow-y-auto">
                       <button onClick={() => { setSelectedCustomerId('walk-in'); setCustomerSearch(''); setCustomerOpen(false); }}
                         className={`w-full text-left px-3 py-1.5 text-xs font-medium transition-colors ${selectedCustomerId === 'walk-in' ? 'bg-orange-500/20 text-orange-400' : isDark ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'}`}>
-                        <span className="flex items-center gap-2"><User className="w-3 h-3" />{isSinhala ? 'සාමාන්‍ය පාරිභෝගිකයා' : 'Walk-in Customer'}</span>
+                        <span className="flex items-center gap-2"><User className="w-3 h-3" />{isSinhala ? 'à·ƒà·à¶¸à·à¶±à·Šâ€à¶º à¶´à·à¶»à·’à¶·à·à¶œà·’à¶šà¶ºà·' : 'Walk-in Customer'}</span>
                       </button>
                       {customersLoading ? (
                         <div className="px-3 py-2 text-xs text-center text-slate-400">Loading customers...</div>
@@ -3649,7 +3666,7 @@ export const QuickCheckout: React.FC = () => {
                   </div>
                 )}
               </div>
-              {/* ── "+ New Customer" button — full-width, clean design ── */}
+              {/* â”€â”€ "+ New Customer" button â€” full-width, clean design â”€â”€ */}
               <button
                 onClick={() => {
                   setNewCustName('');
@@ -3675,7 +3692,7 @@ export const QuickCheckout: React.FC = () => {
                 ) : null;
               })()}
 
-              {/* ── API-Backed Quick Customer Modal ── */}
+              {/* â”€â”€ API-Backed Quick Customer Modal â”€â”€ */}
               {showNewCustomerModal && (
                 <>
                   <div className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm" />
@@ -3722,7 +3739,7 @@ export const QuickCheckout: React.FC = () => {
                       ))}
                     </div>
 
-                    {/* Submit — POST to backend API */}
+                    {/* Submit â€” POST to backend API */}
                     <button
                       onClick={async () => {
                         const trimmedName = newCustName.trim();
@@ -3795,7 +3812,7 @@ export const QuickCheckout: React.FC = () => {
         </div>
           </div>{/* end flex-1 inner grid wrapper */}
 
-          {/* ── RECEIPT PREVIEW COLUMN — visible on xl+ ── */}
+          {/* â”€â”€ RECEIPT PREVIEW COLUMN â€” visible on xl+ â”€â”€ */}
           <div className="hidden xl:block w-full max-w-[440px] flex-shrink-0 sticky top-[52px] self-start max-h-[calc(100vh-68px)] overflow-y-auto min-w-0 min-h-0">
             <ThermalReceiptPreview
               items={items}
@@ -3826,7 +3843,7 @@ export const QuickCheckout: React.FC = () => {
         />
       )}
 
-      {/* ── Unified Product Form Modal ── */}
+      {/* â”€â”€ Unified Product Form Modal â”€â”€ */}
       <ProductFormModal
         isOpen={showProductFormModal}
         onClose={() => setShowProductFormModal(false)}
