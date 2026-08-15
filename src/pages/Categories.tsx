@@ -7,17 +7,20 @@ import { useAuth } from '../contexts/AuthContext';
 import { Category } from '../types/index';
 import { CategoryFormModal } from '../components/modals/CategoryFormModal';
 import { DeleteConfirmationModal } from '../components/modals/DeleteConfirmationModal';
+import { CategoryProductsModal } from '../components/modals/CategoryProductsModal';
 import { CellPopover } from '../components/CellPopover';
 import { DisplaySettingsModal } from '../components/modals/DisplaySettingsModal';
 import { 
   Plus, Search, Edit2, Trash2, FolderTree, Package, Layers, Tag,
-  RefreshCw, Pencil, X, Eye, EyeOff, Settings2,
+  RefreshCw, Pencil, X, Eye, EyeOff, Settings2, Lock,
   ChevronLeft, ChevronRight as ChevronRightIcon,
   ChevronsLeft, ChevronsRight, GripVertical
 } from 'lucide-react';
 import SortButton from '../components/ui/SortButton';
 
 const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100];
+const HARDWARE_CATEGORY_NAME = 'HARDWARE';
+const isHardwareCategory = (cat: Category) => cat.name.trim().toUpperCase() === HARDWARE_CATEGORY_NAME;
 
 export const Categories: React.FC = () => {
   const { theme } = useTheme();
@@ -43,6 +46,7 @@ export const Categories: React.FC = () => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDisplaySettingsOpen, setIsDisplaySettingsOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<Category | null>(null);
+  const [categoryProductsModalCategory, setCategoryProductsModalCategory] = useState<Category | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(25);
 
@@ -69,20 +73,23 @@ export const Categories: React.FC = () => {
   // Check if category has active filters
   const hasActiveFilters = searchQuery.length > 0;
 
-  // Filter and sort categories
+  // Filter and sort categories — HARDWARE is ALWAYS pinned to the top row (Row 0)
   const filteredCategories = useMemo(() => {
-    return categories
-      .filter(cat => {
-        if (!searchQuery) return true;
-        const q = searchQuery.toLowerCase();
-        return cat.name.toLowerCase().includes(q) ||
-          (cat.nameSinhala && cat.nameSinhala.includes(q)) ||
-          (cat.description && cat.description.toLowerCase().includes(q));
-      })
-      .sort((a, b) => {
-        const comparison = a.name.localeCompare(b.name);
-        return sortOrder === 'asc' ? comparison : -comparison;
-      });
+    const hardwareCat = categories.find(isHardwareCategory);
+    const otherCats = categories.filter(cat => !isHardwareCategory(cat));
+
+    const filteredOthers = otherCats.filter(cat => {
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      return cat.name.toLowerCase().includes(q) ||
+        (cat.nameSinhala && cat.nameSinhala.includes(q)) ||
+        (cat.description && cat.description.toLowerCase().includes(q));
+    }).sort((a, b) => {
+      const comparison = a.name.localeCompare(b.name);
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+
+    return hardwareCat ? [hardwareCat, ...filteredOthers] : filteredOthers;
   }, [categories, searchQuery, sortOrder]);
 
   // Pagination
@@ -334,6 +341,12 @@ export const Categories: React.FC = () => {
                         <span className={`text-[11px] font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                           {getDisplayName(category)}
                         </span>
+                        {isHardwareCategory(category) && (
+                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-orange-500 to-rose-500 text-white text-[8px] font-black uppercase tracking-wider shadow-sm shadow-orange-500/30">
+                            <Lock className="w-2 h-2" />
+                            MAIN
+                          </span>
+                        )}
                       </div>
                       <span className={`absolute -right-0.5 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-150 ${
                         isDark ? 'text-slate-500' : 'text-slate-400'
@@ -379,16 +392,20 @@ export const Categories: React.FC = () => {
                       </span>
                     </td>
 
-                    {/* Usage Count */}
+                    {/* Usage Count — Clickable Badge opens CategoryProductsModal */}
                     <td className="px-2 py-1.5 text-right">
-                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-medium ${
-                        isDark
-                          ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                          : 'bg-blue-100 text-blue-700 border border-blue-200'
-                      }`}>
+                      <button
+                        onClick={() => setCategoryProductsModalCategory(category)}
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-medium cursor-pointer hover:scale-105 transition-all ${
+                          isDark
+                            ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30 hover:bg-blue-500/30 hover:border-blue-400/50'
+                            : 'bg-blue-100 text-blue-700 border border-blue-200 hover:bg-blue-200 hover:border-blue-300'
+                        }`}
+                        title={`View ${getUsageCount(category.id, category.name)} products in ${getDisplayName(category)}`}
+                      >
                         <Package className="w-2.5 h-2.5" />
                         {getUsageCount(category.id, category.name)}
-                      </span>
+                      </button>
                     </td>
 
                     {/* Actions */}
@@ -483,6 +500,11 @@ export const Categories: React.FC = () => {
         onConfirm={handleConfirmDelete}
         title={t('categories.deleteCategory')}
         message={t('categories.deleteConfirmationMessage', { name: selectedCategory?.name })}
+      />
+      <CategoryProductsModal
+        isOpen={categoryProductsModalCategory !== null}
+        category={categoryProductsModalCategory}
+        onClose={() => setCategoryProductsModalCategory(null)}
       />
     </div>
   );
