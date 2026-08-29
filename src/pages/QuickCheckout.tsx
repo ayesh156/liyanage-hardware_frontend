@@ -195,8 +195,18 @@ export const QuickCheckout: React.FC = () => {
   useEffect(() => {
     if (!editingInvoice) return;
 
-    // Map invoice items -> QuickInvoiceItem, preserving all pricing fields
-    const hydratedItems: QuickInvoiceItem[] = editingInvoice.items.map((item: any) => {
+    // ORDER-PRESERVATION CONTRACT (zero-migration):
+    // Map invoice items -> QuickInvoiceItem while RETAINING the exact array
+    // sequence received from the API. `Array.prototype.map` visits elements in
+    // ascending index order, so the resulting array mirrors the received
+    // positions 1:1 and `setItems(hydratedItems)` never re-sorts or reorders.
+    // The backend returns TRUE insertion order — invoice.service now stamps
+    // time-sortable line-item IDs so `items: { orderBy: { id: 'asc' } }`
+    // resolves to the exact cart sequence. Removed/neutralized rows
+    // (quantity === 0) are filtered defensively so ghosts never reappear.
+    const hydratedItems: QuickInvoiceItem[] = (editingInvoice.items || [])
+      .filter((item: any) => Number(item.quantity) > 0)
+      .map((item: any) => {
       const ourPrice   = Number(item.unitPrice || 0);
       const dispPrice  = Number(item.originalPrice || item.unitPrice || 0);
       const costPrice  = Number(item.cost || 0);
@@ -3823,6 +3833,9 @@ export const QuickCheckout: React.FC = () => {
           </div>{/* end flex-1 inner grid wrapper */}
 
           {/* ── RECEIPT PREVIEW COLUMN — visible on xl+ ── */}
+          {/* ORDER CONTRACT: the live `items` state array is passed straight to
+              ThermalReceiptPreview / generateReceiptHTML with NO intermediate
+              sort() — the preview always mirrors the exact cart sequence. */}
           <div className="hidden xl:block w-full max-w-[440px] flex-shrink-0 sticky top-[52px] self-start max-h-[calc(100vh-68px)] overflow-y-auto min-w-0 min-h-0">
             <ThermalReceiptPreview
               items={items}
