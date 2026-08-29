@@ -2682,31 +2682,33 @@ export const QuickCheckout: React.FC = () => {
                             {/* ── INLINE QUANTITY CONTROLS (native, no auto-close) ── */}
                             <div className={`flex items-center gap-0.5 p-0.5 rounded-lg flex-shrink-0 ${isDark ? 'bg-slate-800/80' : 'bg-slate-100'}`}>
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  e.preventDefault();
-                                  const currentQty = getItemCartQuantity(items, flatProduct.flatId);
-                                  if (currentQty > 0) {
-                                    const cartItem = items.find(i => i.productId === flatProduct.flatId);
-                                    if (cartItem) {
-                                      const newQty = decrementQuantity(cartItem.quantity, 0.01);
-                                      if (newQty <= 0) {
-                                        removeItem(cartItem.id);
-                                      } else {
-                                        updateItemQuantity(cartItem.id, newQty);
-                                      }
-                                    }
-                                  }
-                                }}
-                                className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold transition-all ${
-                                  getItemCartQuantity(items, flatProduct.flatId) > 0
-                                    ? isDark ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-white hover:bg-slate-200 text-slate-700 shadow-sm'
-                                    : isDark ? 'text-slate-600 cursor-default' : 'text-slate-300 cursor-default'
-                                }`}
-                                disabled={getItemCartQuantity(items, flatProduct.flatId) <= 0}
-                              >
-                                <Minus className="w-2.5 h-2.5" />
-                              </button>
+  type="button"
+  onMouseDown={(e) => e.preventDefault()}
+  onClick={(e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const currentQty = getItemCartQuantity(items, flatProduct.flatId);
+    if (currentQty > 0) {
+      const cartItem = items.find(i => i.productId === flatProduct.flatId);
+      if (cartItem) {
+        const newQty = decrementQuantity(cartItem.quantity, 0.01);
+        if (newQty <= 0) {
+          removeItem(cartItem.id);
+        } else {
+          updateItemQuantity(cartItem.id, newQty);
+        }
+      }
+    }
+  }}
+  className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold transition-all ${
+    getItemCartQuantity(items, flatProduct.flatId) > 0
+      ? isDark ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-white hover:bg-slate-200 text-slate-700 shadow-sm'
+      : isDark ? 'text-slate-600 cursor-default' : 'text-slate-300 cursor-default'
+  }`}
+  disabled={getItemCartQuantity(items, flatProduct.flatId) <= 0}
+>
+  <Minus className="w-2.5 h-2.5" />
+</button>
                               <span className={`w-5 text-center font-bold text-[10px] tabular-nums ${
                                 getItemCartQuantity(items, flatProduct.flatId) > 0
                                   ? 'text-amber-500'
@@ -2715,25 +2717,72 @@ export const QuickCheckout: React.FC = () => {
                                 {getItemCartQuantity(items, flatProduct.flatId)}
                               </span>
                               <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  e.preventDefault();
-                                  if (flatProduct.stock > 0) {
-                                    addProductToCart(flatProduct, 1);
-                                    setTimeout(() => searchInputRef.current?.focus(), 10);
-                                  } else {
-                                    playBeep('error');
-                                    toast.error(t('quickCheckout.insufficientStock'));
-                                  }
-                                }}
-                                className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold transition-all ${
-                                  isDark
-                                    ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400'
-                                    : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'
-                                }`}
-                              >
-                                <Plus className="w-2.5 h-2.5" />
-                              </button>
+  type="button"
+  onMouseDown={(e) => {
+    // Focus එක Search input එකෙන් අහිමි වීම වළක්වයි
+    e.preventDefault();
+  }}
+  onClick={(e) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const masterProduct = inventoryItems.find((inv) => inv.id === flatProduct.flatId);
+    const ourPriceVal = Number(masterProduct?.salesPrice ?? flatProduct.retailPrice ?? 0);
+    const displayPriceVal = Number(masterProduct?.displayPrice ?? flatProduct.wholesalePrice ?? 0);
+    const costVal = Number(masterProduct?.cost ?? flatProduct.costPrice ?? 0);
+    const lastPriceVal = Number(masterProduct?.lastPrice ?? 0);
+    const storeQtyVal = Number(masterProduct?.storeQty ?? flatProduct.stock ?? 0);
+
+    const existingItem = items.find((i) => i.productId === flatProduct.flatId);
+    if (existingItem) {
+      if (existingItem.quantity + 1 > storeQtyVal) {
+        playBeep('error');
+        toast.error(`${t('quickCheckout.insufficientStock')}: ${storeQtyVal} ${t('invoice.available')}`);
+        return;
+      }
+      setItems(
+        items.map((i) =>
+          i.productId === flatProduct.flatId
+            ? { ...i, quantity: i.quantity + 1, total: (i.quantity + 1) * ourPriceVal }
+            : i
+        )
+      );
+    } else {
+      if (1 > storeQtyVal) {
+        playBeep('error');
+        toast.error(`${t('quickCheckout.insufficientStock')}: ${storeQtyVal} ${t('invoice.available')}`);
+        return;
+      }
+      const newItem: QuickInvoiceItem = {
+        id: `item-${Date.now()}`,
+        productId: flatProduct.flatId,
+        productName: flatProduct.displayName,
+        productNameSi: flatProduct.product.nameAlt || flatProduct.displayName,
+        variantId: flatProduct.variant?.id,
+        size: flatProduct.variant?.size,
+        quantity: 1,
+        unitPrice: ourPriceVal,
+        originalPrice: displayPriceVal,
+        total: ourPriceVal,
+        cost: costVal,
+        lastPrice: lastPriceVal,
+        salesPrice: ourPriceVal,
+        displayPrice: displayPriceVal,
+        ourPrice: ourPriceVal,
+        storeQty: storeQtyVal,
+      };
+      setItems((prev) => [...prev, newItem]);
+    }
+    playBeep('add');
+  }}
+  className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold transition-all ${
+    isDark
+      ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400'
+      : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'
+  }`}
+>
+  <Plus className="w-2.5 h-2.5" />
+</button>
                             </div>
                           </div>
                         ))}
