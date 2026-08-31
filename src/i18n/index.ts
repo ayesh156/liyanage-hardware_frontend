@@ -965,6 +965,11 @@ export const translations = {
     // Quick Checkout
     quickCheckout: {
       title: 'Quick Checkout',
+      quickSave: 'Quick Save',
+updateAndPrint: 'Update & Print',
+customerSelection: 'Customer Selection',
+searchCustomerPlaceholder: 'Search or select a customer...',
+newCustomer: 'New Customer',
       subtitle: 'Fast billing for walk-in customers',
       searchPlaceholder: 'Scan barcode or search product (SKU, name)...',
       noProductsFound: 'No products found. Try a different search.',
@@ -2150,6 +2155,11 @@ export const translations = {
     // Quick Checkout
     quickCheckout: {
       title: 'ඉක්මන් පිටවීම',
+      quickSave: 'ඉක්මන් සුරැකීම',
+updateAndPrint: 'යාවත්කාලීන කර මුද්‍රණය',
+customerSelection: 'පාරිභෝගික තේරීම',
+searchCustomerPlaceholder: 'පාරිභෝගිකයෙකු සොයන්න...',
+newCustomer: 'නව පාරිභෝගිකයා',
       subtitle: 'ඇවිදින පාරිභෝගිකයින් සඳහා වේගවත් බිල්පත්',
       searchPlaceholder: 'බාර්කෝඩය ස්කෑන් කරන්න හෝ නිෂ්පාදනය සොයන්න...',
       noProductsFound: 'නිෂ්පාදන හමු නොවීය. වෙනත් සෙවීමක් උත්සාහ කරන්න.',

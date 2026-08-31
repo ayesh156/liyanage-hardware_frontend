@@ -70,7 +70,6 @@ export default defineConfig(({ mode }) => ({
             'embla-carousel-react',
             'input-otp',
             'lucide-react',
-            'sonner',
             'vaul',
           ],
           'forms': [

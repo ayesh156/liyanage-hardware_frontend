@@ -30,6 +30,15 @@ const statusConfig: Record<string, { bg: string; text: string; border: string; i
 
 const formatPrice = (price: number) => `Rs. ${price.toLocaleString()}`;
 
+// Format any date-like value to strict ISO YYYY-MM-DD. Falls back to the
+// raw string (or '—') if the value can't be parsed, instead of throwing.
+const formatDateISO = (value: string | Date | undefined | null): string => {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (isNaN(d.getTime())) return typeof value === 'string' ? value : '—';
+  return d.toISOString().split('T')[0];
+};
+
 // ── Searchable Combobox (matches ProductTable style) ──
 interface SearchableSelectProps {
   options: { value: string; label: string }[];
@@ -345,11 +354,11 @@ export const Invoices: React.FC = () => {
                       </div>
                     </td>
                     <td className="px-2 py-1.5">
-                      <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{new Date(invoice.issueDate).toLocaleDateString()}</span>
+                      <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{formatDateISO(invoice.issueDate)}</span>
                     </td>
                     <td className="px-2 py-1.5">
                       <span className={`text-[11px] ${isOverdue ? 'text-red-400 font-medium' : isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                        {new Date(invoice.dueDate).toLocaleDateString()}
+                        {formatDateISO(invoice.dueDate)}
                       </span>
                     </td>
                     <td className="px-2 py-1.5 text-right">
