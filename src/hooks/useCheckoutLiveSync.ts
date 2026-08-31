@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { io, Socket } from "socket.io-client";
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════
@@ -29,7 +29,7 @@ export interface CartStatePayload {
   discount: number;
   selectedCustomerId: string;
   receivedAmount: number;
-  paymentMethod: 'cash' | 'credit';
+  paymentMethod: "cash" | "credit";
   version: number;
   originClientId: string;
   updatedAt: string;
@@ -62,19 +62,24 @@ export interface UseCheckoutLiveSyncResult {
   peerCount: number;
   /** true while we're actively applying a state frame we just received — use this to skip re-broadcasting the resulting state change. */
   isApplyingRemoteState: () => boolean;
-  broadcastCartState: (state: Omit<CartStatePayload, 'version' | 'originClientId' | 'updatedAt'>) => void;
-  broadcastInvoiceSaved: (payload: Omit<InvoiceSavedPayload, 'originClientId' | 'updatedAt'>) => void;
+  broadcastCartState: (
+    state: Omit<CartStatePayload, "version" | "originClientId" | "updatedAt">,
+  ) => void;
+  broadcastInvoiceSaved: (
+    payload: Omit<InvoiceSavedPayload, "originClientId" | "updatedAt">,
+  ) => void;
 }
 
 function resolveSocketOrigin(): string {
-  const apiBase = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3000/api';
+  const apiBase =
+    (import.meta as any).env?.VITE_API_URL || "http://localhost:3000/api";
   // Strip a trailing /api (or any trailing path) to get the bare origin the
   // socket.io server is attached to (it shares the HTTP server/port).
   try {
     const url = new URL(apiBase);
     return `${url.protocol}//${url.host}`;
   } catch {
-    return apiBase.replace(/\/api\/?$/, '');
+    return apiBase.replace(/\/api\/?$/, "");
   }
 }
 
@@ -84,7 +89,9 @@ function makeClientId(): string {
   return `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function useCheckoutLiveSync(options: UseCheckoutLiveSyncOptions): UseCheckoutLiveSyncResult {
+export function useCheckoutLiveSync(
+  options: UseCheckoutLiveSyncOptions,
+): UseCheckoutLiveSyncResult {
   const {
     enabled,
     tenantId,
@@ -109,8 +116,12 @@ export function useCheckoutLiveSync(options: UseCheckoutLiveSyncOptions): UseChe
   // inline function reference.
   const onRemoteCartStateRef = useRef(onRemoteCartState);
   const onInvoiceFinalizedRef = useRef(onInvoiceFinalized);
-  useEffect(() => { onRemoteCartStateRef.current = onRemoteCartState; }, [onRemoteCartState]);
-  useEffect(() => { onInvoiceFinalizedRef.current = onInvoiceFinalized; }, [onInvoiceFinalized]);
+  useEffect(() => {
+    onRemoteCartStateRef.current = onRemoteCartState;
+  }, [onRemoteCartState]);
+  useEffect(() => {
+    onInvoiceFinalizedRef.current = onInvoiceFinalized;
+  }, [onInvoiceFinalized]);
 
   useEffect(() => {
     if (!enabled || !tenantId || !terminalId) {
@@ -126,9 +137,9 @@ export function useCheckoutLiveSync(options: UseCheckoutLiveSyncOptions): UseChe
     }
 
     const socket = io(`${resolveSocketOrigin()}/checkout-sync`, {
-      path: '/socket.io',
+      path: "/socket.io",
       withCredentials: true,
-      transports: ['polling', 'websocket'],
+      transports: ["websocket"], // 🌟 Direct pure WebSocket පමණක් භාවිතා කරයි
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
@@ -137,23 +148,23 @@ export function useCheckoutLiveSync(options: UseCheckoutLiveSyncOptions): UseChe
     socketRef.current = socket;
 
     const join = () => {
-      socket.emit('join_checkout_session', { tenantId, terminalId, userRole });
+      socket.emit("join_checkout_session", { tenantId, terminalId, userRole });
     };
 
-    socket.on('connect', () => {
+    socket.on("connect", () => {
       setIsConnected(true);
       join();
     });
 
-    socket.on('disconnect', () => {
+    socket.on("disconnect", () => {
       setIsConnected(false);
     });
 
-    socket.on('session_peers', (data: { count: number }) => {
-      setPeerCount(typeof data?.count === 'number' ? data.count : 0);
+    socket.on("session_peers", (data: { count: number }) => {
+      setPeerCount(typeof data?.count === "number" ? data.count : 0);
     });
 
-    socket.on('sync_cart_state', (payload: CartStatePayload) => {
+    socket.on("sync_cart_state", (payload: CartStatePayload) => {
       // Discard our own echo (shouldn't normally arrive, since the gateway
       // excludes the sender, but this is a cheap belt-and-braces check).
       if (payload.originClientId === clientIdRef.current) return;
@@ -164,26 +175,28 @@ export function useCheckoutLiveSync(options: UseCheckoutLiveSyncOptions): UseChe
       } finally {
         // Release the lock on the next tick, after React has had a chance
         // to process the resulting setState calls this frame triggers.
-        setTimeout(() => { applyingRemoteRef.current = false; }, 0);
+        setTimeout(() => {
+          applyingRemoteRef.current = false;
+        }, 0);
       }
     });
 
-    socket.on('invoice_finalized', (payload: InvoiceSavedPayload) => {
+    socket.on("invoice_finalized", (payload: InvoiceSavedPayload) => {
       if (payload.originClientId === clientIdRef.current) return;
       onInvoiceFinalizedRef.current(payload);
     });
 
-    socket.on('session_error', (err: { message: string }) => {
-      console.warn('[useCheckoutLiveSync] session_error:', err?.message);
+    socket.on("session_error", (err: { message: string }) => {
+      console.warn("[useCheckoutLiveSync] session_error:", err?.message);
     });
 
-    socket.on('connect_error', (err: Error) => {
-      console.warn('[useCheckoutLiveSync] connect_error:', err.message);
+    socket.on("connect_error", (err: Error) => {
+      console.warn("[useCheckoutLiveSync] connect_error:", err.message);
     });
 
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-      socket.emit('leave_checkout_session');
+      socket.emit("leave_checkout_session");
       socket.disconnect();
       socketRef.current = null;
       setIsConnected(false);
@@ -194,7 +207,9 @@ export function useCheckoutLiveSync(options: UseCheckoutLiveSyncOptions): UseChe
   }, [enabled, tenantId, terminalId, userRole]);
 
   const broadcastCartState = useCallback(
-    (state: Omit<CartStatePayload, 'version' | 'originClientId' | 'updatedAt'>) => {
+    (
+      state: Omit<CartStatePayload, "version" | "originClientId" | "updatedAt">,
+    ) => {
       if (!enabled) return;
       // Don't re-broadcast state that we're currently mirroring FROM a peer
       // — that would immediately bounce it straight back to them.
@@ -211,17 +226,17 @@ export function useCheckoutLiveSync(options: UseCheckoutLiveSyncOptions): UseChe
           originClientId: clientIdRef.current,
           updatedAt: new Date().toISOString(),
         };
-        socket.emit('broadcast_cart_state', payload);
+        socket.emit("broadcast_cart_state", payload);
       }, debounceMs);
     },
     [enabled, debounceMs],
   );
 
   const broadcastInvoiceSaved = useCallback(
-    (payload: Omit<InvoiceSavedPayload, 'originClientId' | 'updatedAt'>) => {
+    (payload: Omit<InvoiceSavedPayload, "originClientId" | "updatedAt">) => {
       const socket = socketRef.current;
       if (!enabled || !socket || !socket.connected) return;
-      socket.emit('broadcast_invoice_saved', {
+      socket.emit("broadcast_invoice_saved", {
         ...payload,
         originClientId: clientIdRef.current,
         updatedAt: new Date().toISOString(),
