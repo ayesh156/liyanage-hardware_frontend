@@ -91,7 +91,17 @@ export function useCheckoutLiveSync(options: UseCheckoutLiveSyncOptions): UseChe
         const { event: evName, payload } = JSON.parse(event.data);
         
         if (evName === "connected") {
-          setIsConnected(true);
+          setIsConnected(true);      
+          if (payload?.initialState) {
+            applyingRemoteRef.current = true;
+            try {
+              onRemoteCartStateRef.current(payload.initialState);
+            } finally {
+              setTimeout(() => {
+                applyingRemoteRef.current = false;
+              }, 0);
+            }
+          }
         } else if (evName === "session_peers") {
           setPeerCount(payload?.count || 0);
         } else if (evName === "sync_cart_state") {

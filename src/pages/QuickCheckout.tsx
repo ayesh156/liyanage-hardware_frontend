@@ -24,7 +24,8 @@ import {
   Keyboard, X, Package, Calculator, Barcode, Volume2, VolumeX,
   ChevronUp, ChevronDown, RotateCcw, CreditCard, Banknote, Percent,
   ArrowRight, ArrowUp, ArrowDown, ArrowLeftIcon, CheckCircle,
-  Minus, ScanLine, ChevronRight, Receipt, Sparkles, User, Building2, GripVertical
+  Minus, ScanLine, ChevronRight, Receipt, Sparkles, User, Building2, GripVertical,
+  MoreVertical
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { Wifi, WifiOff } from 'lucide-react';
@@ -270,12 +271,12 @@ export const QuickCheckout: React.FC = () => {
   // ── LIVE SYNC: session pairing code shared between Admin & Cashier terminals ──
   // Persisted per-browser so a terminal reconnecting (refresh / crash) rejoins
   // the same room automatically instead of losing its pairing.
-  const [liveSyncEnabled, setLiveSyncEnabled] = useState<boolean>(false);
+const [liveSyncEnabled, setLiveSyncEnabled] = useState<boolean>(false);
   const [sessionCode, setSessionCode] = useState<string>(() => {
     try {
-      return localStorage.getItem('pos_terminal_session_code') || '';
+      return localStorage.getItem('pos_terminal_session_code') || 'SHOP';
     } catch {
-      return '';
+      return 'SHOP';
     }
   });
   const [showSessionCodeEditor, setShowSessionCodeEditor] = useState(false);
@@ -1356,7 +1357,12 @@ export const QuickCheckout: React.FC = () => {
   // change locally. The hook itself debounces + guards against re-broadcast
   // loops (see useCheckoutLiveSync's isApplyingRemoteState lock).
   useEffect(() => {
-    if (!liveSyncEnabled || !sessionCode) return;
+    if (!liveSyncEnabled || !sessionCode || !liveSync.isConnected) return;
+
+    if (items.length === 0 && liveSync.peerCount > 1 && !liveSync.isApplyingRemoteState()) {
+      return;
+    }
+
     liveSync.broadcastCartState({
       items,
       discount,
@@ -1364,8 +1370,7 @@ export const QuickCheckout: React.FC = () => {
       receivedAmount,
       paymentMethod,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, discount, selectedCustomerId, receivedAmount, paymentMethod, liveSyncEnabled, sessionCode]);
+  }, [items, discount, selectedCustomerId, receivedAmount, paymentMethod, liveSyncEnabled, sessionCode, liveSync.isConnected]);
 
   const generateSessionCode = useCallback(() => {
     const code = Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -2711,81 +2716,90 @@ export const QuickCheckout: React.FC = () => {
 
           <div className="flex items-center gap-1.5">
             {/* ── LIVE SYNC badge/toggle ── */}
-            <div className="relative">
+            <div className="relative flex items-center">
               <button
                 onClick={() => {
-                  if (!sessionCode) {
-                    setShowSessionCodeEditor(true);
-                    return;
-                  }
                   setLiveSyncEnabled(prev => !prev);
                 }}
-                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] font-bold transition-colors border ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
                   liveSyncEnabled && liveSync.isConnected
-                    ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-500'
+                    ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-500 shadow-sm shadow-emerald-500/10'
                     : liveSyncEnabled
-                    ? 'bg-amber-500/10 border-amber-500/40 text-amber-500'
+                    ? 'bg-amber-500/10 border-amber-500/40 text-amber-500 shadow-sm shadow-amber-500/10'
                     : isDark
-                    ? 'border-slate-700 text-slate-400 hover:bg-slate-700'
-                    : 'border-slate-200 text-slate-500 hover:bg-slate-100'
+                    ? 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'
+                    : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-100 shadow-sm'
                 }`}
                 title={
                   liveSyncEnabled
                     ? liveSync.isConnected
-                      ? `Live Sync active — ${liveSync.peerCount} terminal(s) connected. Click to disconnect.`
-                      : 'Live Sync connecting…'
-                    : 'Click to enable Live Sync between terminals'
+                      ? `Live Sync active — Room: ${sessionCode} (${liveSync.peerCount} connected). Click to toggle.`
+                      : 'Connecting to Live Sync…'
+                    : 'Click to enable Live Sync'
                 }
               >
                 {liveSyncEnabled && liveSync.isConnected ? (
-                  <span className="relative flex h-2 w-2">
+                  <span className="relative flex h-2 w-2 mr-0.5">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
                   </span>
                 ) : liveSyncEnabled ? (
-                  <Wifi className="w-3 h-3 animate-pulse" />
+                  <Wifi className="w-3.5 h-3.5 animate-pulse" />
                 ) : (
-                  <WifiOff className="w-3 h-3" />
+                  <WifiOff className="w-3.5 h-3.5" />
                 )}
-                {liveSyncEnabled && liveSync.isConnected
-                  ? `LIVE SYNC · ${liveSync.peerCount}`
-                  : liveSyncEnabled
-                  ? 'CONNECTING…'
-                  : 'LIVE SYNC'}
+                LIVE {liveSyncEnabled && liveSync.isConnected ? `· ${liveSync.peerCount}` : ''}
               </button>
+
+              {/* 3 Dots Menu Button */}
               <button
                 onClick={() => setShowSessionCodeEditor(v => !v)}
-                className={`ml-1 text-[10px] underline ${isDark ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600'}`}
-                title="Pair with another terminal using a shared session code"
+                className={`ml-1 p-1.5 rounded-lg transition-colors ${
+                  isDark ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+                title="Change Session Room"
               >
-                {sessionCode || 'pair'}
+                <MoreVertical className="w-4 h-4" />
               </button>
 
               {showSessionCodeEditor && (
-                <div className={`absolute right-0 top-full mt-1 z-20 p-2.5 rounded-lg border shadow-lg w-56 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-                  <p className={`text-[10px] mb-1.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    Share this code with the other terminal, or enter theirs to pair.
+                <div className={`absolute right-0 top-full mt-2 z-20 p-3 rounded-xl border shadow-xl w-64 ${isDark ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <h4 className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Custom Room</h4>
+                    <button onClick={() => setShowSessionCodeEditor(false)} className={`p-0.5 rounded ${isDark ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-500 hover:bg-slate-100'}`}>
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <p className={`text-[10px] mb-2.5 leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                    Enter a room name to pair terminals together (Default: SHOP).
                   </p>
-                  <div className="flex gap-1 mb-1.5">
+                  <div className="flex flex-col gap-2">
                     <input
                       type="text"
                       defaultValue={sessionCode}
+                      id="customRoomInput"
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
                           joinSessionCode((e.target as HTMLInputElement).value);
                           setShowSessionCodeEditor(false);
                         }
                       }}
-                      placeholder="SESSION CODE"
-                      className={`flex-1 min-w-0 px-2 py-1 rounded text-xs font-mono uppercase ${isDark ? 'bg-slate-900 border border-slate-700 text-white' : 'bg-slate-50 border border-slate-200 text-slate-900'}`}
+                      placeholder="e.g. SHOP"
+                      className={`w-full px-2.5 py-1.5 rounded-lg text-sm font-semibold uppercase focus:outline-none focus:ring-2 ${
+                        isDark ? 'bg-slate-900 border border-slate-700 text-white focus:ring-amber-500/50' : 'bg-slate-50 border border-slate-200 text-slate-900 focus:ring-amber-500/50'
+                      }`}
                     />
+                    <button
+                      onClick={() => {
+                        const input = document.getElementById('customRoomInput') as HTMLInputElement;
+                        if (input) joinSessionCode(input.value);
+                        setShowSessionCodeEditor(false);
+                      }}
+                      className="w-full text-xs font-bold py-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600 transition-colors shadow shadow-emerald-500/20"
+                    >
+                      Connect
+                    </button>
                   </div>
-                  <button
-                    onClick={() => { generateSessionCode(); setShowSessionCodeEditor(false); }}
-                    className="w-full text-[10px] font-semibold py-1 rounded bg-amber-500 text-white hover:bg-amber-600 transition-colors"
-                  >
-                    Generate new code &amp; go live
-                  </button>
                 </div>
               )}
             </div>
