@@ -34,23 +34,13 @@ export interface UseCheckoutLiveSyncResult {
   isConnected: boolean;
   peerCount: number;
   isApplyingRemoteState: () => boolean;
-  broadcastCartState: (
-    state: Omit<CartStatePayload, "version" | "originClientId" | "updatedAt">,
-  ) => void;
-  broadcastInvoiceSaved: (
-    payload: Omit<InvoiceSavedPayload, "originClientId" | "updatedAt">,
-  ) => void;
+  broadcastCartState: (state: Omit<CartStatePayload, "version" | "originClientId" | "updatedAt">) => void;
+  broadcastInvoiceSaved: (payload: Omit<InvoiceSavedPayload, "originClientId" | "updatedAt">) => void;
 }
 
-function resolveWsUrl(): string {
+function resolveApiBase(): string {
   const apiBase = (import.meta as any).env?.VITE_API_URL || "https://api.liyanage.ecosystemlk.app/api";
-  try {
-    const url = new URL(apiBase);
-    const wsProto = url.protocol === "https:" ? "wss:" : "ws:";
-    return `${wsProto}//${url.host}/checkout-sync`;
-  } catch {
-    return "wss://api.liyanage.ecosystemlk.app/checkout-sync";
-  }
+  return apiBase.replace(/\/$/, "");
 }
 
 function makeClientId(): string {
@@ -63,7 +53,7 @@ export function useCheckoutLiveSync(options: UseCheckoutLiveSyncOptions): UseChe
   const [isConnected, setIsConnected] = useState(false);
   const [peerCount, setPeerCount] = useState(0);
 
-  const wsRef = useRef<WebSocket | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
   const clientIdRef = useRef<string>(makeClientId());
   const versionRef = useRef<number>(0);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -74,38 +64,37 @@ export function useCheckoutLiveSync(options: UseCheckoutLiveSyncOptions): UseChe
   useEffect(() => { onRemoteCartStateRef.current = onRemoteCartState; }, [onRemoteCartState]);
   useEffect(() => { onInvoiceFinalizedRef.current = onInvoiceFinalized; }, [onInvoiceFinalized]);
 
+  // 🌟 Listen for Server-Sent Events
   useEffect(() => {
     if (!enabled || !tenantId || !terminalId) {
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
       }
       setIsConnected(false);
       setPeerCount(0);
       return;
     }
 
-    const ws = new WebSocket(resolveWsUrl());
-    wsRef.current = ws;
+    const apiBase = resolveApiBase();
+    const streamUrl = `${apiBase}/sync/stream?tenantId=${encodeURIComponent(tenantId)}&terminalId=${encodeURIComponent(terminalId)}&userRole=${encodeURIComponent(userRole)}&clientId=${encodeURIComponent(clientIdRef.current)}`;
+    
+    // withCredentials: true මඟින් CORS එක සහ auth cookies handle කරයි
+    const es = new EventSource(streamUrl, { withCredentials: true });
+    eventSourceRef.current = es;
 
-    ws.onopen = () => {
-      setIsConnected(true);
-      ws.send(JSON.stringify({
-        event: "join_checkout_session",
-        payload: { tenantId, terminalId, userRole },
-      }));
-    };
+    es.onopen = () => setIsConnected(true);
+    es.onerror = () => setIsConnected(false);
 
-    ws.onclose = () => {
-      setIsConnected(false);
-    };
-
-    ws.onmessage = (e) => {
+    es.onmessage = (event) => {
       try {
-        const { event, payload } = JSON.parse(e.data);
-        if (event === "session_peers") {
+        const { event: evName, payload } = JSON.parse(event.data);
+        
+        if (evName === "connected") {
+          setIsConnected(true);
+        } else if (evName === "session_peers") {
           setPeerCount(payload?.count || 0);
-        } else if (event === "sync_cart_state") {
+        } else if (evName === "sync_cart_state") {
           if (payload.originClientId === clientIdRef.current) return;
           applyingRemoteRef.current = true;
           try {
@@ -113,32 +102,31 @@ export function useCheckoutLiveSync(options: UseCheckoutLiveSyncOptions): UseChe
           } finally {
             setTimeout(() => { applyingRemoteRef.current = false; }, 0);
           }
-        } else if (event === "invoice_finalized") {
+        } else if (evName === "invoice_finalized") {
           if (payload.originClientId === clientIdRef.current) return;
           onInvoiceFinalizedRef.current(payload);
         }
       } catch (err) {
-        console.error(err);
+        console.warn("[SSE Parse Error]", err);
       }
     };
 
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-      ws.close();
-      wsRef.current = null;
+      es.close();
+      eventSourceRef.current = null;
       setIsConnected(false);
       setPeerCount(0);
     };
   }, [enabled, tenantId, terminalId, userRole]);
 
+  // 🌟 Broadcast changes using standard HTTP POST (No WebSockets needed!)
   const broadcastCartState = useCallback(
     (state: Omit<CartStatePayload, "version" | "originClientId" | "updatedAt">) => {
       if (!enabled || applyingRemoteRef.current) return;
 
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = setTimeout(() => {
-        const ws = wsRef.current;
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
         versionRef.current += 1;
         const payload: CartStatePayload = {
           ...state,
@@ -146,26 +134,33 @@ export function useCheckoutLiveSync(options: UseCheckoutLiveSyncOptions): UseChe
           originClientId: clientIdRef.current,
           updatedAt: new Date().toISOString(),
         };
-        ws.send(JSON.stringify({ event: "broadcast_cart_state", payload }));
+
+        fetch(`${resolveApiBase()}/sync/broadcast-cart`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ tenantId, terminalId, payload }),
+        }).catch(console.warn);
       }, debounceMs);
     },
-    [enabled, debounceMs],
+    [enabled, tenantId, terminalId, debounceMs],
   );
 
   const broadcastInvoiceSaved = useCallback(
     (payload: Omit<InvoiceSavedPayload, "originClientId" | "updatedAt">) => {
-      const ws = wsRef.current;
-      if (!enabled || !ws || ws.readyState !== WebSocket.OPEN) return;
-      ws.send(JSON.stringify({
-        event: "broadcast_invoice_saved",
-        payload: {
-          ...payload,
-          originClientId: clientIdRef.current,
-          updatedAt: new Date().toISOString(),
-        },
-      }));
+      if (!enabled) return;
+      fetch(`${resolveApiBase()}/sync/broadcast-invoice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          tenantId,
+          terminalId,
+          payload: { ...payload, originClientId: clientIdRef.current, updatedAt: new Date().toISOString() },
+        }),
+      }).catch(console.warn);
     },
-    [enabled],
+    [enabled, tenantId, terminalId],
   );
 
   return {
