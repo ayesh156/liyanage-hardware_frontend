@@ -139,7 +139,7 @@ export function useCheckoutLiveSync(
     const socket = io(`${resolveSocketOrigin()}/checkout-sync`, {
       path: "/socket.io",
       withCredentials: true,
-      transports: ["websocket"], // 🌟 Direct pure WebSocket පමණක් භාවිතා කරයි
+      transports: ['polling', 'websocket'],
       reconnection: true,
       reconnectionAttempts: Infinity,
       reconnectionDelay: 1000,
