@@ -284,6 +284,11 @@ export const generateReceiptHTML = (
       </div>
     </div>
 
+    <!-- 🌿 Shopping Bag Statutory Compliance Notice (Govt. Regulation Rs. 5 Notice) -->
+    <div style="border:1px dashed #000000;border-radius:3px;padding:3px 4px;margin-top:4px;margin-bottom:2px;text-align:center;font-size:10px;font-weight:800;color:#000000;line-height:1.3;letter-spacing:0.1px;white-space:normal !important;word-break:break-word !important;">
+      * පොලිතින් බෑගයක් සඳහා රු. 5/- ක් අය කෙරේ.
+    </div>
+
     <!-- ITEM COUNT -->
     <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:14px;font-weight:800;margin-top:2px;">
       <span>භාණ්ඩ සංඛ්‍යාව</span>

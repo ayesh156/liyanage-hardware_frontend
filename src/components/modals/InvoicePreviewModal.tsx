@@ -345,6 +345,25 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
                     </div>
                   </div>
 
+                  {/* 🌿 Shopping Bag Statutory Compliance Notice (Govt. Regulation Rs. 5 Notice) */}
+                  <div
+                    style={{
+                      border: '1px dashed #000000',
+                      borderRadius: '3px',
+                      padding: '3px 4px',
+                      marginTop: '4px',
+                      marginBottom: '2px',
+                      textAlign: 'center',
+                      fontSize: '10px',
+                      fontWeight: 800,
+                      color: '#000000',
+                      lineHeight: 1.3,
+                      letterSpacing: '0.1px',
+                    }}
+                  >
+                    * පොලිතින් බෑගයක් සඳහා රු. 5/- ක් අය කෙරේ.
+                  </div>
+
                   {/* Item count */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontSize: '12px', ...PB, marginTop: '2px' }}>
                     <span>භාණ්ඩ සංඛ්‍යාව</span>
