@@ -1690,6 +1690,9 @@ const [liveSyncEnabled, setLiveSyncEnabled] = useState<boolean>(false);
     const selectedCust = selectedCustomerId !== 'walk-in' ? findCustomerById(selectedCustomerId) : null;
     const customerName = selectedCust?.name ?? t('invoice.walkInCustomer');
 
+    // 🌟 Standard ISO-8601 DateTime string (Ensures backend Prisma accepts payload without 400/500 errors)
+    const nowIso = new Date().toISOString();
+
     const payload = {
       customerId: selectedCustomerId || '',
       customerName,
@@ -1698,8 +1701,8 @@ const [liveSyncEnabled, setLiveSyncEnabled] = useState<boolean>(false);
       total: Math.round(computedFinalTotal * 100) / 100,
       receivedAmount: receivedAmount > 0 ? Math.round(receivedAmount * 100) / 100 : undefined,
       changeAmount: changeAmount !== 0 ? Math.round(changeAmount * 100) / 100 : undefined,
-      issueDate: new Date().toISOString().split('T')[0],
-      dueDate: new Date().toISOString().split('T')[0],
+      issueDate: nowIso,
+      dueDate: nowIso,
       paymentMethod,
       status: paymentMethod === 'credit' ? 'pending' : 'paid',
       items: invoiceItems,
@@ -3992,58 +3995,67 @@ const [liveSyncEnabled, setLiveSyncEnabled] = useState<boolean>(false);
                   </div>
                 </div>
 
-                {/* ── Checkout / Save Action Buttons — balanced 2-column grid for both New and Edit Invoice modes ── */}
+                {/* ── 🌟 Checkout / Save Action Buttons — Clean multi-line wrapping without text overflow or truncation ── */}
                 <div className="grid grid-cols-2 gap-2 mt-2">
                   {/* Column 1: Checkout & Print (New) / Update & Print (Edit) — always F12 */}
                   <button
-    onClick={handleCheckout}
-    disabled={items.length === 0 || isProcessing}
-    className={`w-full py-3 px-1 rounded-xl font-bold text-xs flex flex-col items-center justify-center gap-1 transition-all ${
-      items.length > 0
-        ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-lg shadow-amber-500/30'
-        : isDark ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-    }`}
-  >
-    <span className="flex items-center justify-center gap-1.5 text-center leading-tight">
-      <Printer className="w-4 h-4 flex-shrink-0" />
-      <span className="truncate">{editInvoiceId ? t('quickCheckout.updateAndPrint') : t('quickCheckout.checkoutAndPrint')}</span>
-    </span>
-    <kbd className="px-1.5 py-0.5 rounded bg-white/20 text-[10px] font-mono">F12</kbd>
-  </button>
+                    type="button"
+                    onClick={handleCheckout}
+                    disabled={items.length === 0 || isProcessing}
+                    className={`w-full py-2.5 px-2 rounded-xl font-extrabold text-xs flex flex-col items-center justify-center gap-1 transition-all min-h-[58px] ${
+                      items.length > 0
+                        ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow-lg shadow-amber-500/30 active:scale-95'
+                        : isDark ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    <span className="flex items-center justify-center gap-1 text-center leading-tight w-full">
+                      <Printer className="w-3.5 h-3.5 flex-shrink-0" />
+                      <span className="text-[11px] sm:text-xs leading-snug whitespace-normal break-words">
+                        {editInvoiceId ? t('quickCheckout.updateAndPrint') : t('quickCheckout.checkoutAndPrint')}
+                      </span>
+                    </span>
+                    <kbd className="px-1.5 py-0.2 rounded bg-white/20 text-[9px] font-mono">F12</kbd>
+                  </button>
 
                   {/* Column 2: Quick Save (New) / Update Invoice (Edit) */}
                   {editInvoiceId ? (
-    <button
-      onClick={handleUpdateInvoice}
-      disabled={items.length === 0 || isProcessing}
-      className={`w-full py-3 px-1 rounded-xl font-bold text-xs flex flex-col items-center justify-center gap-1 transition-all ${
-        items.length > 0
-          ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white shadow-lg shadow-emerald-500/30'
-          : isDark ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-      }`}
-    >
-      <span className="flex items-center justify-center gap-1.5 text-center leading-tight">
-        <CheckCircle className="w-4 h-4 flex-shrink-0" />
-        <span className="truncate">{t('quickCheckout.updateInvoice')}</span>
-      </span>
-    </button>
-  ) : (
-    <button
-      onClick={handleQuickSave}
-      disabled={items.length === 0 || isProcessing}
-      className={`w-full py-3 px-1 rounded-xl font-bold text-xs flex flex-col items-center justify-center gap-1 transition-all ${
-        items.length > 0
-          ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white shadow-lg shadow-emerald-500/30'
-          : isDark ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-      }`}
-    >
-      <span className="flex items-center justify-center gap-1.5 text-center leading-tight">
-        <CheckCircle className="w-4 h-4 flex-shrink-0" />
-        <span className="truncate">{t('quickCheckout.quickSave')}</span>
-      </span>
-      <kbd className="px-1.5 py-0.5 rounded bg-white/20 text-[10px] font-mono">F9</kbd>
-    </button>
-  )}
+                    <button
+                      type="button"
+                      onClick={handleUpdateInvoice}
+                      disabled={items.length === 0 || isProcessing}
+                      className={`w-full py-2.5 px-2 rounded-xl font-extrabold text-xs flex flex-col items-center justify-center gap-1 transition-all min-h-[58px] ${
+                        items.length > 0
+                          ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white shadow-lg shadow-emerald-500/30 active:scale-95'
+                          : isDark ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                      }`}
+                    >
+                      <span className="flex items-center justify-center gap-1 text-center leading-tight w-full">
+                        <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="text-[11px] sm:text-xs leading-snug whitespace-normal break-words">
+                          {t('quickCheckout.updateInvoice')}
+                        </span>
+                      </span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleQuickSave}
+                      disabled={items.length === 0 || isProcessing}
+                      className={`w-full py-2.5 px-2 rounded-xl font-extrabold text-xs flex flex-col items-center justify-center gap-1 transition-all min-h-[58px] ${
+                        items.length > 0
+                          ? 'bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white shadow-lg shadow-emerald-500/30 active:scale-95'
+                        : isDark ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                      }`}
+                    >
+                      <span className="flex items-center justify-center gap-1 text-center leading-tight w-full">
+                        <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="text-[11px] sm:text-xs leading-snug whitespace-normal break-words">
+                          {t('quickCheckout.quickSave')}
+                        </span>
+                      </span>
+                      <kbd className="px-1.5 py-0.2 rounded bg-white/20 text-[9px] font-mono">F9</kbd>
+                    </button>
+                  )}
                 </div>
 
                 {/* ── CUSTOMER SELECTION: Searchable Combobox ── */}

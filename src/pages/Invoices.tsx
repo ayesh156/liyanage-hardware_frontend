@@ -39,6 +39,19 @@ const formatDateISO = (value: string | Date | undefined | null): string => {
   return d.toISOString().split('T')[0];
 };
 
+/**
+ * 🌟 Helper: Computes Due Date exactly 7 days after the invoice issue date.
+ * If issueDate is missing or invalid, it gracefully falls back to the existing dueDate.
+ */
+const getDueDateFromIssueDate = (issueDate: string | Date | undefined | null, fallbackDueDate?: string | Date | null): string => {
+  if (!issueDate) return formatDateISO(fallbackDueDate);
+  const d = new Date(issueDate);
+  if (isNaN(d.getTime())) return formatDateISO(fallbackDueDate);
+  // Add 7 full calendar days (7 * 24 * 60 * 60 * 1000 ms)
+  d.setDate(d.getDate() + 7);
+  return d.toISOString().split('T')[0];
+};
+
 // ── Searchable Combobox (matches ProductTable style) ──
 interface SearchableSelectProps {
   options: { value: string; label: string }[];
@@ -336,7 +349,11 @@ export const Invoices: React.FC = () => {
               )}
               {!loading && paginatedInvoices.map((invoice) => {
                 const st = statusConfig[invoice.status] || statusConfig.pending;
-                const isOverdue = new Date(invoice.dueDate) < new Date() && invoice.status !== 'paid';
+                // 🌟 Calculate Due Date as 7 days after the issue date
+                const computedDueDateStr = getDueDateFromIssueDate(invoice.issueDate, invoice.dueDate);
+                const computedDueDateObj = new Date(computedDueDateStr);
+                const isOverdue = !isNaN(computedDueDateObj.getTime()) && computedDueDateObj < new Date() && invoice.status !== 'paid';
+
                 return (
                   <tr key={invoice.id} className={`transition-colors ${isDark ? 'hover:bg-slate-700/25' : 'hover:bg-slate-50'}`}>
                     <td className="px-2 py-1.5">
@@ -357,8 +374,9 @@ export const Invoices: React.FC = () => {
                       <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>{formatDateISO(invoice.issueDate)}</span>
                     </td>
                     <td className="px-2 py-1.5">
+                      {/* 🌟 Display dynamically calculated 7-day Due Date */}
                       <span className={`text-[11px] ${isOverdue ? 'text-red-400 font-medium' : isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                        {formatDateISO(invoice.dueDate)}
+                        {computedDueDateStr}
                       </span>
                     </td>
                     <td className="px-2 py-1.5 text-right">
