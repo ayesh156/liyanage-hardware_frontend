@@ -13,15 +13,13 @@ function formatPrice(n: number): string {
 }
 
 /**
- * Safely format an invoice date for the thermal receipt.
- * Guards against "Invalid Date" by falling back to the current date
- * whenever the raw value is null, undefined, empty, or unparseable.
+ * 🌟 Formats invoice date into strict ISO YYYY-MM-DD format (e.g., 2026-10-02)
  */
 function formatInvoiceDate(rawDate: string | Date | undefined | null): string {
-  const parsed = rawDate ? new Date(rawDate) : new Date();
-  const isValid = !isNaN(parsed.getTime());
-  const safeDate = isValid ? parsed : new Date();
-  return safeDate.toLocaleDateString('si-LK', { day: '2-digit', month: 'short', year: '2-digit' });
+  if (!rawDate) return new Date().toISOString().split('T')[0];
+  const parsed = new Date(rawDate);
+  if (isNaN(parsed.getTime())) return String(rawDate).split('T')[0] || '—';
+  return parsed.toISOString().split('T')[0];
 }
 
 /**

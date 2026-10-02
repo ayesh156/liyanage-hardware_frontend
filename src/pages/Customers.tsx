@@ -12,6 +12,8 @@ import { Customer } from '../types';
 import { CustomerTable } from '../components/CustomerTable';
 import { CustomerFormModal } from '../components/modals/CustomerFormModal';
 import { DeleteConfirmationModal } from '../components/modals/DeleteConfirmationModal';
+import { CustomerDueInvoicesModal } from '../components/modals/CustomerDueInvoicesModal';
+import { sendWhatsAppDueReminder } from '../lib/whatsappReminder';
 
 // ── Server response type ──
 interface PaginatedResponse<T> {
@@ -50,6 +52,8 @@ export const Customers: React.FC = () => {
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+// 🌟 Customer Due Invoices Modal සඳහා State එක
+  const [dueModalCustomer, setDueModalCustomer] = useState<Customer | null>(null);
 
   // ── Fetch customers from API ──
   const fetchCustomers = useCallback(async (search?: string, page?: number, perPage?: number) => {
@@ -75,6 +79,15 @@ export const Customers: React.FC = () => {
   useEffect(() => {
     fetchCustomers(searchQuery || undefined, currentPage, pageSize);
   }, [fetchCustomers, currentPage, pageSize]);
+
+  // 🌟 Live Auto-Refresh Listener: ගෙවීමක් සිදුවූ සැණින් Customer පිටුව සජීවීව යාවත්කාලීන වීම
+  useEffect(() => {
+    const handleLiveBalanceSync = () => {
+      fetchCustomers(searchQuery || undefined, currentPage, pageSize);
+    };
+    window.addEventListener('balance-updated', handleLiveBalanceSync);
+    return () => window.removeEventListener('balance-updated', handleLiveBalanceSync);
+  }, [fetchCustomers, searchQuery, currentPage, pageSize]);
 
   // Reset page on search change
   const handleSearchChange = useCallback((q: string) => {
@@ -248,6 +261,8 @@ export const Customers: React.FC = () => {
         onSearchChange={handleSearchChange}
         onEdit={handleEditCustomer}
         onDelete={handleDeleteClick}
+        onDuePay={(c) => setDueModalCustomer(c)}
+        onSendReminder={(c) => sendWhatsAppDueReminder(c.phone, c.name, c.loanBalance)}
         onRefresh={handleRefresh}
         hasFilters={hasFilters}
         onClearFilters={clearFilters}
@@ -257,6 +272,31 @@ export const Customers: React.FC = () => {
         onPageChange={handlePageChange}
         pageSize={pageSize}
         onPageSizeChange={handlePageSizeChange}
+      />
+
+      {/* ── Modals ── */}
+      <CustomerFormModal
+        isOpen={showFormModal}
+        customer={selectedCustomer || undefined}
+        onClose={() => { setShowFormModal(false); setSelectedCustomer(null); }}
+        onSave={handleSaveCustomer}
+      />
+
+      <DeleteConfirmationModal
+        isOpen={showDeleteModal}
+        title={t('customers.deleteCustomer')}
+        message={t('customers.deleteConfirmation')}
+        itemName={displayDeleteName}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setShowDeleteModal(false)}
+      />
+
+      {/* 🌟 Customer Due Invoices Settlement Modal */}
+      <CustomerDueInvoicesModal
+        isOpen={!!dueModalCustomer}
+        customer={dueModalCustomer}
+        onClose={() => setDueModalCustomer(null)}
+        onSuccess={() => handleRefresh()}
       />
 
       {/* ── Modals ── */}

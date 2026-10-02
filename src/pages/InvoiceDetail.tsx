@@ -115,16 +115,18 @@ export const InvoiceDetail: React.FC<InvoiceDetailProps> = ({ invoices, customer
               <p className={`mb-1 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
                 {t('invoices.issueDate')}
               </p>
-              <p className={`font-semibold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                {new Date(invoice.issueDate).toLocaleDateString()}
+              {/* 🌟 YYYY-MM-DD Issue Date */}
+              <p className={`font-semibold font-mono ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+                {invoice.issueDate ? new Date(invoice.issueDate).toISOString().split('T')[0] : '—'}
               </p>
             </div>
             <div>
               <p className={`mb-1 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
                 {t('invoices.dueDate')}
               </p>
-              <p className={`font-semibold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                {new Date(invoice.dueDate).toLocaleDateString()}
+              {/* 🌟 YYYY-MM-DD Due Date */}
+              <p className={`font-semibold font-mono ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
+                {invoice.dueDate ? new Date(invoice.dueDate).toISOString().split('T')[0] : '—'}
               </p>
             </div>
             <div>

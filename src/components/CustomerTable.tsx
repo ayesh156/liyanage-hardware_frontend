@@ -10,6 +10,14 @@ import {
 import { toast } from 'react-toastify';
 import api from '../lib/api';
 import { Customer, CustomerType } from '../types';
+import { MoreVertical } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from './ui/dropdown-menu';
 
 const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100];
 
@@ -40,6 +48,9 @@ interface CustomerTableProps {
   onSearchChange: (q: string) => void;
   onEdit: (customer: Customer) => void;
   onDelete: (customer: Customer) => void;
+  // 🌟 නව Due Pay සහ WhatsApp Reminder Actions සඳහා Props
+  onDuePay?: (customer: Customer) => void;
+  onSendReminder?: (customer: Customer) => void;
   onRefresh: () => void;
   hasFilters: boolean;
   onClearFilters: () => void;
@@ -58,6 +69,9 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
   onSearchChange,
   onEdit,
   onDelete,
+  // 🌟 Props destructure කරගැනීම
+  onDuePay,
+  onSendReminder,
   onRefresh,
   hasFilters,
   onClearFilters,
@@ -258,24 +272,74 @@ export const CustomerTable: React.FC<CustomerTableProps> = ({
                             </div>
                           </td>
 
-                          {/* ACTIONS */}
+                          {/* 🌟 Customer Actions Dropdown Menu */}
                           <td className="px-3 py-2.5 text-center">
-                            <div className="flex items-center justify-center gap-0.5">
-                              <button
-                                onClick={() => onEdit(customer)}
-                                className={`p-1.5 rounded-lg transition-all hover:scale-110 active:scale-90 ${isDark ? 'text-slate-400 hover:text-orange-400 hover:bg-orange-500/15' : 'text-slate-500 hover:text-orange-600 hover:bg-orange-50'}`}
-                                title="Edit customer"
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <button
+                                  type="button"
+                                  className={`p-1.5 rounded-lg transition-all active:scale-90 outline-none ${
+                                    isDark
+                                      ? 'text-slate-400 hover:text-white hover:bg-slate-800 data-[state=open]:bg-amber-500/20 data-[state=open]:text-amber-400'
+                                      : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 data-[state=open]:bg-amber-100 data-[state=open]:text-amber-700'
+                                  }`}
+                                  title="Actions"
+                                >
+                                  <MoreVertical className="w-4 h-4" />
+                                </button>
+                              </DropdownMenuTrigger>
+
+                              <DropdownMenuContent
+                                align="end"
+                                className={`w-48 rounded-xl border shadow-2xl backdrop-blur-xl p-1 text-left ${
+                                  isDark
+                                    ? 'bg-slate-900/98 border-slate-700/80 text-slate-200'
+                                    : 'bg-white/98 border-slate-200 text-slate-700'
+                                }`}
                               >
-                                <Edit3 className="w-3.5 h-3.5" />
-                              </button>
-                              <button
-                                onClick={() => onDelete(customer)}
-                                className={`p-1.5 rounded-lg transition-all hover:scale-110 active:scale-90 ${isDark ? 'text-slate-400 hover:text-rose-500 hover:bg-rose-500/15' : 'text-slate-500 hover:text-rose-600 hover:bg-rose-50'}`}
-                                title="Delete customer"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
+                                {/* 🌟 1. Due Pay Action (හිඟ ණය පවතී නම් පමණක් පෙන්වයි) */}
+                                {customer.loanBalance > 0 && (
+                                  <DropdownMenuItem
+                                    onClick={() => onDuePay?.(customer)}
+                                    className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg text-emerald-400 hover:text-emerald-300 focus:bg-emerald-500/10"
+                                  >
+                                    <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span>{t('common.actionsList.payDue')}</span>
+                                  </DropdownMenuItem>
+                                )}
+
+                                {/* 🌟 2. WhatsApp Reminder Action (දුරකථන අංකය සහ ණය පවතී නම් පමණි) */}
+                                {customer.loanBalance > 0 && customer.phone && (
+                                  <DropdownMenuItem
+                                    onClick={() => onSendReminder?.(customer)}
+                                    className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg text-cyan-400 hover:text-cyan-300 focus:bg-cyan-500/10"
+                                  >
+                                    <Phone className="w-3.5 h-3.5 text-cyan-400" />
+                                    <span>{t('common.actionsList.reminder') || 'WhatsApp Reminder'}</span>
+                                  </DropdownMenuItem>
+                                )}
+
+                                {/* Edit Action */}
+                                <DropdownMenuItem
+                                  onClick={() => onEdit(customer)}
+                                  className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg hover:text-orange-400 focus:text-orange-400 focus:bg-orange-500/10"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5 text-orange-400" />
+                                  <span>{t('common.actionsList.edit')}</span>
+                                </DropdownMenuItem>
+
+                                <DropdownMenuSeparator className={isDark ? 'bg-slate-800' : 'bg-slate-100'} />
+
+                                {/* Delete Action */}
+                                <DropdownMenuItem
+                                  onClick={() => onDelete(customer)}
+                                  className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg text-rose-500 hover:text-rose-400 focus:text-rose-400 focus:bg-rose-500/10"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                  <span>{t('common.actionsList.delete')}</span>
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </td>
                         </tr>
                       );

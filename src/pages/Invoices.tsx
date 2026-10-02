@@ -9,7 +9,22 @@ import {
   Clock, CheckCircle, AlertTriangle, XCircle, Filter, RefreshCw,
   TrendingUp, ChevronLeft, ChevronRight,
   ChevronsLeft, ChevronsRight, ChevronDown, X,
+  // 🌟 Action Menu සහ Responsive Filters සඳහා අයිකන
+  MoreVertical, CreditCard, Calendar as CalendarIcon, SlidersHorizontal,
 } from 'lucide-react';
+import { PayDueBalanceModal } from '../components/modals/PayDueBalanceModal';
+
+// 🌟 Date Range Filtering සඳහා අවශ්‍ය සංරචක
+import { Calendar } from '../components/ui/calendar';
+import { DateRange } from 'react-day-picker';
+import { format } from 'date-fns';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '../components/ui/dropdown-menu';
 import SortButton from '../components/ui/SortButton';
 import { Invoice } from '../types/index';
 import { DeleteConfirmationModal } from '../components/modals/DeleteConfirmationModal';
@@ -142,6 +157,32 @@ export const Invoices: React.FC = () => {
   const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null);
+  const [duePayInvoice, setDuePayInvoice] = useState<Invoice | null>(null);
+
+  // 🌟 LBD Date Filtering States
+  const [dateFilterType, setDateFilterType] = useState<'all' | 'today' | 'yesterday' | 'month' | 'custom'>('all');
+  const [selectedMonth, setSelectedMonth] = useState<string>('');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+  const [isFilterExpanded, setIsFilterExpanded] = useState<boolean>(false);
+  const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
+
+  // Custom Date Range තෝරාගත් විට start & end dates සමමුහුර්ත කිරීම
+  const handleDateRangeSelect = (range: DateRange | undefined) => {
+    setDateRange(range);
+    if (range?.from) {
+      setStartDate(format(range.from, 'yyyy-MM-dd'));
+      setDateFilterType('custom');
+    } else {
+      setStartDate('');
+    }
+    if (range?.to) {
+      setEndDate(format(range.to, 'yyyy-MM-dd'));
+    } else {
+      setEndDate('');
+    }
+  };
 
   // ── Fetch invoices from live backend API ──
   const fetchInvoicesHistory = useCallback(async () => {
@@ -163,20 +204,48 @@ export const Invoices: React.FC = () => {
     fetchInvoicesHistory();
   }, [fetchInvoicesHistory]);
 
+  // 🌟 Live Auto-Refresh Listener: වෙනත් තැනකදී balance එකක් update වූ විට ඉන්වොයිස් පිටුවද live sync වීම
+  useEffect(() => {
+    const handleLiveInvoiceSync = () => {
+      fetchInvoicesHistory();
+    };
+    window.addEventListener('balance-updated', handleLiveInvoiceSync);
+    return () => window.removeEventListener('balance-updated', handleLiveInvoiceSync);
+  }, [fetchInvoicesHistory]);
+
+  // 🌟 Date සහ Text සෙවුම් අනුව ඉන්වොයිස් පෙරහන් කිරීම
   const filteredInvoices = useMemo(() => {
-    const filtered = invoices.filter((invoice) => {
+    return invoices.filter((invoice) => {
       const matchesSearch =
         invoice.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (invoice.customerName || '').toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === 'all' || invoice.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    });
-    return filtered.sort((a, b) => {
+
+      let matchesDate = true;
+      const invDate = formatDateISO(invoice.issueDate);
+
+      if (dateFilterType === 'today') {
+        const todayStr = new Date().toISOString().split('T')[0];
+        matchesDate = invDate === todayStr;
+      } else if (dateFilterType === 'yesterday') {
+        const d = new Date();
+        d.setDate(d.getDate() - 1);
+        const yestStr = d.toISOString().split('T')[0];
+        matchesDate = invDate === yestStr;
+      } else if (dateFilterType === 'month' && selectedMonth) {
+        matchesDate = invDate.startsWith(selectedMonth);
+      } else if (dateFilterType === 'custom') {
+        if (startDate && invDate < startDate) matchesDate = false;
+        if (endDate && invDate > endDate) matchesDate = false;
+      }
+
+      return matchesSearch && matchesStatus && matchesDate;
+    }).sort((a, b) => {
       const dateA = new Date(a.issueDate).getTime();
       const dateB = new Date(b.issueDate).getTime();
       return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
     });
-  }, [invoices, searchQuery, statusFilter, sortOrder]);
+  }, [invoices, searchQuery, statusFilter, dateFilterType, selectedMonth, startDate, endDate, sortOrder]);
 
   const totalPages = Math.ceil(filteredInvoices.length / rowsPerPage);
   const paginatedInvoices = useMemo(() => {
@@ -184,7 +253,7 @@ export const Invoices: React.FC = () => {
     return filteredInvoices.slice(start, start + rowsPerPage);
   }, [filteredInvoices, currentPage, rowsPerPage]);
 
-  useEffect(() => { setCurrentPage(1); }, [searchQuery, statusFilter, rowsPerPage]);
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, statusFilter, dateFilterType, rowsPerPage]);
 
   const stats = useMemo(() => {
     const total = invoices.length;
@@ -194,8 +263,17 @@ export const Invoices: React.FC = () => {
     return { total, totalRevenue, pendingAmount, overdueAmount };
   }, [invoices]);
 
-  const clearFilters = () => { setSearchQuery(''); setStatusFilter('all'); };
-  const hasActiveFilters = searchQuery || statusFilter !== 'all';
+  // 🌟 සියලුම පෙරහන් මුලික තත්ත්වයට පත් කිරීම
+  const clearFilters = () => {
+    setSearchQuery('');
+    setStatusFilter('all');
+    setDateFilterType('all');
+    setSelectedMonth('');
+    setStartDate('');
+    setEndDate('');
+    setDateRange(undefined);
+  };
+  const hasActiveFilters = searchQuery || statusFilter !== 'all' || dateFilterType !== 'all';
   const startItem = (currentPage - 1) * rowsPerPage + 1;
   const endItem = Math.min(currentPage * rowsPerPage, filteredInvoices.length);
 
@@ -278,41 +356,182 @@ export const Invoices: React.FC = () => {
         })}
       </div>
 
-      {/* ── BALANCED HORIZONTAL TOOLBAR with permanently visible filters ── */}
-      <div className={`p-4 rounded-lg border ${isDark ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}>
-        <div className="flex items-center gap-4">
-          <div className="relative flex-1 max-w-xl">
+      {/* 🌟 Responsive Collapsible Filter Bar — Full-Width Search + Status Select On Right */}
+      <div className={`rounded-xl border transition-all duration-300 relative ${
+        isDark ? 'bg-slate-800/60 border-slate-700/60' : 'bg-white border-slate-200 shadow-sm'
+      }`}>
+        {/* Always Visible Primary Bar */}
+        <div className="p-3 flex items-center gap-3 w-full">
+          {/* Search Input — flex-1 මඟින් ඉතිරි සම්පූර්ණ ඉඩම ලබා ගනී */}
+          <div className="relative flex-1 min-w-[200px]">
             <Search className={`absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
-            <input type="text" placeholder={t('invoices.searchByInvoiceOrCustomer')} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-              className={`w-full pl-8 pr-9 py-2 text-xs border rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500/50 focus:border-orange-500/50 transition-all ${isDark ? 'bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-200'}`} />
-            {searchQuery.length > 0 && (
-              <button onClick={() => setSearchQuery('')}
-                className={`absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded transition-colors ${isDark ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-slate-400 hover:text-slate-700 hover:bg-slate-200'}`}>
+            <input
+              type="text"
+              placeholder={t('invoices.searchByInvoiceOrCustomer')}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className={`w-full pl-8 pr-8 py-1.5 text-xs border rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500/50 transition-all ${
+                isDark ? 'bg-slate-900/60 border-slate-700 text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-200 text-slate-900'
+              }`}
+            />
+            {searchQuery && (
+              <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white">
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
           </div>
-          <div className="relative min-w-[200px] w-56">
-            <SearchableSelect options={[
-              { value: 'all', label: t('invoices.allStatuses') },
-              { value: 'paid', label: t('invoices.paidLabel') },
-              { value: 'pending', label: t('invoices.pendingLabel') },
-              { value: 'overdue', label: t('invoices.overdueLabel') },
-              { value: 'cancelled', label: t('invoices.cancelledLabel') },
-            ]} value={statusFilter} onChange={(v) => setStatusFilter(v)} placeholder={t('invoices.searchStatus')} isDark={isDark} />
-            {statusFilter !== 'all' && (
-              <button onClick={() => setStatusFilter('all')}
-                className={`absolute -right-2 -top-2 z-10 w-4 h-4 rounded-full flex items-center justify-center transition-colors shadow-sm ${isDark ? 'bg-slate-700 text-slate-300 hover:bg-slate-600 border border-slate-600' : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-300'}`} title="Reset status filter">
-                <X className="w-2.5 h-2.5" />
-              </button>
-            )}
+
+          {/* Status Searchable Select — දකුණු පසට පෙළගැස්වීම (Desktop view) */}
+          <div className="hidden md:block w-48 flex-shrink-0">
+            <SearchableSelect
+              options={[
+                { value: 'all', label: t('invoices.allStatuses') },
+                { value: 'paid', label: t('invoices.paidLabel') },
+                { value: 'pending', label: t('invoices.pendingLabel') },
+                { value: 'overdue', label: t('invoices.overdueLabel') },
+                { value: 'cancelled', label: t('invoices.cancelledLabel') },
+              ]}
+              value={statusFilter}
+              onChange={(v) => setStatusFilter(v)}
+              isDark={isDark}
+            />
           </div>
-          <div className="flex items-center gap-2 ml-auto">
-            <SortButton currentSortOrder={sortOrder} onSortToggle={() => setSortOrder(s => s === 'asc' ? 'desc' : 'asc')} />
-            {hasActiveFilters && <button onClick={clearFilters} className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${isDark ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'}`}><RefreshCw className="w-3 h-3" /></button>}
-            <span className={`text-[10px] font-medium whitespace-nowrap ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{t('invoices.invoicesCount', { count: filteredInvoices.length })}</span>
+
+          {/* Filter Action Controls */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsFilterExpanded(!isFilterExpanded)}
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border transition-colors ${
+                hasActiveFilters || isFilterExpanded
+                  ? 'bg-orange-500/10 border-orange-500/30 text-orange-400'
+                  : isDark ? 'bg-slate-700/50 border-slate-600 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Filters</span>
+              {hasActiveFilters && <span className="w-1.5 h-1.5 rounded-full bg-orange-500"></span>}
+              <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${isFilterExpanded ? 'rotate-180' : ''}`} />
+            </button>
+
+            <button
+              type="button"
+              onClick={handleRefresh}
+              className={`p-2 rounded-lg border transition-colors ${
+                isDark ? 'bg-slate-700/50 border-slate-600 text-slate-300 hover:text-white hover:bg-slate-700' : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
+              }`}
+              title="Refresh"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            </button>
           </div>
         </div>
+
+        {/* Collapsible Expansion Drawer */}
+        {isFilterExpanded && (
+          <div className={`px-3 py-3 border-t space-y-3 ${isDark ? 'border-slate-700/40 bg-slate-900/40' : 'border-slate-100 bg-slate-50/50'}`}>
+            {/* Mobile-only Status Selector */}
+            <div className="block md:hidden">
+              <label className="text-[10px] font-semibold text-slate-400 mb-1 block">Status Filter</label>
+              <SearchableSelect
+                options={[
+                  { value: 'all', label: t('invoices.allStatuses') },
+                  { value: 'paid', label: t('invoices.paidLabel') },
+                  { value: 'pending', label: t('invoices.pendingLabel') },
+                  { value: 'overdue', label: t('invoices.overdueLabel') },
+                  { value: 'cancelled', label: t('invoices.cancelledLabel') },
+                ]}
+                value={statusFilter}
+                onChange={(v) => setStatusFilter(v)}
+                isDark={isDark}
+              />
+            </div>
+
+            {/* Date Selection Bar */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-semibold text-slate-400">Date Range:</span>
+
+              {/* Quick Date Presets */}
+              <div className="flex items-center gap-1 flex-wrap">
+                {(['all', 'today', 'yesterday', 'month'] as const).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => {
+                      setDateFilterType(type);
+                      if (type !== 'month') setSelectedMonth('');
+                    }}
+                    className={`px-2.5 py-1 rounded-md text-xs font-medium capitalize transition-all ${
+                      dateFilterType === type
+                        ? 'bg-orange-500 text-white shadow-sm'
+                        : isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom Date Range Floating Popover */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDateFilterType('custom');
+                    setShowDatePicker(!showDatePicker);
+                  }}
+                  className={`flex items-center gap-2 px-2.5 py-1 rounded-md text-xs border font-medium transition-all ${
+                    dateFilterType === 'custom'
+                      ? 'bg-orange-500 text-white border-orange-500'
+                      : isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-700'
+                  }`}
+                >
+                  <CalendarIcon className="w-3.5 h-3.5" />
+                  <span>
+                    {startDate && endDate ? `${startDate} ~ ${endDate}` : 'Custom Range'}
+                  </span>
+                </button>
+
+                {/* 🌟 Calendar Popover: මුල් Dark Theme පසුබිම සහිතව Transparent වීම වැළැක්වූ Modal Layout */}
+                {showDatePicker && (
+                  <>
+                    {/* Backdrop — පිටත ක්ලික් කළ විට වැසෙන පරිදි කළු පැහැ පසුබිම */}
+                    <div 
+                      className="fixed inset-0 z-40 bg-black/60 transition-opacity" 
+                      onClick={() => setShowDatePicker(false)} 
+                    />
+                    
+                    {/* Calendar Container — පද්ධතියේ මුල් තද Dark Slate Theme එක (100% Solid Background) */}
+                    <div className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-auto max-w-sm shadow-2xl rounded-2xl">
+                      <Calendar
+                        selected={dateRange}
+                        onSelect={handleDateRangeSelect}
+                        onClose={() => setShowDatePicker(false)}
+                        isDark={isDark}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Total Invoices Count & Reset Button */}
+              <div className="ml-auto flex items-center gap-2">
+                {hasActiveFilters && (
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="text-xs text-orange-400 hover:underline flex items-center gap-1"
+                  >
+                    <X className="w-3 h-3" /> Clear Filters
+                  </button>
+                )}
+                <span className="text-[11px] font-semibold text-slate-400 border-l pl-2 border-slate-700/40">
+                  {filteredInvoices.length} Invoices
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Unified Table — matches ProductTable compact style */}
@@ -357,8 +576,14 @@ export const Invoices: React.FC = () => {
                 return (
                   <tr key={invoice.id} className={`transition-colors ${isDark ? 'hover:bg-slate-700/25' : 'hover:bg-slate-50'}`}>
                     <td className="px-2 py-1.5">
-                      <button onClick={() => navigate(`/invoices/${invoice.id}`)}
-                        className={`text-[11px] font-mono font-semibold ${isDark ? 'text-indigo-400 hover:text-indigo-300' : 'text-indigo-600 hover:text-indigo-700'}`}>
+                      {/* 🌟 Invoice Number ක්ලික් කළ විට Quick Checkout Edit වෙත යොමු වීම */}
+                      <button 
+                        onClick={() => navigate(`/invoices/quick-checkout?edit=${invoice.id}`)}
+                        className={`text-[11px] font-mono font-bold hover:underline transition-all ${
+                          isDark ? 'text-indigo-400 hover:text-indigo-300' : 'text-indigo-600 hover:text-indigo-700'
+                        }`}
+                        title="Edit invoice in Quick Checkout"
+                      >
                         {invoice.invoiceNumber}
                       </button>
                     </td>
@@ -379,35 +604,106 @@ export const Invoices: React.FC = () => {
                         {computedDueDateStr}
                       </span>
                     </td>
+                    {/* 🌟 TOTAL & DUE BALANCE COMPACT DISPLAY */}
                     <td className="px-2 py-1.5 text-right">
-                      <span className={`text-[11px] font-mono font-bold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>{formatPrice(invoice.total)}</span>
+                      <div className="flex flex-col items-end justify-center">
+                        <span className={`text-[11px] font-mono font-bold leading-tight ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                          {formatPrice(invoice.total)}
+                        </span>
+                        {/* ගෙවීමට හිඟ මුදලක් ඇත්නම් පමණක් Due අගය පෙන්වීම */}
+                        {invoice.status !== 'paid' && (invoice.total - (invoice.receivedAmount || 0)) > 0 && (
+                          <span className="text-[9px] font-mono font-semibold text-amber-400/90 leading-tight mt-0.5">
+                            Due: {formatPrice(invoice.total - (invoice.receivedAmount || 0))}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-2 py-1.5 text-center">
                       <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-medium ${st.bg} ${st.text} ${st.border} border`}>
                         {st.icon}<span>{invoice.status}</span>
                       </span>
                     </td>
+                    {/* 🌟 Clean Shadcn Dropdown Action Menu */}
                     <td className="px-2 py-1.5 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <button onClick={() => setPreviewInvoice(invoice)}
-                          className={`p-1.5 rounded-lg transition-all hover:scale-110 active:scale-90 ${isDark ? 'text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/15' : 'text-slate-500 hover:text-indigo-600 hover:bg-indigo-50'}`} title="Preview">
-                          <Eye className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => handlePrintClick(invoice)}
-                          className={`p-1.5 rounded-lg transition-all hover:scale-110 active:scale-90 ${isDark ? 'text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/15' : 'text-slate-500 hover:text-cyan-600 hover:bg-cyan-50'}`} title="Print">
-                          <Printer className="w-3.5 h-3.5" />
-                        </button>
-                        <button onClick={() => navigate(`/invoices/quick-checkout?edit=${invoice.id}`)}
-                          className={`p-1.5 rounded-lg transition-all hover:scale-110 active:scale-90 ${isDark ? 'text-slate-400 hover:text-orange-400 hover:bg-orange-500/15' : 'text-slate-500 hover:text-orange-600 hover:bg-orange-50'}`} title="Edit">
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        {currentUser?.role === 'ADMIN' && (
-                          <button onClick={() => { setInvoiceToDelete(invoice); setShowDeleteModal(true); }}
-                            className={`p-1.5 rounded-lg transition-all hover:scale-110 active:scale-90 ${isDark ? 'text-slate-400 hover:text-rose-500 hover:bg-rose-500/15' : 'text-slate-500 hover:text-rose-600 hover:bg-rose-50'}`} title="Delete">
-                            <Trash2 className="w-3.5 h-3.5" />
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className={`p-1.5 rounded-lg transition-all active:scale-90 outline-none ${
+                              isDark
+                                ? 'text-slate-400 hover:text-white hover:bg-slate-800 data-[state=open]:bg-amber-500/20 data-[state=open]:text-amber-400'
+                                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 data-[state=open]:bg-amber-100 data-[state=open]:text-amber-700'
+                            }`}
+                            title="Actions"
+                          >
+                            <MoreVertical className="w-4 h-4" />
                           </button>
-                        )}
-                      </div>
+                        </DropdownMenuTrigger>
+
+                        <DropdownMenuContent
+                          align="end"
+                          className={`w-44 rounded-xl border shadow-2xl backdrop-blur-xl p-1 text-left ${
+                            isDark
+                              ? 'bg-slate-900/98 border-slate-700/80 text-slate-200'
+                              : 'bg-white/98 border-slate-200 text-slate-700'
+                          }`}
+                        >
+                          {/* Preview Action */}
+                          <DropdownMenuItem
+                            onClick={() => setPreviewInvoice(invoice)}
+                            className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg hover:text-indigo-400 focus:text-indigo-400 focus:bg-indigo-500/10"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-indigo-400" />
+                            <span>{t('common.actionsList.view')}</span>
+                          </DropdownMenuItem>
+
+                          {/* Print Action */}
+                          <DropdownMenuItem
+                            onClick={() => handlePrintClick(invoice)}
+                            className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg hover:text-cyan-400 focus:text-cyan-400 focus:bg-cyan-500/10"
+                          >
+                            <Printer className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>{t('common.actionsList.print')}</span>
+                          </DropdownMenuItem>
+
+                          {/* Edit Action */}
+                          <DropdownMenuItem
+                            onClick={() => navigate(`/invoices/quick-checkout?edit=${invoice.id}`)}
+                            className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg hover:text-orange-400 focus:text-orange-400 focus:bg-orange-500/10"
+                          >
+                            <Edit2 className="w-3.5 h-3.5 text-orange-400" />
+                            <span>{t('common.actionsList.edit')}</span>
+                          </DropdownMenuItem>
+
+                          {/* 💳 Due Balance Payment: Open in-place Modal without redirect */}
+                          {invoice.status === 'pending' && (
+                            <DropdownMenuItem
+                              onClick={() => setDuePayInvoice(invoice)}
+                              className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg hover:text-emerald-400 focus:text-emerald-400 focus:bg-emerald-500/10"
+                            >
+                              <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>{t('common.actionsList.payDue')}</span>
+                            </DropdownMenuItem>
+                          )}
+
+                          {/* Delete Action (Admin Only) */}
+                          {currentUser?.role === 'ADMIN' && (
+                            <>
+                              <DropdownMenuSeparator className={isDark ? 'bg-slate-800' : 'bg-slate-100'} />
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setInvoiceToDelete(invoice);
+                                  setShowDeleteModal(true);
+                                }}
+                                className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg text-rose-500 hover:text-rose-400 focus:text-rose-400 focus:bg-rose-500/10"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                <span>{t('common.actionsList.delete')}</span>
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </td>
                   </tr>
                 );
@@ -467,6 +763,16 @@ export const Invoices: React.FC = () => {
         itemName={invoiceToDelete?.invoiceNumber}
         onConfirm={handleConfirmDelete}
         onCancel={() => setShowDeleteModal(false)}
+      />
+
+      {/* 🌟 In-Place Pay Due Balance Modal */}
+      <PayDueBalanceModal
+        isOpen={!!duePayInvoice}
+        invoice={duePayInvoice}
+        onClose={() => setDuePayInvoice(null)}
+        onSuccess={() => {
+          fetchInvoicesHistory();
+        }}
       />
 
       {/* Invoice Preview Modal */}

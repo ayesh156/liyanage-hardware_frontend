@@ -405,7 +405,10 @@ const generate80mmReceiptContent = (invoice: Invoice, customer?: Customer | null
             </div>
             <div style="text-align: right;">
               <div style="font-size: 10px; font-weight: 700; color: #000000;">දිනය</div>
-              <div style="font-size: 11px; font-weight: 800; color: #000000;">${new Date(invoice.issueDate).toLocaleDateString('si-LK', { day: '2-digit', month: 'short', year: '2-digit' })}</div>
+              {/* 🌟 YYYY-MM-DD Date Format */}
+              <div style="font-size: 11px; font-weight: 800; font-family: 'Courier New', monospace; color: #000000;">
+                ${invoice.issueDate ? new Date(invoice.issueDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}
+              </div>
             </div>
           </div>
 

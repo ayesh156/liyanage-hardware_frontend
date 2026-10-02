@@ -20,6 +20,15 @@ import ProductNameTooltip from './ProductNameTooltip';
 import { formatShortProductId } from '../lib/utils';
 // 🔐 Secret Cost Cipher helper import කිරීම
 import { encodeCostToSecretCode } from '../lib/secretCostCode';
+// 🌟 Actions Dropdown Menu සඳහා අයිකන සහ Components
+import { MoreVertical } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from './ui/dropdown-menu';
 
 function deriveStatus(storeQty: number): InventoryProduct['status'] {
   if (storeQty === 0) return 'Out of Stock';
@@ -754,15 +763,19 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
             <thead className={isDark ? 'bg-slate-800/80' : 'bg-slate-50'}>
               <tr>
                 {columns.map((col, i) => {
-                  const widthClass = col.key === 'no' ? 'w-[80px] min-w-[80px] max-w-[90px]' : 
-                                     col.key === 'searchKey' ? 'min-w-[140px]' : 
-                                     col.key === 'name' ? 'w-[220px] min-w-[200px] max-w-[240px]' : 
-                                     col.key === 'productCategory' ? 'min-w-[140px]' :
-                                     col.key === 'barcode' ? 'min-w-[120px] whitespace-nowrap' :
-                                     col.label === 'Status' ? 'min-w-[100px] whitespace-nowrap' : '';
+                  // 🌟 Category සහ Barcode ඉඩ අඩු කර, මිල තීරු (Price columns) සඳහා වැඩි ඉඩක් ලබාදීම
+                  const isPriceCol = col.key === 'cost' || col.key === 'lastPrice' || col.key === 'salesPrice' || col.key === 'displayPrice';
+                  const widthClass = col.key === 'no' ? 'w-[65px] min-w-[65px] max-w-[70px]' : 
+                                     col.key === 'searchKey' ? 'min-w-[120px]' : 
+                                     col.key === 'name' ? 'w-[200px] min-w-[180px] max-w-[220px]' : 
+                                     col.key === 'productCategory' ? 'w-[110px] min-w-[100px] max-w-[120px]' :
+                                     col.key === 'barcode' ? 'w-[90px] min-w-[80px] max-w-[100px] whitespace-nowrap' :
+                                     isPriceCol ? 'min-w-[115px] px-3' :
+                                     col.label === 'Status' ? 'w-[95px] min-w-[90px] whitespace-nowrap' :
+                                     col.label === 'Actions' ? 'w-[50px] min-w-[50px]' : '';
                   return (
                   <th key={i}
-                    className={`px-2 py-2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${widthClass} ${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'} ${isDark ? 'text-slate-400' : 'text-slate-500'} ${col.key ? 'cursor-pointer select-none hover:text-orange-400 transition-colors' : ''}`}
+                    className={`py-2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${isPriceCol ? 'px-3.5' : 'px-1.5'} ${widthClass} ${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'} ${isDark ? 'text-slate-400' : 'text-slate-500'} ${col.key ? 'cursor-pointer select-none hover:text-orange-400 transition-colors' : ''}`}
                     onClick={() => col.key && handleSort(col.key as keyof InventoryProduct)}>
                     <div className={`flex items-center gap-1 ${col.key === 'no' ? 'justify-center' : col.align === 'right' ? 'justify-end' : col.align === 'center' ? 'justify-center' : ''}`}>
                       {(() => {
@@ -794,6 +807,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                 const st = statusConfig[item.status] || statusConfig['Out of Stock'];
                 return (
                   <tr key={item.id} className={`transition-colors ${isDark ? 'hover:bg-slate-700/25' : 'hover:bg-slate-50'}`}>
+                    {/* 🌟 NO: Hover Pencil Icon එක් කිරීම */}
                     {(() => {
                       const field = 'no';
                       const isEditing = inlineEdit?.itemId === item.id && inlineEdit?.field === field;
@@ -803,12 +817,16 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                           {isEditing ? (
                             <InlineTextInput value={item.no || ''} isDark={isDark} onSave={(val) => handleInlineSave(item.id, field, val)} onCancel={() => setInlineEdit(null)} />
                           ) : (
-                            <span className={`text-[11px] font-mono font-semibold text-center whitespace-nowrap ${isDark ? 'text-amber-400' : 'text-amber-600'} hover:text-orange-400 transition-colors`}>{displayNo}</span>
+                            <>
+                              <span className={`text-[11px] font-mono font-semibold text-center whitespace-nowrap ${isDark ? 'text-amber-400' : 'text-amber-600'} hover:text-orange-400 transition-colors`}>{displayNo}</span>
+                              <span className={`absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity ${isDark ? 'text-slate-500' : 'text-slate-400'}`}><Pencil className="w-2.5 h-2.5" /></span>
+                            </>
                           )}
                         </td>
                       );
                     })()}
 
+                    {/* 🌟 SEARCH KEY: Hover Pencil Icon එක් කිරීම */}
                     {(() => {
                       const field = 'searchKey';
                       const isEditing = inlineEdit?.itemId === item.id && inlineEdit?.field === field;
@@ -817,12 +835,16 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                           {isEditing ? (
                             <InlineTextInput value={item.searchKey} isDark={isDark} onSave={(val) => handleInlineSave(item.id, field, val)} onCancel={() => setInlineEdit(null)} />
                           ) : (
-                            <span className={`text-[11px] font-mono font-semibold ${isDark ? 'text-indigo-400' : 'text-indigo-600'} hover:text-orange-400 transition-colors`}>{item.searchKey}</span>
+                            <>
+                              <span className={`text-[11px] font-mono font-semibold ${isDark ? 'text-indigo-400' : 'text-indigo-600'} hover:text-orange-400 transition-colors`}>{item.searchKey}</span>
+                              <span className={`absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity ${isDark ? 'text-slate-500' : 'text-slate-400'}`}><Pencil className="w-2.5 h-2.5" /></span>
+                            </>
                           )}
                         </td>
                       );
                     })()}
 
+                    {/* 🌟 PRODUCT NAME: Hover Pencil Icon එක් කිරීම */}
                     {(() => {
                       const field = 'name';
                       const isEditing = inlineEdit?.itemId === item.id && inlineEdit?.field === field;
@@ -838,6 +860,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                                   <Package className={`w-2.5 h-2.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
                                 </div>
                                 <span className={`block text-[11px] font-medium leading-tight truncate ${isDark ? 'text-white' : 'text-slate-900'} hover:text-orange-400 transition-colors`}>{displayName}</span>
+                                <span className={`ml-auto opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}><Pencil className="w-2.5 h-2.5" /></span>
                               </div>
                             </ProductNameTooltip>
                           )}
@@ -845,12 +868,13 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                       );
                     })()}
 
+                    {/* 🌟 PRODUCT CATEGORY: දෙපස ඉඩ සහ පළල අඩු කිරීම (px-1.5, max-w-[120px]) */}
                     {(() => {
                       const field = 'productCategory';
                       const isEditing = inlineEdit?.itemId === item.id && inlineEdit?.field === field;
                       const categoryLabel = resolveCategoryLabel(item);
                       return (
-                        <td className="px-2 py-1.5 relative group cursor-pointer min-w-[140px]" onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
+                        <td className="px-1.5 py-1.5 relative group cursor-pointer w-[110px] min-w-[100px] max-w-[120px]" onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
                           {isEditing ? (
                             <InlineCategorySelect
                               value={item.productCategory}
@@ -860,31 +884,38 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                               onCancel={() => setInlineEdit(null)}
                             />
                           ) : (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20 hover:bg-purple-500/20 transition-colors cursor-pointer">{categoryLabel}</span>
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-purple-500/10 text-purple-400 border border-purple-500/20 hover:bg-purple-500/20 transition-colors cursor-pointer truncate">{categoryLabel}</span>
+                              <span className={`opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}><Pencil className="w-2.5 h-2.5" /></span>
+                            </div>
                           )}
                         </td>
                       );
                     })()}
 
-                    {/* Barcode cell — floating popover with orange border */}
+                    {/* 🌟 BARCODE: දෙපස ඉඩ සහ පළල අඩු කිරීම (px-1.5, w-[90px]) */}
                     {(() => {
                       const field = 'barcode';
                       const isBarcodeActive = activeBarcodeEditId === item.id;
                       return (
                         <td
-                          className={`px-2 py-1.5 relative group cursor-pointer transition-all min-w-[120px] whitespace-nowrap ${isBarcodeActive
+                          className={`px-1.5 py-1.5 relative group cursor-pointer transition-all w-[90px] min-w-[80px] max-w-[100px] whitespace-nowrap ${isBarcodeActive
                               ? 'ring-2 ring-orange-500 ring-inset rounded-sm'
                               : ''
                             }`}
                           onClick={(e) => !isBarcodeActive && openCellEdit(item.id, field, e)}
                         >
-                          <span className={`text-[10px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'} hover:text-orange-400 transition-colors`}>
-                            {item.barcode || '—'}
-                          </span>
+                          <div className="flex items-center justify-between gap-1">
+                            <span className={`text-[10px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-500'} hover:text-orange-400 transition-colors truncate`}>
+                              {item.barcode || '—'}
+                            </span>
+                            <span className={`opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}><Pencil className="w-2.5 h-2.5" /></span>
+                          </div>
                         </td>
                       );
                     })()}
 
+                    {/* 🌟 PRICE COLUMNS: දෙපස පරතරය වැඩි කිරීම (px-3.5, min-w-[115px]) */}
                     {(['cost', 'lastPrice', 'salesPrice', 'displayPrice'] as const).map((field) => {
                       const isEditing = inlineEdit?.itemId === item.id && inlineEdit?.field === field;
                       
@@ -900,7 +931,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                       };
 
                       return (
-                        <td key={field} className={`px-2 py-1.5 text-right relative group cursor-pointer`} onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
+                        <td key={field} className={`px-3.5 py-1.5 text-right relative group cursor-pointer min-w-[115px]`} onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
                           {isEditing ? (
                             <InlineNumberInput value={item[field] as number} isDark={isDark} onSave={(val) => handleInlineSave(item.id, field, val)} onCancel={() => setInlineEdit(null)} />
                           ) : (
@@ -947,19 +978,55 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
                       </span>
                     </td>
 
+                    {/* 🌟 Products Action Dropdown Menu */}
                     <td className="px-2 py-1.5 text-center">
-                      <div className="flex items-center justify-center gap-1">
-                        <button onClick={() => openRowEdit(item)}
-                          className={`p-1.5 rounded-lg transition-all hover:scale-110 active:scale-90 ${isDark ? 'text-slate-400 hover:text-orange-400 hover:bg-orange-500/15' : 'text-slate-500 hover:text-orange-600 hover:bg-orange-50'}`} title="Edit full row">
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                        {currentUser?.role === 'ADMIN' && (
-                          <button onClick={() => setDeleteTarget(item)}
-                          className={`p-1.5 rounded-lg transition-all hover:scale-110 active:scale-90 ${isDark ? 'text-slate-400 hover:text-rose-500 hover:bg-rose-500/15' : 'text-slate-500 hover:text-rose-600 hover:bg-rose-50'}`} title="Delete item">
-                            <Trash2 className="w-3.5 h-3.5" />
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className={`p-1.5 rounded-lg transition-all active:scale-90 outline-none ${
+                              isDark
+                                ? 'text-slate-400 hover:text-white hover:bg-slate-800 data-[state=open]:bg-amber-500/20 data-[state=open]:text-amber-400'
+                                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 data-[state=open]:bg-amber-100 data-[state=open]:text-amber-700'
+                            }`}
+                            title="Actions"
+                          >
+                            <MoreVertical className="w-4 h-4" />
                           </button>
-                        )}
-                      </div>
+                        </DropdownMenuTrigger>
+
+                        <DropdownMenuContent
+                          align="end"
+                          className={`w-44 rounded-xl border shadow-2xl backdrop-blur-xl p-1 text-left ${
+                            isDark
+                              ? 'bg-slate-900/98 border-slate-700/80 text-slate-200'
+                              : 'bg-white/98 border-slate-200 text-slate-700'
+                          }`}
+                        >
+                          {/* Edit Action */}
+                          <DropdownMenuItem
+                            onClick={() => openRowEdit(item)}
+                            className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg hover:text-orange-400 focus:text-orange-400 focus:bg-orange-500/10"
+                          >
+                            <Edit3 className="w-3.5 h-3.5 text-orange-400" />
+                            <span>{t('common.actionsList.edit')}</span>
+                          </DropdownMenuItem>
+
+                          {/* Delete Action (Admin Only) */}
+                          {currentUser?.role === 'ADMIN' && (
+                            <>
+                              <DropdownMenuSeparator className={isDark ? 'bg-slate-800' : 'bg-slate-100'} />
+                              <DropdownMenuItem
+                                onClick={() => setDeleteTarget(item)}
+                                className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg text-rose-500 hover:text-rose-400 focus:text-rose-400 focus:bg-rose-500/10"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                <span>{t('common.actionsList.delete')}</span>
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </td>
                   </tr>
                 );

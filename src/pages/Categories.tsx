@@ -17,6 +17,14 @@ import {
   ChevronsLeft, ChevronsRight, GripVertical
 } from 'lucide-react';
 import SortButton from '../components/ui/SortButton';
+import { MoreVertical } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '../components/ui/dropdown-menu';
 
 const ROWS_PER_PAGE_OPTIONS = [10, 25, 50, 100];
 const HARDWARE_CATEGORY_NAME = 'HARDWARE';
@@ -408,24 +416,55 @@ export const Categories: React.FC = () => {
                       </button>
                     </td>
 
-                    {/* Actions */}
+                    {/* 🌟 Categories Action Dropdown Menu */}
                     <td className="px-2 py-1.5 text-center">
-                      <div className="flex items-center justify-center gap-0.5">
-                        <button onClick={() => handleEditCategory(category)}
-                          className={`p-1.5 rounded-lg transition-all hover:scale-110 active:scale-90 ${
-                            isDark ? 'text-slate-400 hover:text-orange-400 hover:bg-orange-500/15' : 'text-slate-500 hover:text-orange-600 hover:bg-orange-50'
-                          }`} title="Edit">
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        {currentUser?.role === 'ADMIN' && (
-                          <button onClick={() => handleDeleteCategory(category)}
-                            className={`p-1.5 rounded-lg transition-all hover:scale-110 active:scale-90 ${
-                              isDark ? 'text-slate-400 hover:text-rose-500 hover:bg-rose-500/15' : 'text-slate-500 hover:text-rose-600 hover:bg-rose-50'
-                            }`} title="Delete">
-                            <Trash2 className="w-3.5 h-3.5" />
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button
+                            type="button"
+                            className={`p-1.5 rounded-lg transition-all active:scale-90 outline-none ${
+                              isDark
+                                ? 'text-slate-400 hover:text-white hover:bg-slate-800 data-[state=open]:bg-amber-500/20 data-[state=open]:text-amber-400'
+                                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 data-[state=open]:bg-amber-100 data-[state=open]:text-amber-700'
+                            }`}
+                            title="Actions"
+                          >
+                            <MoreVertical className="w-4 h-4" />
                           </button>
-                        )}
-                      </div>
+                        </DropdownMenuTrigger>
+
+                        <DropdownMenuContent
+                          align="end"
+                          className={`w-44 rounded-xl border shadow-2xl backdrop-blur-xl p-1 text-left ${
+                            isDark
+                              ? 'bg-slate-900/98 border-slate-700/80 text-slate-200'
+                              : 'bg-white/98 border-slate-200 text-slate-700'
+                          }`}
+                        >
+                          {/* Edit Action */}
+                          <DropdownMenuItem
+                            onClick={() => handleEditCategory(category)}
+                            className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg hover:text-orange-400 focus:text-orange-400 focus:bg-orange-500/10"
+                          >
+                            <Edit2 className="w-3.5 h-3.5 text-orange-400" />
+                            <span>{t('common.actionsList.edit')}</span>
+                          </DropdownMenuItem>
+
+                          {/* Delete Action (Admin Only) */}
+                          {currentUser?.role === 'ADMIN' && (
+                            <>
+                              <DropdownMenuSeparator className={isDark ? 'bg-slate-800' : 'bg-slate-100'} />
+                              <DropdownMenuItem
+                                onClick={() => handleDeleteCategory(category)}
+                                className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg text-rose-500 hover:text-rose-400 focus:text-rose-400 focus:bg-rose-500/10"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                <span>{t('common.actionsList.delete')}</span>
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </td>
                   </tr>
                 ))

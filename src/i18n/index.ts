@@ -95,6 +95,15 @@ export const translations = {
       apply: 'Apply',
       more: 'More',
       less: 'Less',
+      // 🌟 Actions Dropdown Menu Labels (English Primary)
+      actionsList: {
+        view: 'View (පෙරදසුන)',
+        print: 'Print (මුද්‍රණය)',
+        edit: 'Edit (සංස්කරණය)',
+        delete: 'Delete (මකා දමන්න)',
+        payDue: 'Pay Due (ණය පියවීම)',
+        reminder: 'Reminder (සිහිකැඳවීම)',
+      },
     },
     // Table Headers
     tableHeaders: {
@@ -1287,6 +1296,15 @@ newCustomer: 'New Customer',
       apply: 'යොදන්න',
       more: 'තව',
       less: 'අඩු',
+      // 🌟 Actions Dropdown Menu Labels (Sinhala Primary)
+      actionsList: {
+        view: 'පෙරදසුන (View)',
+        print: 'මුද්‍රණය (Print)',
+        edit: 'සංස්කරණය (Edit)',
+        delete: 'මකා දමන්න (Delete)',
+        payDue: 'ණය පියවීම (Pay Due)',
+        reminder: 'සිහිකැඳවීම (Reminder)',
+      },
     },
     // Table Headers
     tableHeaders: {

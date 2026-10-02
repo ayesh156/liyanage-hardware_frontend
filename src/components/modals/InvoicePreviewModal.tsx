@@ -252,7 +252,10 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: '10px', ...PB }}>දිනය</div>
-                    <div style={{ fontSize: '11px', ...PBBold }}>{new Date(invoice.issueDate).toLocaleDateString('si-LK', { day: '2-digit', month: 'short', year: '2-digit' })}</div>
+                    {/* 🌟 YYYY-MM-DD Date Format */}
+                    <div style={{ fontSize: '11px', ...PBBold, ...mono }}>
+                      {invoice.issueDate ? new Date(invoice.issueDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]}
+                    </div>
                   </div>
                 </div>
 
