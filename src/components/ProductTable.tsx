@@ -18,6 +18,8 @@ import { ProductFormModal } from './ProductFormModal';
 import { DeleteConfirmationModal } from './modals/DeleteConfirmationModal';
 import ProductNameTooltip from './ProductNameTooltip';
 import { formatShortProductId } from '../lib/utils';
+// 🔐 Secret Cost Cipher helper import කිරීම
+import { encodeCostToSecretCode } from '../lib/secretCostCode';
 
 function deriveStatus(storeQty: number): InventoryProduct['status'] {
   if (storeQty === 0) return 'Out of Stock';
@@ -259,6 +261,14 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
   const [searchByName, setSearchByName] = useState<boolean>(false);
   const [searchByCategory, setSearchByCategory] = useState<boolean>(false);
   const [searchByNo, setSearchByNo] = useState<boolean>(true);
+
+  // 🔐 Cost Price එක සාමාන්‍ය අංක වලින් පෙන්වන්නේද නැද්ද යන්න පාලනය කරන state එක (Default: false -> Secret Cipher)
+  const [showCost, setShowCost] = useState<boolean>(false);
+
+  // 🌟 ශත අගයක් ඇත්නම් පමණක් දශම පෙන්වන helper ශ්‍රිතය
+  const formatCleanPrice = useCallback((val: number): string => {
+    return val % 1 === 0 ? `Rs. ${val.toLocaleString()}` : `Rs. ${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }, []);
 
   const [cellEdit, setCellEdit] = useState<CellEditState | null>(null);
   const [rowEditItem, setRowEditItem] = useState<InventoryProduct | null>(null);
@@ -718,6 +728,21 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
               />
               Product No
             </label>
+
+            {/* 🔐 Right Corner "Show Cost" Toggle Checkbox */}
+            <label className={`ml-auto flex items-center gap-1.5 cursor-pointer select-none text-[11px] font-bold px-2 py-0.5 rounded border transition-colors ${
+              showCost 
+                ? 'bg-amber-500/10 border-amber-500/40 text-amber-500' 
+                : isDark ? 'bg-slate-800 border-slate-700 text-slate-400' : 'bg-slate-100 border-slate-200 text-slate-600'
+            }`}>
+              <input
+                type="checkbox"
+                checked={showCost}
+                onChange={e => setShowCost(e.target.checked)}
+                className="accent-amber-500 w-3.5 h-3.5 rounded"
+              />
+              Show Cost
+            </label>
           </div>
         </div>
       </div>
@@ -862,13 +887,32 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
 
                     {(['cost', 'lastPrice', 'salesPrice', 'displayPrice'] as const).map((field) => {
                       const isEditing = inlineEdit?.itemId === item.id && inlineEdit?.field === field;
+                      
+                      // 🔐 Cost field එක සඳහා secret code හෝ normal price තෝරාගැනීම
+                      const getDisplayValue = () => {
+                        if (field === 'cost') {
+                          return showCost ? formatCleanPrice(item.cost) : encodeCostToSecretCode(item.cost);
+                        }
+                        if (typeof item[field] === 'number') {
+                          return formatCleanPrice(item[field] as number);
+                        }
+                        return renderCellValue(item, field);
+                      };
+
                       return (
                         <td key={field} className={`px-2 py-1.5 text-right relative group cursor-pointer`} onClick={(e) => !isEditing && openCellEdit(item.id, field, e)}>
                           {isEditing ? (
                             <InlineNumberInput value={item[field] as number} isDark={isDark} onSave={(val) => handleInlineSave(item.id, field, val)} onCancel={() => setInlineEdit(null)} />
                           ) : (
                             <>
-                              <span className={`text-[11px] font-mono ${field === 'displayPrice' || field === 'salesPrice' ? 'font-bold' : ''} ${getCellColor(item, field)} hover:text-orange-400 transition-colors`}>{renderCellValue(item, field)}</span>
+                              <span 
+                                title={field === 'cost' && !showCost ? `Cost: Rs. ${item.cost}` : undefined}
+                                className={`text-[11px] font-mono ${field === 'displayPrice' || field === 'salesPrice' ? 'font-bold' : ''} ${
+                                  field === 'cost' && !showCost ? 'text-amber-400 font-bold tracking-wider' : getCellColor(item, field)
+                                } hover:text-orange-400 transition-colors`}
+                              >
+                                {getDisplayValue()}
+                              </span>
                               <span className={`absolute -right-0.5 top-0.5 w-2.5 h-2.5 opacity-0 group-hover:opacity-100 transition-opacity ${isDark ? 'text-slate-500' : 'text-slate-400'}`}><Pencil className="w-2.5 h-2.5" /></span>
                             </>
                           )}
