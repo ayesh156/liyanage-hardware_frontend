@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useIsMobile } from '../hooks/use-mobile';
-import { useDropdownPosition } from '../hooks/use-dropdown-position';
+import { encodeCostToSecretCode } from '../lib/secretCostCode';
 import { useColumnResize, ColumnResizeConfig } from '../hooks/useColumnResize';
 import { useCatalog } from '../contexts/CatalogContext';
 import { DisplaySettingsModal } from '../components/modals/DisplaySettingsModal';
@@ -18,6 +18,7 @@ import { ShortcutMapOverlay, ShortcutHintsBar, CheckoutMode, InvoiceStep } from 
 import { CategoryGrid } from '../components/CategoryGrid';
 import { ProductFormModal } from '../components/ProductFormModal';
 import ProductNameTooltip from '../components/ProductNameTooltip';
+import { QuickCheckoutCartTable } from '../components/QuickCheckoutCartTable';
 import { PosItem, PosCategory } from '../data/mockData';
 import {
   Zap, Search, Plus, Trash2, ArrowLeft, Printer, ShoppingCart,
@@ -207,19 +208,30 @@ export const QuickCheckout: React.FC = () => {
     // time-sortable line-item IDs so `items: { orderBy: { id: 'asc' } }`
     // resolves to the exact cart sequence. Removed/neutralized rows
     // (quantity === 0) are filtered defensively so ghosts never reappear.
+    // 🌟 Live Inventory Catalog Match: Edit mode එකේදී සජීවී Stock, Cost, සහ Last Price අගයන් Catalog එකෙන් සම්බන්ධ කිරීම
     const hydratedItems: QuickInvoiceItem[] = (editingInvoice.items || [])
       .filter((item: any) => Number(item.quantity) > 0)
       .map((item: any) => {
-        const ourPrice = Number(item.unitPrice || 0);
-        const dispPrice = Number(item.originalPrice || item.unitPrice || 0);
-        const costPrice = Number(item.cost || 0);
-        const lastPrice = Number(item.lastPrice || dispPrice);
+        // 1. Live Catalog එකෙන් අදාළ Product එක සොයාගැනීම (ID එකෙන් හෝ නමින්)
+        const matchedProduct = inventoryItems.find(
+          (inv) => inv.id === item.productId || inv.name.trim().toLowerCase() === String(item.productName || '').trim().toLowerCase()
+        );
+
+        const ourPrice = Number(item.unitPrice || item.salesPrice || 0);
+        const dispPrice = Number(item.originalPrice || matchedProduct?.displayPrice || item.unitPrice || 0);
+        
+        // 2. සජීවී Cost සහ LastPrice Catalog එකෙන් ලබාගැනීම (නැතහොත් ඉන්වොයිසියේ අගය)
+        const costPrice = Number(matchedProduct?.cost ?? item.cost ?? 0);
+        const lastPrice = Number(matchedProduct?.lastPrice ?? item.lastPrice ?? dispPrice);
+        
+        // 3. සජීවී Store Quantity (Stock) අගය Catalog එකෙන් ලබාගැනීම
+        const storeQtyVal = matchedProduct?.storeQty !== undefined ? Number(matchedProduct.storeQty) : undefined;
 
         return {
           id: item.id,
-          productId: item.productId,
+          productId: item.productId || matchedProduct?.id,
           productName: item.productName,
-          productNameSi: item.productNameSi || item.productName,
+          productNameSi: item.productNameSi || matchedProduct?.nameSinhala || matchedProduct?.nameSi || item.productName,
           variantId: item.variantId,
           size: item.size,
           quantity: item.quantity,
@@ -230,6 +242,7 @@ export const QuickCheckout: React.FC = () => {
           cost: costPrice,
           salesPrice: ourPrice,
           lastPrice: lastPrice,
+          storeQty: storeQtyVal, // 🌟 මෙහිදී සජීවී Stock අගය නිවැරදිව ලැබෙන බැවින් Table එකේ අගය දිස්වේ
           total: ourPrice * item.quantity,
         };
       });
@@ -676,6 +689,21 @@ const [liveSyncEnabled, setLiveSyncEnabled] = useState<boolean>(false);
 
     return null;
   };
+
+  /**
+ * 🌟 Smart Price Formatter for Cart Columns:
+ * ශත අගයක් ඇත්නම් පමණක් දශම 2ක් පෙන්වයි (.50), ශත නැතිනම් පූර්ණ සංඛ්‍යාව පමණක් පෙන්වයි (.00 ඉවත් කරයි).
+ */
+const formatCartPrice = (val: number | string | undefined | null): string => {
+  if (val === undefined || val === null || val === '') return '0';
+  const num = typeof val === 'string' ? parseFloat(val) : val;
+  if (isNaN(num)) return '0';
+  
+  if (num % 1 !== 0) {
+    return num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  return num.toLocaleString('en-US');
+};
 
   // ── Search inventoryItems directly from live CatalogContext ──
   const filteredProducts = useMemo((): any[] => {
@@ -3119,312 +3147,51 @@ const [liveSyncEnabled, setLiveSyncEnabled] = useState<boolean>(false);
                   </div>
                 </div>
 
-                {/* Compact Cart Items */}
-                <div
-                  ref={cartListRef}
-                  tabIndex={-1}
-                  onBlur={(e) => {
-                    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
-                      setIsCartFocused(false);
-                      setSelectedCartIndex(-1);
-                    }
-                  }}
-                  className={`p-3 rounded-xl border outline-none overflow-x-hidden ${isCartFocused
-                      ? isDark ? 'bg-slate-800/50 border-amber-500/50 ring-1 ring-amber-500/20' : 'bg-slate-50 border-amber-400 ring-1 ring-amber-200 shadow'
-                      : isDark ? 'bg-slate-800/50 border-slate-700' : 'bg-slate-50 border-slate-200 shadow-sm'
-                    }`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <h2 className={`font-bold flex items-center gap-1.5 text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      <ShoppingCart className="w-4 h-4" />
-                      {t('quickCheckout.cartItems')} ({items.length})
-                      {isCartFocused && (
-                        <span className={`ml-1 text-[9px] px-1.5 py-0.5 rounded-full ${isDark ? 'bg-purple-500/20 text-purple-400' : 'bg-purple-100 text-purple-700'}`}>
-                          {"↑↓ → ← 0-9"}
-                        </span>
-                      )}
-                    </h2>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => {
-                          setIsQuickAddMode(!isQuickAddMode);
-                          if (!isQuickAddMode) {
-                            setTimeout(() => quickAddNameRef.current?.focus(), 50);
-                          }
-                        }}
-                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-all ${isQuickAddMode
-                            ? 'bg-teal-500 text-white shadow-sm'
-                            : isDark
-                              ? 'bg-slate-700/50 text-slate-300 hover:bg-slate-700 border border-slate-600/50'
-                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200 border border-slate-200'
-                          }`}
-                      >
-                        <Plus className="w-3 h-3" />
-                        {isQuickAddMode ? 'Close' : 'Custom'}
-                        <kbd className={`ml-0.5 px-1 py-0.5 rounded text-[8px] font-mono ${isQuickAddMode ? 'bg-white/20 text-white' : isDark ? 'bg-slate-600 text-slate-400' : 'bg-slate-200 text-slate-500'
-                          }`}>F8</kbd>
-                      </button>
-                      <kbd className={`px-1 py-0.5 rounded text-[9px] font-mono ${isDark ? 'bg-purple-500/20 text-purple-400' : 'bg-purple-100 text-purple-700'}`}>F4</kbd>
-                      <kbd className={`px-1 py-0.5 rounded text-[9px] font-mono ${isDark ? 'bg-green-500/20 text-green-400' : 'bg-green-100 text-green-700'}`}>F9</kbd>
-                    </div>
-                  </div>
-                  {isQuickAddMode && (
-                    <div className={`mb-2 p-2 rounded-lg border ${isDark ? 'bg-teal-500/10 border-teal-500/50 ring-1 ring-teal-500/20' : 'bg-teal-50 border-teal-400 ring-1 ring-teal-200'}`}>
-                      <div className="flex items-center gap-1.5 mb-1.5">
-                        <Plus className={`w-3 h-3 ${isDark ? 'text-teal-400' : 'text-teal-600'}`} />
-                        <span className={`text-xs font-semibold ${isDark ? 'text-teal-300' : 'text-teal-700'}`}>
-                          {t('quickCheckout.quickAddTitle')}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        <input ref={quickAddNameRef} type="text" placeholder={t('quickCheckout.itemName')} value={quickAddName} onChange={(e) => setQuickAddName(e.target.value)} onFocus={() => { setIsCartFocused(false); setSelectedCartIndex(-1); setQuickAddFocusField('name'); }} className={`flex-[2] min-w-[50px] px-2 py-1.5 text-xs border rounded-lg focus:outline-none ${quickAddFocusField === 'name' ? isDark ? 'border-teal-500 bg-slate-700 text-white ring-1 ring-teal-500/30' : 'border-teal-500 bg-white text-slate-900 ring-1 ring-teal-200' : isDark ? 'border-slate-600 bg-slate-700/50 text-white' : 'border-slate-200 bg-white text-slate-900'}`} />
-                        <div className="w-[96px]">
-                          <input ref={quickAddPriceRef} type="text" inputMode="decimal" placeholder="Sales Price" value={quickAddPriceStr} onChange={(e) => { setQuickAddPriceStr(e.target.value); const parsed = parseQuantityInput(e.target.value); if (!isNaN(parsed) && parsed > 0) setQuickAddPrice(parsed); }} onFocus={() => { setIsCartFocused(false); setSelectedCartIndex(-1); setQuickAddFocusField('price'); }} className={`w-full px-2 py-1.5 text-xs text-right border rounded-lg focus:outline-none ${quickAddFocusField === 'price' ? isDark ? 'border-teal-500 bg-slate-700 text-white ring-1 ring-teal-500/30' : 'border-teal-500 bg-white text-slate-900 ring-1 ring-teal-200' : isDark ? 'border-slate-600 bg-slate-700/50 text-white' : 'border-slate-200 bg-white text-slate-900'}`} />
-                        </div>
-                        <div className="w-[96px]">
-                          <input ref={quickAddDisplayPriceRef} type="text" inputMode="decimal" placeholder="Display Price" value={quickAddDisplayPriceStr} onChange={(e) => { setQuickAddDisplayPriceStr(e.target.value); const parsed = parseQuantityInput(e.target.value); if (!isNaN(parsed) && parsed > 0) setQuickAddDisplayPrice(parsed); }} onFocus={() => { setIsCartFocused(false); setSelectedCartIndex(-1); setQuickAddFocusField('displayPrice'); }} className={`w-full px-2 py-1.5 text-xs text-right border rounded-lg focus:outline-none ${quickAddFocusField === 'displayPrice' ? isDark ? 'border-teal-500 bg-slate-700 text-white ring-1 ring-teal-500/30' : 'border-teal-500 bg-white text-slate-900 ring-1 ring-teal-200' : isDark ? 'border-slate-600 bg-slate-700/50 text-white' : 'border-slate-200 bg-white text-slate-900'}`} />
-                        </div>
-                        <div className="w-[80px]">
-                          <input ref={quickAddQtyRef} type="text" inputMode="decimal" placeholder={t('quickCheckout.qty')} value={quickAddQtyStr} onChange={(e) => { setQuickAddQtyStr(e.target.value); const parsed = parseQuantityInput(e.target.value); if (!isNaN(parsed) && parsed > 0) setQuickAddQty(parsed); }} onFocus={() => { setIsCartFocused(false); setSelectedCartIndex(-1); setQuickAddFocusField('qty'); }} className={`w-full px-2 py-1.5 text-xs text-center border rounded-lg focus:outline-none ${quickAddFocusField === 'qty' ? isDark ? 'border-teal-500 bg-slate-700 text-white ring-1 ring-teal-500/30' : 'border-teal-500 bg-white text-slate-900 ring-1 ring-teal-200' : isDark ? 'border-slate-600 bg-slate-700/50 text-white' : 'border-slate-200 bg-white text-slate-900'}`} />
-                        </div>
-                        <button onClick={addQuickAddItem} className={`px-2 py-1.5 rounded-lg text-xs font-medium ${quickAddName && parseQuantityInput(quickAddPriceStr) > 0 ? 'bg-teal-500 hover:bg-teal-600 text-white' : isDark ? 'bg-slate-600 text-slate-400 cursor-not-allowed' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>
-                          <Plus className="w-3 h-3" />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {items.length === 0 ? (
-                    <div className={`flex flex-col items-center justify-center py-8 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                      <ShoppingCart className="w-12 h-12 mb-2 opacity-30" />
-                      <p className="text-sm">{t('quickCheckout.emptyCart')}</p>
-                      <p className="text-xs mt-0.5">{t('quickCheckout.scanOrSearch')}</p>
-                    </div>
-                  ) : (
-                    <>
-                      {/* Cart table header — fluid column resizing */}
-                      <div
-                        className={`grid px-2 py-2.5 mb-1 rounded-lg text-xs font-black uppercase tracking-wider select-none ${isDark ? 'text-slate-400 bg-slate-800/50' : 'text-slate-500 bg-slate-100'}`}
-                        style={{ gridTemplateColumns: getGridTemplateColumns() }}
-                      >
-                        <div className="truncate relative group/header">
-                          Product
-                          <span {...getResizeHandlerProps('product')} className={`absolute right-0 top-0 bottom-0 w-[3px] -mr-[1px] transition-colors ${isDark ? 'bg-transparent hover:bg-amber-500 group-hover/header:bg-slate-400/30' : 'bg-transparent hover:bg-amber-500 group-hover/header:bg-slate-400/40'}`} title="Drag to resize" />
-                        </div>
-                        <div className="text-right truncate relative group/header">
-                          Cost
-                          <span {...getResizeHandlerProps('cost')} className={`absolute right-0 top-0 bottom-0 w-[3px] -mr-[1px] transition-colors ${isDark ? 'bg-transparent hover:bg-amber-500 group-hover/header:bg-slate-400/30' : 'bg-transparent hover:bg-amber-500 group-hover/header:bg-slate-400/40'}`} />
-                        </div>
-                        <div className="text-right truncate relative group/header">
-                          Last
-                          <span {...getResizeHandlerProps('last')} className={`absolute right-0 top-0 bottom-0 w-[3px] -mr-[1px] transition-colors ${isDark ? 'bg-transparent hover:bg-amber-500 group-hover/header:bg-slate-400/30' : 'bg-transparent hover:bg-amber-500 group-hover/header:bg-slate-400/40'}`} />
-                        </div>
-                        <div className="text-right truncate relative group/header">
-                          Sales
-                          <span {...getResizeHandlerProps('sales')} className={`absolute right-0 top-0 bottom-0 w-[3px] -mr-[1px] transition-colors ${isDark ? 'bg-transparent hover:bg-amber-500 group-hover/header:bg-slate-400/30' : 'bg-transparent hover:bg-amber-500 group-hover/header:bg-slate-400/40'}`} />
-                        </div>
-                        <div className="text-right truncate relative group/header">
-                          Display
-                          <span {...getResizeHandlerProps('display')} className={`absolute right-0 top-0 bottom-0 w-[3px] -mr-[1px] transition-colors ${isDark ? 'bg-transparent hover:bg-amber-500 group-hover/header:bg-slate-400/30' : 'bg-transparent hover:bg-amber-500 group-hover/header:bg-slate-400/40'}`} />
-                        </div>
-                        <div className="text-center truncate relative group/header">
-                          Stock
-                          <span {...getResizeHandlerProps('stock')} className={`absolute right-0 top-0 bottom-0 w-[3px] -mr-[1px] transition-colors ${isDark ? 'bg-transparent hover:bg-amber-500 group-hover/header:bg-slate-400/30' : 'bg-transparent hover:bg-amber-500 group-hover/header:bg-slate-400/40'}`} />
-                        </div>
-                        <div className="text-center truncate relative group/header">
-                          Qty
-                          <span {...getResizeHandlerProps('qty')} className={`absolute right-0 top-0 bottom-0 w-[3px] -mr-[1px] transition-colors ${isDark ? 'bg-transparent hover:bg-amber-500 group-hover/header:bg-slate-400/30' : 'bg-transparent hover:bg-amber-500 group-hover/header:bg-slate-400/40'}`} />
-                        </div>
-                        <div className="text-right truncate relative group/header">
-                          Subtotal
-                          <span {...getResizeHandlerProps('subtotal')} className={`absolute right-0 top-0 bottom-0 w-[3px] -mr-[1px] transition-colors ${isDark ? 'bg-transparent hover:bg-amber-500 group-hover/header:bg-slate-400/30' : 'bg-transparent hover:bg-amber-500 group-hover/header:bg-slate-400/40'}`} />
-                        </div>
-                      </div>
-                      <div
-                        ref={cartItemsContainerRef}
-                        className="space-y-1 h-[280px] overflow-y-auto"
-                      >
-                        {items.map((item, index) => (
-                          <div
-                            key={item.id}
-                            ref={(el) => {
-                              if (el) cartItemRefs.current.set(index, el);
-                              else cartItemRefs.current.delete(index);
-                            }}
-                            tabIndex={0}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              setIsCartFocused(true);
-                              setSelectedCartIndex(index);
-                              setSelectedProductIndex(-1);
-                              setCurrentMode('cart');
-                              if (document.activeElement instanceof HTMLInputElement) {
-                                document.activeElement.blur();
-                              }
-                              cartListRef.current?.focus();
-                              playBeep('add');
-                            }}
-                            onFocus={() => {
-                              setIsCartFocused(true);
-                              setSelectedCartIndex(index);
-                              setCurrentMode('cart');
-                            }}
-                            className={`grid items-center px-2 py-2.5 rounded-lg transition-all cursor-pointer outline-none relative group ${isCartFocused && index === selectedCartIndex
-                                ? isDark
-                                  ? 'bg-amber-500/20 shadow ring-1 ring-amber-500/50'
-                                  : 'bg-amber-50 shadow ring-1 ring-amber-400/50'
-                                : isDark ? 'bg-slate-700/50 hover:bg-slate-700' : 'bg-slate-50 hover:bg-slate-100'
-                              }`}
-                            style={{ gridTemplateColumns: getGridTemplateColumns() }}
-                          >
-                            <div className="min-w-0 truncate">
-                              <ProductNameTooltip name={item.productName} nameSinhala={item.productNameSi}>
-                                <p className={`text-sm font-semibold truncate leading-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                                  {isSinhala ? (item.productNameSi || item.productName) : item.productName}
-                                </p>
-                              </ProductNameTooltip>
-                            </div>
-                            <div className="text-right truncate">
-                              <span className={`text-sm font-mono font-semibold ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                                {Number(item.cost || 0).toFixed(2)}
-                              </span>
-                            </div>
-                            <div className="text-right truncate">
-                              <span className={`text-sm font-mono font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                {Number(item.lastPrice || 0).toFixed(2)}
-                              </span>
-                            </div>
-                            {/* ══════ INLINE SALES PRICE — click-to-edit toggle ── REFACTORED ── */}
-                            <div className="text-right truncate">
-                              {editingCell?.itemId === item.id && editingCell?.field === 'salesPrice' ? (
-                                <input
-                                  ref={inlineEditInputRef}
-                                  type="number"
-                                  inputMode="decimal"
-                                  step="any"
-                                  className={`w-20 font-bold text-right rounded border px-1.5 py-1 focus:outline-none text-sm font-mono tabular-nums ${isDark
-                                      ? 'bg-amber-500/10 text-amber-300 border-amber-500 ring-1 ring-amber-500/30'
-                                      : 'bg-amber-50 text-amber-700 border-amber-400 ring-1 ring-amber-200'
-                                    }`}
-                                  value={inlineEditStr}
-                                  onChange={(e) => {
-                                    // No live validation — just update the string for display
-                                    setInlineEditStr(e.target.value);
-                                  }}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      commitCartItemPrice(item.id);
-                                    }
-                                  }}
-                                  onBlur={() => {
-                                    commitCartItemPrice(item.id);
-                                  }}
-                                />
-                              ) : (
-                                <span
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditingCell({ itemId: item.id, field: 'salesPrice' });
-                                    setInlineEditStr(String(Number(item.salesPrice || item.ourPrice || 0)));
-                                  }}
-                                  className={`cursor-pointer hover:bg-amber-500/10 rounded px-1 -mx-1 transition-colors text-sm font-mono font-bold tabular-nums ${isDark ? 'text-amber-400' : 'text-amber-600'
-                                    }`}
-                                >
-                                  {Number(item.salesPrice || item.ourPrice || 0).toFixed(2)}
-                                </span>
-                              )}
-                            </div>
-                            {/* DISPLAY — displayPrice */}
-                            {/* CASHIER COLUMN RULE: If salesPrice > displayPrice, keep the numeric value visible
-                          but apply line-through + muted opacity so the cashier can audit the baseline
-                          rate while visually flagging it as overridden. */}
-                            <div className="text-right truncate">
-                              {Number(item.salesPrice || item.ourPrice || 0) > Number(item.displayPrice || 0) ? (
-                                <span className={`text-sm font-mono line-through opacity-40 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                  {Number(item.displayPrice || 0).toFixed(2)}
-                                </span>
-                              ) : (
-                                <span className={`text-sm font-bold font-mono ${isDark ? 'text-cyan-400' : 'text-cyan-600'}`}>
-                                  {Number(item.displayPrice || 0).toFixed(2)}
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-center truncate">
-                              <span className={`text-sm font-mono font-semibold ${item.storeQty !== undefined && item.storeQty < 10 ? 'text-amber-500 font-bold animate-pulse' : isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                                {item.storeQty !== undefined && item.storeQty !== null ? item.storeQty : '-'}
-                              </span>
-                            </div>
-                            {/* ══════ INLINE QUANTITY — click-to-edit toggle ── REFACTORED ── */}
-                            <div className="flex justify-center items-center">
-                              {editingCell?.itemId === item.id && editingCell?.field === 'quantity' ? (
-                                <input
-                                  ref={inlineEditInputRef}
-                                  type="text"
-                                  inputMode="decimal"
-                                  step="any"
-                                  className={`w-16 font-bold text-center rounded border py-1 focus:outline-none text-sm tabular-nums ${isDark
-                                      ? 'bg-amber-500/10 text-amber-300 border-amber-500 ring-1 ring-amber-500/30'
-                                      : 'bg-amber-50 text-amber-700 border-amber-400 ring-1 ring-amber-200'
-                                    }`}
-                                  value={inlineEditStr}
-                                  onChange={(e) => {
-                                    // No live mutation — just track the string
-                                    setInlineEditStr(e.target.value);
-                                  }}
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      const raw = parseQuantityInput(inlineEditStr);
-                                      const parsed = !isNaN(raw) && raw > 0 ? toTwoDecimals(raw) : NaN;
-                                      if (!isNaN(parsed) && parsed > 0) {
-                                        updateItemQuantity(item.id, parsed);
-                                      }
-                                      setEditingCell(null);
-                                    }
-                                  }}
-                                  onBlur={() => {
-                                    const raw = parseQuantityInput(inlineEditStr);
-                                    const parsed = !isNaN(raw) && raw > 0 ? toTwoDecimals(raw) : NaN;
-                                    if (!isNaN(parsed) && parsed > 0) {
-                                      updateItemQuantity(item.id, parsed);
-                                    }
-                                    setEditingCell(null);
-                                  }}
-                                />
-                              ) : (
-                                <span
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditingCell({ itemId: item.id, field: 'quantity' });
-                                    setInlineEditStr(String(item.quantity));
-                                  }}
-                                  className={`cursor-pointer hover:bg-amber-500/10 rounded px-1.5 -mx-1.5 transition-colors text-sm font-bold font-mono tabular-nums ${isDark ? 'text-white' : 'text-slate-900'
-                                    }`}
-                                >
-                                  {item.quantity}
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-right pr-2 truncate">
-                              <span className={`text-sm font-bold font-mono tabular-nums ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                                {(Number(item.salesPrice || item.ourPrice || 0) * item.quantity).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                              </span>
-                            </div>
-                            <div className="absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 z-10">
-                              <button
-                                onClick={(e) => { e.stopPropagation(); removeItem(item.id); }}
-                                className="p-0.5 rounded text-red-500 hover:bg-red-500/10"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
+                {/* Compact Cart Items — Refactored Component */}
+                <QuickCheckoutCartTable
+                  items={items}
+                  isDark={isDark}
+                  isSinhala={isSinhala}
+                  isCartFocused={isCartFocused}
+                  selectedCartIndex={selectedCartIndex}
+                  isQuickAddMode={isQuickAddMode}
+                  setIsQuickAddMode={setIsQuickAddMode}
+                  setIsCartFocused={setIsCartFocused}
+                  setSelectedCartIndex={setSelectedCartIndex}
+                  setCurrentMode={setCurrentMode}
+                  removeItem={removeItem}
+                  updateItemQuantity={updateItemQuantity}
+                  commitCartItemPrice={commitCartItemPrice}
+                  cartListRef={cartListRef}
+                  cartItemsContainerRef={cartItemsContainerRef}
+                  cartItemRefs={cartItemRefs}
+                  getGridTemplateColumns={getGridTemplateColumns}
+                  getResizeHandlerProps={getResizeHandlerProps}
+                  editingCell={editingCell}
+                  setEditingCell={setEditingCell}
+                  inlineEditStr={inlineEditStr}
+                  setInlineEditStr={setInlineEditStr}
+                  inlineEditInputRef={inlineEditInputRef}
+                  parseQuantityInput={parseQuantityInput}
+                  toTwoDecimals={toTwoDecimals}
+                  quickAddNameRef={quickAddNameRef}
+                  quickAddPriceRef={quickAddPriceRef}
+                  quickAddDisplayPriceRef={quickAddDisplayPriceRef}
+                  quickAddQtyRef={quickAddQtyRef}
+                  quickAddName={quickAddName}
+                  setQuickAddName={setQuickAddName}
+                  quickAddPriceStr={quickAddPriceStr}
+                  setQuickAddPriceStr={setQuickAddPriceStr}
+                  quickAddDisplayPriceStr={quickAddDisplayPriceStr}
+                  setQuickAddDisplayPriceStr={setQuickAddDisplayPriceStr}
+                  quickAddQtyStr={quickAddQtyStr}
+                  setQuickAddQtyStr={setQuickAddQtyStr}
+                  quickAddFocusField={quickAddFocusField}
+                  setQuickAddFocusField={setQuickAddFocusField}
+                  addQuickAddItem={addQuickAddItem}
+                  playBeep={playBeep}
+                  formatCartPrice={formatCartPrice}
+                />
 
                 {/* ── Quick Categories (live from DB, scrollable fixed-height grid) ── */}
                 <div className={`rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-900' : 'bg-white border-slate-200 shadow-sm'}`}>
