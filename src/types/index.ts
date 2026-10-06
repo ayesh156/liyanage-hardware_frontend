@@ -121,7 +121,7 @@ export interface Product {
 // ── InventoryProduct — flat schema with bilingual support ──
 export interface InventoryProduct {
   id: string;
-  no?: string;
+  no?: string | null;
   searchKey: string;
   name: string;
   nameSi?: string;       // Sinhala title (e.g., "ACL බහු-වයර් කේබලය")
