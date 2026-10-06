@@ -11,7 +11,7 @@ import { DisplaySettingsModal } from '../components/modals/DisplaySettingsModal'
 import { mockProducts } from '../data/mockData';
 import { api } from '../lib/api';
 import { Product, Invoice, InvoiceItem, FlattenedProduct, InventoryProduct, Customer } from '../types/index';
-import { flattenProducts } from '../lib/utils';
+import { flattenProducts, resolveImageUrl } from '../lib/utils';
 import { printInvoice } from '../components/modals/PrintInvoiceModal';
 import ThermalReceiptPreview from '../components/ThermalReceiptPreview';
 import { ShortcutMapOverlay, ShortcutHintsBar, CheckoutMode, InvoiceStep } from '../components/ShortcutMapOverlay';
@@ -3274,7 +3274,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                                 <>
                                   {/* Background Image / Cover */}
                                   <img
-                                    src={cat.imageUrl!}
+                                    src={resolveImageUrl(cat.imageUrl)}
                                     alt={displayName}
                                     loading="lazy"
                                     className="object-cover absolute inset-0 w-full h-full group-hover:scale-105 transition-transform duration-300 pointer-events-none"

@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next';
 import { mockCategories } from '../data/mockData';
 import { Category, InventoryProduct } from '../types/index';
+import { resolveImageUrl } from '../lib/utils';
 import { useTheme } from '../contexts/ThemeContext';
 import { useCatalog } from '../contexts/CatalogContext';
 import { Search, Package, ChevronDown, ChevronUp, Plus } from 'lucide-react';
@@ -283,7 +284,7 @@ export const CategoryGrid: React.FC<CategoryGridProps> = ({ onItemSelect }) => {
             <div className="relative w-6 h-6 rounded-lg overflow-hidden flex items-center justify-center mb-0.5 shadow-sm flex-shrink-0">
               {cat.imageUrl ? (
                 <img
-                  src={cat.imageUrl}
+                  src={resolveImageUrl(cat.imageUrl)}
                   alt={isSinhala ? (cat.nameSinhala || cat.name) : cat.name}
                   loading="lazy"
                   className="w-full h-full object-cover"

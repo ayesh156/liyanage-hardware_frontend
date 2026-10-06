@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useCatalog } from '../../contexts/CatalogContext';
 import { Category } from '../../types/index';
+import { resolveImageUrl } from '../../lib/utils';
 import { X, Eye, EyeOff, GripVertical, Search, ArrowUpDown, CheckCircle, Package, FolderTree } from 'lucide-react';
 import { toast } from 'react-toastify';
 
@@ -417,7 +418,7 @@ export const DisplaySettingsModal: React.FC<DisplaySettingsModalProps> = ({ isOp
                     <div className="w-8 h-8 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-orange-500/10 to-rose-500/10 flex items-center justify-center flex-shrink-0 relative">
                       {cat.imageUrl ? (
                         <img
-                          src={cat.imageUrl}
+                          src={resolveImageUrl(cat.imageUrl)}
                           alt={getCategoryDisplayName(cat)}
                           className="w-full h-full object-cover"
                           onError={(e) => {

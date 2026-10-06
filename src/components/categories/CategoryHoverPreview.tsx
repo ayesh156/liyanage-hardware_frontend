@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Package, Tag } from 'lucide-react';
 import { Category } from '../../types';
+import { resolveImageUrl } from '../../lib/utils';
 
 export interface CategoryHoverData {
   category: Category;
@@ -122,7 +123,7 @@ export const CategoryHoverPreview: React.FC<CategoryHoverPreviewProps> = ({
         <div className="relative w-full aspect-video max-h-36 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 mb-2.5 flex items-center justify-center">
           {hasImage ? (
             <img
-              src={category.imageUrl!}
+              src={resolveImageUrl(category.imageUrl)}
               alt={category.name}
               className="w-full h-full object-cover"
               onError={() => setImageError(true)}

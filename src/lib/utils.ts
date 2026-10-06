@@ -139,3 +139,19 @@ export function flattenProducts(products: Product[]): FlattenedProduct[] {
 
   return result;
 }
+
+/**
+ * Resolves full image URL considering multi-domain production environments.
+ * Prepends VITE_API_URL / backend origin for relative local paths.
+ */
+export const resolveImageUrl = (url?: string | null): string => {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+    return url;
+  }
+  const rawApiUrl = (import.meta as any).env?.VITE_API_URL || 'https://api.liyanage.ecosystemlk.app';
+  const backendUrl = rawApiUrl.replace(/\/api\/?$/, '');
+  const cleanBase = backendUrl.replace(/\/+$/, '');
+  const cleanPath = url.startsWith('/') ? url : `/${url}`;
+  return `${cleanBase}${cleanPath}`;
+};

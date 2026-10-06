@@ -5,6 +5,7 @@ import { useIsMobile } from '../hooks/use-mobile';
 import { useCatalog } from '../contexts/CatalogContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Category } from '../types/index';
+import { resolveImageUrl } from '../lib/utils';
 import { CategoryFormModal } from '../components/modals/CategoryFormModal';
 import { DeleteConfirmationModal } from '../components/modals/DeleteConfirmationModal';
 import { CategoryProductsModal } from '../components/modals/CategoryProductsModal';
@@ -357,7 +358,7 @@ export const Categories: React.FC = () => {
                         >
                           {category.imageUrl ? (
                             <img
-                              src={category.imageUrl}
+                              src={resolveImageUrl(category.imageUrl)}
                               alt={getDisplayName(category)}
                               className="w-full h-full object-cover transition-transform duration-200 group-hover/thumb:scale-110"
                               onError={(e) => {

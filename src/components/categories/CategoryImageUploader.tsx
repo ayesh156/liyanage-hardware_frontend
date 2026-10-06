@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useTranslation } from 'react-i18next';
 import { optimizeCategoryImage } from '../../utils/imageOptimizer';
+import { resolveImageUrl } from '../../lib/utils';
 import { 
   UploadCloud, X, Image as ImageIcon, Loader2, AlertCircle, Check, Link2, RefreshCw
 } from 'lucide-react';
@@ -193,8 +194,13 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
     const trimmed = urlInput.trim();
     if (!trimmed) return;
     
-    if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://') && !trimmed.startsWith('data:image/')) {
-      setErrorMessage('Please enter a valid URL starting with http:// or https://');
+    if (
+      !trimmed.startsWith('http://') &&
+      !trimmed.startsWith('https://') &&
+      !trimmed.startsWith('data:') &&
+      !trimmed.startsWith('/')
+    ) {
+      setErrorMessage('Please enter a valid URL (http://, https://, data:, or relative path)');
       return;
     }
 
@@ -262,7 +268,7 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
             {!imgLoadError && (
               <div 
                 className="absolute inset-0 bg-cover bg-center filter blur-lg opacity-25 scale-110"
-                style={{ backgroundImage: `url(${value})` }}
+                style={{ backgroundImage: `url("${resolveImageUrl(value)}")` }}
               />
             )}
 
@@ -279,7 +285,7 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
               </div>
             ) : (
               <img
-                src={value!}
+                src={resolveImageUrl(value)}
                 alt="Category Preview"
                 onError={() => setImgLoadError(true)}
                 className="relative z-10 max-h-full max-w-full object-contain p-2 transition-transform duration-300 group-hover:scale-105"
@@ -306,6 +312,8 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
                   <Check className="w-2.5 h-2.5" />
                   {value!.startsWith('data:image') 
                     ? `WebP (${Math.round(value!.length / 1024)} KB)` 
+                    : value!.startsWith('/')
+                    ? 'Uploaded File'
                     : 'Web Image Link'}
                 </span>
               </div>
