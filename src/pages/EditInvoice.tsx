@@ -144,7 +144,7 @@ export const EditInvoice: React.FC = () => {
         setEnableTax(invoice.enableTax || false);
         setTaxRate(invoice.taxRate || 15);
         setPaymentMethod((invoice.paymentMethod as any) || 'cash');
-        setStatus(invoice.status || 'pending');
+        setStatus((invoice.status as any) || 'pending');
         setNotes(invoice.notes || '');
         
         // Convert items to extended format

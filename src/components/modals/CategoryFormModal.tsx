@@ -17,6 +17,7 @@ import {
 import { 
   FolderTree, Tag, Languages, FileText
 } from 'lucide-react';
+import { CategoryImageUploader } from '../categories/CategoryImageUploader';
 
 interface CategoryFormModalProps {
   isOpen: boolean;
@@ -42,6 +43,7 @@ export const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
     name: '',
     nameSinhala: '',
     icon: '',
+    imageUrl: '',
     description: '',
   });
 
@@ -53,6 +55,7 @@ export const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
         name: category.name,
         nameSinhala: category.nameSinhala || '',
         icon: category.icon || '',
+        imageUrl: category.imageUrl || '',
         description: category.description || '',
       });
     } else {
@@ -60,6 +63,7 @@ export const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
         name: '',
         nameSinhala: '',
         icon: '',
+        imageUrl: '',
         description: '',
       });
     }
@@ -153,9 +157,17 @@ export const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
                     : 'bg-white border-slate-200'
                 }`}
               />
-              <p className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              <p className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                 {t('categories.sinhalaNameHelp')}
               </p>
+            </div>
+
+            {/* Category Image */}
+            <div className="space-y-1">
+              <CategoryImageUploader
+                value={formData.imageUrl}
+                onChange={(newUrl) => handleChange('imageUrl', newUrl || '')}
+              />
             </div>
 
             {/* Description */}

@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useSidebar } from '../contexts/SidebarContext';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { SidebarTooltip } from './SidebarTooltip';
 import { Navbar } from './layout/Navbar';
@@ -226,8 +227,13 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const isMobile = useIsMobile();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const { 
+    sidebarCollapsed, 
+    setSidebarCollapsed, 
+    mobileSidebarOpen, 
+    setMobileSidebarOpen,
+    toggleSidebar 
+  } = useSidebar();
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const navigate = useNavigate();
   const { user, logout } = useAuth();
@@ -264,7 +270,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
   // ── Sidebar ──
   const Sidebar = () => (
     <aside 
-      className={`fixed left-0 top-0 z-40 h-screen ${sidebarWidth} transition-all duration-300 ease-in-out ${
+      className={`fixed left-0 top-0 z-50 h-screen ${sidebarWidth} transition-all duration-300 ease-in-out ${
         theme === 'dark' 
           ? 'bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-r border-slate-800/50' 
           : 'bg-gradient-to-b from-white via-white to-slate-50 border-r border-slate-200 shadow-xl'

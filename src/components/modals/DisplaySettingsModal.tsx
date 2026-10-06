@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useCatalog } from '../../contexts/CatalogContext';
 import { Category } from '../../types/index';
-import { X, Eye, EyeOff, GripVertical, Search, ArrowUpDown, CheckCircle } from 'lucide-react';
+import { X, Eye, EyeOff, GripVertical, Search, ArrowUpDown, CheckCircle, Package, FolderTree } from 'lucide-react';
 import { toast } from 'react-toastify';
 
 interface DisplaySettingsModalProps {
@@ -412,16 +412,36 @@ export const DisplaySettingsModal: React.FC<DisplaySettingsModalProps> = ({ isOp
                     />
                   </div>
 
-                  {/* Category info */}
-                  <div className="flex-1 min-w-0">
-                    <p className={`text-xs font-semibold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                      {getCategoryDisplayName(cat)}
-                    </p>
-                    {cat.nameSinhala && !isSinhala && (
-                      <p className={`text-[10px] truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                        {cat.nameSinhala}
+                  {/* Category Image & info */}
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <div className="w-8 h-8 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700 bg-gradient-to-br from-orange-500/10 to-rose-500/10 flex items-center justify-center flex-shrink-0 relative">
+                      {cat.imageUrl ? (
+                        <img
+                          src={cat.imageUrl}
+                          alt={getCategoryDisplayName(cat)}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLElement).style.display = 'none';
+                            const fallback = e.currentTarget.parentElement?.querySelector('.display-modal-cat-fallback');
+                            if (fallback) (fallback as HTMLElement).classList.remove('hidden');
+                          }}
+                        />
+                      ) : null}
+                      <div className={`display-modal-cat-fallback ${cat.imageUrl ? 'hidden' : 'flex'} w-full h-full items-center justify-center`}>
+                        <Package className="w-3.5 h-3.5 text-orange-400" />
+                      </div>
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-xs font-semibold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                        {getCategoryDisplayName(cat)}
                       </p>
-                    )}
+                      {cat.nameSinhala && !isSinhala && (
+                        <p className={`text-[10px] truncate ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                          {cat.nameSinhala}
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   {/* Usage count */}

@@ -133,26 +133,32 @@ export const CategoryGrid: React.FC<CategoryGridProps> = ({ onItemSelect }) => {
   const ALL_CATEGORY_SENTINEL: Category = {
     id: '__all__',
     name: 'සියල්ල',
-    nameAlt: 'සියල්ල',
+    nameSinhala: 'සියල්ල',
     icon: 'all',
+    imageUrl: null,
     description: 'Show all categories',
     usageCount: inventoryItems.length,
+    sortOrder: 0,
+    showInQuickInvoice: true,
   };
 
   const sortedCategories = useMemo(() => {
     return optimizedCategoryNames.map(catName => {
       if (catName === 'සියල්ල') return ALL_CATEGORY_SENTINEL;
-      // Match by name or nameAlt against the dynamic mockCategories array
+      // Match by name or nameSinhala against the dynamic mockCategories array
       return (
         mockCategories.find(
-          c => c.name === catName || c.nameAlt === catName
+          c => c.name === catName || c.nameSinhala === catName
         ) ?? {
           id: `cat-inline-${catName}`,
           name: catName,
-          nameAlt: catName,
+          nameSinhala: catName,
           icon: 'hardware',
+          imageUrl: null,
           description: `${catName} category`,
           usageCount: categoryCounts[catName] || 0,
+          sortOrder: 999,
+          showInQuickInvoice: true,
         }
       );
     });
@@ -164,7 +170,7 @@ export const CategoryGrid: React.FC<CategoryGridProps> = ({ onItemSelect }) => {
     const q = searchFilter.toLowerCase();
     return sortedCategories.filter(cat =>
       cat.name.toLowerCase().includes(q) ||
-      (cat.nameAlt && cat.nameAlt.includes(q))
+      (cat.nameSinhala && cat.nameSinhala.toLowerCase().includes(q))
     );
   }, [sortedCategories, searchFilter]);
 
@@ -274,11 +280,26 @@ export const CategoryGrid: React.FC<CategoryGridProps> = ({ onItemSelect }) => {
                 : 'bg-white border-slate-200 hover:border-orange-400/50 hover:bg-slate-50 shadow-sm'
             }`}
           >
-            <div className={`w-6 h-6 rounded-lg bg-gradient-to-br ${getCategoryColor(index)} flex items-center justify-center mb-0.5 shadow-lg`}>
-              <Package className="w-3 h-3 text-white" />
+            <div className="relative w-6 h-6 rounded-lg overflow-hidden flex items-center justify-center mb-0.5 shadow-sm flex-shrink-0">
+              {cat.imageUrl ? (
+                <img
+                  src={cat.imageUrl}
+                  alt={isSinhala ? (cat.nameSinhala || cat.name) : cat.name}
+                  loading="lazy"
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLElement).style.display = 'none';
+                    const fallback = e.currentTarget.parentElement?.querySelector('.grid-cat-fallback');
+                    if (fallback) (fallback as HTMLElement).classList.remove('hidden');
+                  }}
+                />
+              ) : null}
+              <div className={`grid-cat-fallback ${cat.imageUrl ? 'hidden' : 'flex'} w-full h-full items-center justify-center bg-gradient-to-br ${getCategoryColor(index)}`}>
+                <Package className="w-3 h-3 text-white" />
+              </div>
             </div>
             <span className={`text-[9px] font-semibold text-center leading-tight line-clamp-1 ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-              {isSinhala ? (cat.nameAlt || cat.name) : cat.name}
+              {isSinhala ? (cat.nameSinhala || cat.name) : cat.name}
             </span>
           </button>
         ))}

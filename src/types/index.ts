@@ -4,25 +4,33 @@ export interface Customer {
   id: string;
   name: string;
   nameSi?: string;
+  businessName?: string;
   nic?: string;
   phone: string;
+  phone2?: string;
   email: string;
   address: string;
   customerType: CustomerType;
   loanBalance: number;
   creditLimit?: number;
+  loanDueDate?: string;
+  totalSpent?: number;
+  registrationDate?: string;
+  photo?: string;
+  isActive?: boolean;
 }
 
 export interface Category {
   id: string;
   name: string;
-  nameSinhala?: string;
-  icon?: string;
-  description?: string;
+  nameSinhala?: string | null;
+  icon?: string | null;
+  imageUrl?: string | null;
+  description?: string | null;
   usageCount?: number;
-  parentId?: string;
-  sortOrder: number;
-  showInQuickInvoice: boolean;
+  parentId?: string | null;
+  sortOrder?: number;
+  showInQuickInvoice?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }

@@ -11,6 +11,7 @@ import "./lib/i18n";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { CatalogProvider } from "./contexts/CatalogContext";
+import { SidebarProvider } from "./contexts/SidebarContext";
 import { AdminLayout } from "./components/AdminLayout";
 import { Login } from "./pages/Login";
 
@@ -57,11 +58,12 @@ const AppContent = () => {
     <>
       <AuthProvider>
         <CatalogProvider>
-        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-          <Suspense fallback={<div className="flex items-center justify-center h-screen bg-[#0a0f1a] text-slate-400">Loading...</div>}>
-            <Routes>
-              {/* Public Login Route */}
-              <Route path="/login" element={<Login />} />
+          <SidebarProvider>
+            <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+              <Suspense fallback={<div className="flex items-center justify-center h-screen bg-[#0a0f1a] text-slate-400">Loading...</div>}>
+                <Routes>
+                  {/* Public Login Route */}
+                  <Route path="/login" element={<Login />} />
 
               {/* Protected Routes - Wrapped in AdminLayout */}
               <Route path="/" element={
@@ -72,6 +74,13 @@ const AppContent = () => {
                 </ProtectedRoute>
               } />
               <Route path="/invoices/quick-checkout" element={
+                <ProtectedRoute>
+                  <AdminLayout>
+                    <QuickCheckout />
+                  </AdminLayout>
+                </ProtectedRoute>
+              } />
+              <Route path="/invoices/quick-invoice" element={
                 <ProtectedRoute>
                   <AdminLayout>
                     <QuickCheckout />
@@ -173,6 +182,7 @@ const AppContent = () => {
             </Routes>
           </Suspense>
         </BrowserRouter>
+        </SidebarProvider>
         </CatalogProvider>
       </AuthProvider>
     </>

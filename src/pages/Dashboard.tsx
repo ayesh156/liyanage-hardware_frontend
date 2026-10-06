@@ -508,7 +508,7 @@ export const Dashboard: React.FC = () => {
           {t('dashboard.quickActions')}
         </h3>
         
-        {/* Quick Checkout - Featured Action */}
+        {/* Quick Invoice - Featured Action */}
         <Link 
           to="/invoices/quick-checkout"
           className={`flex items-center justify-between p-4 mb-4 rounded-xl border-2 transition-all hover:scale-[1.01] ${

@@ -1,4 +1,4 @@
-﻿import { Customer, Product, Invoice, Category, Supplier, SupplierDelivery, InventoryProduct } from '../types/index';
+import { Customer, Product, Invoice, Category, Supplier, SupplierDelivery, InventoryProduct } from '../types/index';
 import { inventoryItems } from './inventoryData';
 
 // ──────────────────────────────────────────────
@@ -116,12 +116,35 @@ export const mockCategories: Category[] = _uniqueCategoryNames.map((catName, idx
   return {
     id: matchingItem?.categoryId || `cat-derived-${idx}`,
     name: catName,
-    nameAlt: catName,
+    nameSinhala: catName,
     icon: 'hardware',
+    imageUrl: null,
     description: `All materials listed under ${catName} infrastructure inventory.`,
     usageCount,
+    sortOrder: idx + 1,
+    showInQuickInvoice: true,
   };
 });
+
+export interface Brand {
+  id: string;
+  name: string;
+  country: string;
+  isActive: boolean;
+}
+
+export const mockBrands: Brand[] = [
+  { id: 'brand-001', name: 'INSEE', country: 'Sri Lanka', isActive: true },
+  { id: 'brand-002', name: 'Tokyo Super', country: 'Sri Lanka', isActive: true },
+  { id: 'brand-003', name: 'Lanwa', country: 'Sri Lanka', isActive: true },
+  { id: 'brand-004', name: 'Kelani Cables', country: 'Sri Lanka', isActive: true },
+  { id: 'brand-005', name: 'National PVC', country: 'Sri Lanka', isActive: true },
+  { id: 'brand-006', name: 'Nippon Paint', country: 'Japan / Sri Lanka', isActive: true },
+  { id: 'brand-007', name: 'Bosch', country: 'Germany', isActive: true },
+  { id: 'brand-008', name: 'Orange Electric', country: 'Sri Lanka', isActive: true },
+  { id: 'brand-009', name: 'Sierra Cables', country: 'Sri Lanka', isActive: true },
+  { id: 'brand-010', name: 'Anton PVC', country: 'Sri Lanka', isActive: true },
+];
 
 // ── Helpers to get category names list dynamically ──
 export const categoryNames: string[] = mockCategories.map(c => c.name);

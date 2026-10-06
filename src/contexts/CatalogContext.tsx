@@ -163,6 +163,7 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
       name: data.name || '',
       nameSinhala: data.nameSinhala,
       icon: data.icon,
+      imageUrl: data.imageUrl,
       description: data.description,
       parentId: data.parentId,
       sortOrder: data.sortOrder ?? 0,

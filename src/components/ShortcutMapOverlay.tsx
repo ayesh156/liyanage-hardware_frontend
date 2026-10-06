@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
+import { useSidebar } from '../contexts/SidebarContext';
+import { useIsMobile } from '../hooks/use-mobile';
 import {
   Keyboard, X, Search, Package, ShoppingCart, CreditCard,
   Percent, ArrowLeft, ArrowRight, ArrowUp, ArrowDown,
@@ -307,7 +309,7 @@ export const ShortcutMapOverlay: React.FC<ShortcutMapOverlayProps> = ({
                 </h2>
                 <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                   {isQuickCheckout 
-                    ? t('shortcuts.quickCheckoutContext') || 'Quick Checkout Mode'
+                    ? t('shortcuts.quickCheckoutContext') || 'Quick Invoice Mode'
                     : `${t('shortcuts.step') || 'Step'} ${stepIndex} ${t('shortcuts.of') || 'of'} ${totalSteps}`
                   }
                 </p>
@@ -416,6 +418,8 @@ export const ShortcutHintsBar: React.FC<ShortcutHintsBarProps> = ({
 }) => {
   const { t } = useTranslation();
   const { theme } = useTheme();
+  const { sidebarCollapsed } = useSidebar();
+  const isMobile = useIsMobile();
   const isDark = theme === 'dark';
 
   const getContextualHints = () => {
@@ -476,11 +480,15 @@ export const ShortcutHintsBar: React.FC<ShortcutHintsBarProps> = ({
   };
 
   const hints = getContextualHints();
+  const leftOffset = !isMobile ? (sidebarCollapsed ? '4rem' : '16rem') : '0px';
 
   return (
-    <div className={`fixed bottom-0 left-0 right-0 z-40 px-4 py-2 ${
-      isDark ? 'bg-slate-900/95 backdrop-blur border-t border-slate-700' : 'bg-white/95 backdrop-blur border-t border-slate-200 shadow-lg'
-    }`}>
+    <div
+      style={{ left: leftOffset }}
+      className={`fixed bottom-0 right-0 z-30 px-4 py-2 transition-all duration-300 ease-in-out ${
+        isDark ? 'bg-slate-900/95 backdrop-blur border-t border-slate-700/80' : 'bg-white/95 backdrop-blur border-t border-slate-200 shadow-lg'
+      }`}
+    >
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         <div className="flex items-center gap-4">
           {hints.map((hint, index) => (

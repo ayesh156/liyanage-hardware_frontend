@@ -388,7 +388,7 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({
                 theme={theme}
                 options={mockCategories.map(cat => ({
                   value: cat.id,
-                  label: `${cat.name}${cat.nameAlt ? ` (${cat.nameAlt})` : ''}`,
+                  label: `${cat.name}${cat.nameSinhala ? ` (${cat.nameSinhala})` : ''}`,
                   icon: <Layers className="w-4 h-4" />
                 }))}
               />

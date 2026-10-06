@@ -1,0 +1,192 @@
+import React, { useState, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { Package, Tag } from 'lucide-react';
+import { Category } from '../../types';
+
+export interface CategoryHoverData {
+  category: Category;
+  productCount?: number;
+}
+
+interface HoverPosition {
+  x: number;
+  y: number;
+}
+
+export function useCategoryHoverPreview() {
+  const [hoverData, setHoverData] = useState<CategoryHoverData | null>(null);
+  const [position, setPosition] = useState<HoverPosition>({ x: 0, y: 0 });
+  const [isVisible, setIsVisible] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showHoverPreview = useCallback((e: React.MouseEvent, data: CategoryHoverData) => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    
+    // Position slightly to the top-right or right of the element
+    setPosition({
+      x: rect.right + 12,
+      y: rect.top - 20,
+    });
+    setHoverData(data);
+    setIsVisible(true);
+  }, []);
+
+  const showHoverPreviewAtRect = useCallback((rect: DOMRect, data: CategoryHoverData) => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    setPosition({
+      x: rect.right + 12,
+      y: rect.top - 20,
+    });
+    setHoverData(data);
+    setIsVisible(true);
+  }, []);
+
+  const hideHoverPreview = useCallback(() => {
+    timeoutRef.current = setTimeout(() => {
+      setIsVisible(false);
+      setHoverData(null);
+    }, 50);
+  }, []);
+
+  return {
+    hoverData,
+    position,
+    isVisible,
+    showHoverPreview,
+    showHoverPreviewAtRect,
+    hideHoverPreview,
+  };
+}
+
+interface CategoryHoverPreviewProps {
+  data: CategoryHoverData | null;
+  position: HoverPosition;
+  isVisible: boolean;
+}
+
+export const CategoryHoverPreview: React.FC<CategoryHoverPreviewProps> = ({
+  data,
+  position,
+  isVisible,
+}) => {
+  const [imageError, setImageError] = useState(false);
+
+  // Reset image error when category changes
+  React.useEffect(() => {
+    setImageError(false);
+  }, [data?.category?.id, data?.category?.imageUrl]);
+
+  if (!isVisible || !data || typeof document === 'undefined') return null;
+
+  const { category, productCount } = data;
+  const PREVIEW_WIDTH = 260;
+  const PREVIEW_HEIGHT = 290;
+
+  // Viewport-safe coordinates calculation
+  const padding = 16;
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+
+  let left = position.x;
+  let top = position.y;
+
+  // If overflowing right, flip to left of element
+  if (left + PREVIEW_WIDTH + padding > viewportWidth) {
+    left = Math.max(padding, position.x - PREVIEW_WIDTH - 24);
+  }
+
+  // If overflowing bottom, shift up
+  if (top + PREVIEW_HEIGHT + padding > viewportHeight) {
+    top = Math.max(padding, viewportHeight - PREVIEW_HEIGHT - padding);
+  }
+
+  // Ensure top is not negative
+  if (top < padding) {
+    top = padding;
+  }
+
+  const hasImage = Boolean(category.imageUrl && !imageError);
+
+  return createPortal(
+    <div
+      className="fixed z-[9999] pointer-events-none transition-all duration-150 ease-out animate-in fade-in-0 zoom-in-95"
+      style={{
+        left: `${left}px`,
+        top: `${top}px`,
+        width: `${PREVIEW_WIDTH}px`,
+      }}
+    >
+      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-950/95 p-3 shadow-2xl backdrop-blur-md overflow-hidden ring-1 ring-slate-900/5 dark:ring-white/10">
+        {/* Large photo preview or styled fallback */}
+        <div className="relative w-full aspect-video max-h-36 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-900 border border-slate-100 dark:border-slate-800 mb-2.5 flex items-center justify-center">
+          {hasImage ? (
+            <img
+              src={category.imageUrl!}
+              alt={category.name}
+              className="w-full h-full object-cover"
+              onError={() => setImageError(true)}
+            />
+          ) : (
+            <div className="w-full h-full bg-slate-100 dark:bg-slate-900 rounded-xl p-6 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500">
+              <Package className="w-8 h-8 text-emerald-600 dark:text-emerald-400 stroke-[1.5] mb-1" />
+              <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Category Preview
+              </span>
+            </div>
+          )}
+
+          {/* Product Count Pill */}
+          {typeof productCount === 'number' && (
+            <div className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-slate-800 text-[10px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1 shadow-sm">
+              <Package className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+              <span>{productCount} {productCount === 1 ? 'Product' : 'Products'}</span>
+            </div>
+          )}
+
+          {/* Quick Category Indicator Pill */}
+          {category.showInQuickInvoice && (
+            <div className="absolute top-2 left-2 px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800 backdrop-blur-md text-[9px] font-bold shadow-xs">
+              POS Quick
+            </div>
+          )}
+        </div>
+
+        {/* Content details */}
+        <div className="space-y-1">
+          <div className="flex items-start justify-between gap-1.5">
+            <h4 className="text-sm font-bold text-slate-900 dark:text-white leading-tight">
+              {category.name}
+            </h4>
+          </div>
+
+          {category.nameSinhala && (
+            <p className="text-xs text-slate-600 dark:text-slate-400 font-medium leading-tight">
+              {category.nameSinhala}
+            </p>
+          )}
+
+          {category.description && (
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed pt-1 border-t border-slate-100 dark:border-slate-800/80 mt-1">
+              {category.description}
+            </p>
+          )}
+
+          {typeof category.sortOrder === 'number' && (
+            <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 pt-1 font-mono">
+              <span className="flex items-center gap-1">
+                <Tag className="w-3 h-3 text-slate-400 dark:text-slate-500" /> Sort Index
+              </span>
+              <span className="px-1.5 py-0.5 rounded font-semibold bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-800">
+                #{category.sortOrder}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+};
+
+export default CategoryHoverPreview;

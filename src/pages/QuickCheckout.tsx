@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
@@ -15,7 +15,7 @@ import { flattenProducts } from '../lib/utils';
 import { printInvoice } from '../components/modals/PrintInvoiceModal';
 import ThermalReceiptPreview from '../components/ThermalReceiptPreview';
 import { ShortcutMapOverlay, ShortcutHintsBar, CheckoutMode, InvoiceStep } from '../components/ShortcutMapOverlay';
-import { CategoryGrid } from '../components/CategoryGrid';
+import { CategoryHoverPreview, useCategoryHoverPreview } from '../components/categories/CategoryHoverPreview';
 import { ProductFormModal } from '../components/ProductFormModal';
 import ProductNameTooltip from '../components/ProductNameTooltip';
 import { QuickCheckoutCartTable } from '../components/QuickCheckoutCartTable';
@@ -43,7 +43,7 @@ interface QuickInvoiceItem extends InvoiceItem {
   storeQty?: number;
 }
 
-// Step configuration for Quick Checkout
+// Step configuration for Quick Invoice
 type QuickCheckoutStep = 'products' | 'review';
 const STEPS: { key: QuickCheckoutStep; labelKey: string }[] = [
   { key: 'products', labelKey: 'invoice.stepProducts' },
@@ -133,6 +133,11 @@ export const QuickCheckout: React.FC = () => {
       inlineEditInputRef.current.select();
     }
   }, [editingCell]);
+
+  // Set document title
+  useEffect(() => {
+    document.title = `${t('quickCheckout.title')} | Liyanage Hardware`;
+  }, [t]);
 
   // ── In-place Edit mode via query param ──
   const editInvoiceId = searchParams.get('edit');
@@ -386,6 +391,10 @@ const [liveSyncEnabled, setLiveSyncEnabled] = useState<boolean>(false);
     if (isSinhala && sinhalaName) return sinhalaName;
     return englishName;
   }, [isSinhala]);
+
+  // ── Category Hover Preview State ──
+  const { hoverData, position: hoverPos, isVisible: isHoverVisible, showHoverPreview, hideHoverPreview } = useCategoryHoverPreview();
+  const [failedCategoryImages, setFailedCategoryImages] = useState<Set<string>>(new Set());
 
   // ── Category Popover State ──
   const [activeCategoryPopover, setActiveCategoryPopover] = useState<string | null>(null);
@@ -3194,15 +3203,15 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                 />
 
                 {/* ── Quick Categories (live from DB, scrollable fixed-height grid) ── */}
-                <div className={`rounded-xl border ${isDark ? 'bg-slate-950/40 border-slate-900' : 'bg-white border-slate-200 shadow-sm'}`}>
-                  <div className="p-2.5 pb-0">
-                    <div className="flex justify-between items-center mb-2 border-b border-slate-900 pb-2">
+                <div className="rounded-2xl border bg-white/50 dark:bg-slate-900/40 border-slate-200/80 dark:border-slate-800/80 p-3 shadow-xs">
+                  <div>
+                    <div className="flex justify-between items-center mb-2.5 border-b border-slate-200/80 dark:border-slate-800/80 pb-2.5">
                       <div className="flex items-center gap-2">
                         <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></div>
-                        <h3 className={`text-xs font-bold tracking-wide uppercase ${isDark ? 'text-slate-200' : 'text-slate-900'}`}>
+                        <h3 className="text-xs font-bold tracking-wide uppercase text-slate-800 dark:text-slate-200">
                           {t('quickCheckout.quickCategories')}
                         </h3>
-                        <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded-full ${isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'}`}>
+                        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200/60 dark:border-slate-700/60 font-semibold">
                           {quickCheckoutCategories.length}
                         </span>
                       </div>
@@ -3210,10 +3219,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                       <button
                         type="button"
                         onClick={() => setShowDisplaySettings(true)}
-                        className={`px-2.5 py-1 rounded-lg text-[9px] font-bold transition-all duration-200 flex items-center gap-1 ${isDark
-                            ? 'bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
-                            : 'bg-slate-100 border border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-200'
-                          }`}
+                        className="px-2.5 py-1 rounded-lg text-[9px] font-bold transition-all duration-200 flex items-center gap-1 bg-slate-100 border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-200 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800"
                       >
                         <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
@@ -3224,11 +3230,17 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                     </div>
                   </div>
 
-                  <div className="px-2.5 pb-2.5">
+                  <div>
                     <div className="max-h-[290px] md:max-h-[310px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
-                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5">
                         {quickCheckoutCategories.map((cat) => {
                           const categoryProducts = categoryProductMap.get(cat.name) || [];
+                          const isSelected = activeCategoryPopover === cat.name;
+                          const displayName = getCategoryDisplayName(cat, cat.name);
+                          const sinhalaName = cat.nameSinhala?.trim();
+                          const englishName = cat.name?.trim();
+                          const hasImage = Boolean(cat.imageUrl && !failedCategoryImages.has(cat.id));
+
                           return (
                             <button
                               key={cat.id}
@@ -3238,11 +3250,6 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                                   const rect = (document.querySelector(`[data-cat-id="${cat.id}"]`) as HTMLElement)?.getBoundingClientRect();
                                   if (rect) {
                                     setCategoryPopoverAnchor(rect);
-                                    // Anchor near the clicked category. On first open the popover isn't
-                                    // mounted yet, so clampPopoverPosition can't measure its real height
-                                    // and falls back to an underestimate — compute a safe initial Y here
-                                    // (top-clamped, never past the bottom of the viewport) so it's fully
-                                    // on-screen from the very first click, before any drag/resize re-clamp.
                                     const initialY = Math.max(20, Math.min(rect.top - 240, window.innerHeight - 560));
                                     setPopoverPos(clampPopoverPosition(rect.left, initialY));
                                   }
@@ -3250,26 +3257,100 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                                   setCategoryPopoverFilter('');
                                   setTimeout(() => categoryPopoverInputRef.current?.focus(), 100);
                                 } else {
-                                  toast.info(`${getCategoryDisplayName(cat, cat.name)} - ${t('quickCheckout.noProductsFound')}`);
+                                  toast.info(`${displayName} - ${t('quickCheckout.noProductsFound')}`);
                                 }
                               }}
+                              onMouseEnter={(e) => showHoverPreview(e, { category: cat, productCount: categoryProducts.length })}
+                              onMouseLeave={hideHoverPreview}
                               data-cat-id={cat.id}
-                              className={`relative group rounded-xl flex flex-col items-center justify-center text-center min-h-[72px] transition-all duration-200 ${isDark
-                                  ? 'bg-slate-800/50 border border-slate-700/80 hover:border-slate-600 hover:bg-slate-800/60 active:scale-95'
-                                  : 'bg-white border border-slate-200 hover:border-slate-300 hover:bg-slate-50 active:scale-95 shadow-sm'
-                                }`}
+                              className={`relative overflow-hidden rounded-2xl w-full aspect-square border transition-all duration-200 group cursor-pointer text-left flex flex-col ${
+                                hasImage ? 'p-2 justify-end' : 'p-2.5 justify-between'
+                              } ${
+                                isSelected
+                                  ? 'ring-2 ring-emerald-500 border-transparent shadow-md scale-[1.02] transition-transform'
+                                  : hasImage
+                                  ? isDark
+                                    ? 'border-slate-800/80 hover:border-emerald-500/80 bg-slate-900/60 shadow-md'
+                                    : 'border-slate-200 hover:border-emerald-500/80 bg-white shadow-sm'
+                                  : 'bg-slate-50/90 hover:bg-slate-100 border border-slate-200 shadow-sm dark:bg-slate-900/70 dark:hover:bg-slate-800/80 dark:border-slate-800'
+                              }`}
                             >
-                              <div className="w-full flex flex-col items-center justify-center py-2 px-1">
-                                <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${(quickCheckoutCategories.indexOf(cat) % 2) === 0 ? 'from-cyan-500 to-blue-600' : 'from-amber-500 to-orange-500'
-                                  } flex items-center justify-center mb-1 shadow-lg`}>
-                                  <Package className="w-4 h-4 text-white" />
-                                </div>
-                                <span className={`text-[13px] font-bold leading-tight line-clamp-2 text-center break-words max-w-full ${isDark ? 'text-slate-300' : 'text-slate-700'
-                                  }`}>
-                                  {getCategoryDisplayName(cat, cat.name)}
-                                </span>
-                                <div className="w-1 h-1 rounded-full bg-cyan-500 shadow-glow mt-0.5"></div>
-                              </div>
+                              {hasImage ? (
+                                <>
+                                  {/* Background Image / Cover */}
+                                  <img
+                                    src={cat.imageUrl!}
+                                    alt={displayName}
+                                    loading="lazy"
+                                    className="object-cover absolute inset-0 w-full h-full group-hover:scale-105 transition-transform duration-300 pointer-events-none"
+                                    onError={() => {
+                                      setFailedCategoryImages((prev) => new Set(prev).add(cat.id));
+                                    }}
+                                  />
+
+                                  {/* Bottom Gradient Shadow Overlay */}
+                                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent pointer-events-none" />
+
+                                  {/* Top Product Count Badge */}
+                                  {categoryProducts.length > 0 && (
+                                    <div className="absolute top-1.5 right-1.5 z-10 px-1.5 py-0.5 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-[9px] font-mono text-zinc-300 flex items-center gap-0.5 shadow-xs">
+                                      <span>{categoryProducts.length}</span>
+                                    </div>
+                                  )}
+
+                                  {/* Selected Active Glow Indicator */}
+                                  {isSelected && (
+                                    <div className="absolute top-1.5 left-1.5 z-10 w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse" />
+                                  )}
+
+                                  {/* Bottom Text Placement — High-contrast white tones */}
+                                  <div className="relative z-10 text-center flex flex-col items-center justify-end pointer-events-none">
+                                    <span className="text-white font-bold drop-shadow-md text-xs line-clamp-1 max-w-full">
+                                      {englishName}
+                                    </span>
+                                    {sinhalaName && (
+                                      <span className="text-slate-200 font-medium drop-shadow text-[11px] truncate max-w-full mt-0.5">
+                                        {sinhalaName}
+                                      </span>
+                                    )}
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  {/* Top Row: Selection glow + count badge */}
+                                  <div className="flex items-center justify-between w-full z-10">
+                                    {isSelected ? (
+                                      <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse" />
+                                    ) : (
+                                      <div className="w-2 h-2" />
+                                    )}
+                                    {categoryProducts.length > 0 && (
+                                      <span className="px-1.5 py-0.5 rounded-full bg-slate-200/80 text-slate-700 text-[10px] font-semibold dark:bg-slate-800 dark:text-slate-300 border border-slate-300/60 dark:border-slate-700/60 font-mono">
+                                        {categoryProducts.length}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Centered Soft Slate / Emerald Icon */}
+                                  <div className="flex items-center justify-center my-auto transition-transform group-hover:scale-110 duration-200">
+                                    <div className="text-emerald-600 bg-emerald-50 border border-emerald-100 dark:text-emerald-400 dark:bg-emerald-950/40 dark:border-emerald-800/50 p-2 rounded-xl shadow-2xs">
+                                      <Package className="w-4 h-4" />
+                                    </div>
+                                  </div>
+
+                                  {/* Bottom Text Placement — Adaptive theme text */}
+                                  <div className="text-center flex flex-col items-center justify-end w-full pointer-events-none">
+                                    <span className="text-slate-800 dark:text-slate-100 font-bold text-xs line-clamp-1 max-w-full">
+                                      {englishName}
+                                    </span>
+                                    {sinhalaName && (
+                                      <span className="text-slate-500 dark:text-slate-400 font-medium text-[11px] truncate max-w-full mt-0.5">
+                                        {sinhalaName}
+                                      </span>
+                                    )}
+                                  </div>
+                                </>
+                              )}
                             </button>
                           );
                         })}
@@ -4062,6 +4143,13 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
         onClose={() => setShowProductFormModal(false)}
         mode="create"
         initialData={null}
+      />
+
+      {/* ── Floating Category Hover Preview ── */}
+      <CategoryHoverPreview
+        data={hoverData}
+        position={hoverPos}
+        isVisible={isHoverVisible}
       />
     </div>
   );

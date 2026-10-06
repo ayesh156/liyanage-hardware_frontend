@@ -576,13 +576,13 @@ export const Invoices: React.FC = () => {
                 return (
                   <tr key={invoice.id} className={`transition-colors ${isDark ? 'hover:bg-slate-700/25' : 'hover:bg-slate-50'}`}>
                     <td className="px-2 py-1.5">
-                      {/* 🌟 Invoice Number ක්ලික් කළ විට Quick Checkout Edit වෙත යොමු වීම */}
+                      {/* 🌟 Invoice Number ක්ලික් කළ විට Quick Invoice Edit වෙත යොමු වීම */}
                       <button 
                         onClick={() => navigate(`/invoices/quick-checkout?edit=${invoice.id}`)}
                         className={`text-[11px] font-mono font-bold hover:underline transition-all ${
                           isDark ? 'text-indigo-400 hover:text-indigo-300' : 'text-indigo-600 hover:text-indigo-700'
                         }`}
-                        title="Edit invoice in Quick Checkout"
+                        title="Edit invoice in Quick Invoice"
                       >
                         {invoice.invoiceNumber}
                       </button>

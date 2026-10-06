@@ -10,6 +10,7 @@ import { DeleteConfirmationModal } from '../components/modals/DeleteConfirmation
 import { CategoryProductsModal } from '../components/modals/CategoryProductsModal';
 import { CellPopover } from '../components/CellPopover';
 import { DisplaySettingsModal } from '../components/modals/DisplaySettingsModal';
+import { CategoryHoverPreview, useCategoryHoverPreview } from '../components/categories/CategoryHoverPreview';
 import { 
   Plus, Search, Edit2, Trash2, FolderTree, Package, Layers, Tag,
   RefreshCw, Pencil, X, Eye, EyeOff, Settings2, Lock,
@@ -60,6 +61,9 @@ export const Categories: React.FC = () => {
 
   const { i18n } = useTranslation();
   const isSinhala = i18n.language === 'si';
+
+  // ── Floating Category Hover Preview state ──
+  const { hoverData, position: hoverPos, isVisible: isHoverVisible, showHoverPreview, hideHoverPreview } = useCategoryHoverPreview();
 
   // ── Cell Popover state — for text fields (name, nameSinhala, description) ──
   const [cellPopover, setCellPopover] = useState<{
@@ -337,28 +341,82 @@ export const Categories: React.FC = () => {
               ) : (
                 paginatedCategories.map((category) => (
                   <tr key={category.id} className={`transition-colors ${isDark ? 'hover:bg-slate-700/25' : 'hover:bg-slate-50'}`}>
-                    {/* Name — unified column with i18n routing */}
-                    <td
-                      className="px-2 py-1.5 relative group cursor-pointer"
-                      onClick={(e) => openCellPopover(category, isSinhala ? 'nameSinhala' : 'name', e)}
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-gradient-to-br from-orange-500/20 to-rose-500/20 flex-shrink-0">
-                          <FolderTree className="w-3 h-3 text-orange-400" />
+                    {/* Name & Image — unified column with i18n routing & Hover Preview */}
+                    <td className="px-2 py-1.5 relative group">
+                      <div className="flex items-center gap-2.5">
+                        {/* Category Image / Avatar Thumbnail — Hover preview popup and click to Edit Modal */}
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditCategory(category);
+                          }}
+                          onMouseEnter={(e) => showHoverPreview(e, { category, productCount: getUsageCount(category.id, category.name) })}
+                          onMouseLeave={hideHoverPreview}
+                          className="w-10 h-10 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700/80 bg-gradient-to-br from-orange-500/10 to-rose-500/10 flex items-center justify-center flex-shrink-0 shadow-xs relative cursor-pointer group/thumb hover:border-orange-500/80 hover:shadow-md transition-all duration-200"
+                          title={t('categories.clickToEdit', 'Click to edit category')}
+                        >
+                          {category.imageUrl ? (
+                            <img
+                              src={category.imageUrl}
+                              alt={getDisplayName(category)}
+                              className="w-full h-full object-cover transition-transform duration-200 group-hover/thumb:scale-110"
+                              onError={(e) => {
+                                (e.currentTarget as HTMLElement).style.display = 'none';
+                                const fallback = e.currentTarget.parentElement?.querySelector('.cat-fallback');
+                                if (fallback) (fallback as HTMLElement).classList.remove('hidden');
+                              }}
+                            />
+                          ) : null}
+                          <div className={`cat-fallback ${category.imageUrl ? 'hidden' : 'flex'} items-center justify-center w-full h-full`}>
+                            {category.name ? (
+                              <span className="text-[11px] font-bold text-orange-500 font-mono">
+                                {category.name.slice(0, 2).toUpperCase()}
+                              </span>
+                            ) : (
+                              <FolderTree className="w-4 h-4 text-orange-400" />
+                            )}
+                          </div>
+
+                          {/* Hover Overlay with Edit Pencil Icon */}
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/thumb:opacity-100 transition-opacity duration-150 flex items-center justify-center backdrop-blur-[0.5px]">
+                            <Pencil className="w-3.5 h-3.5 text-white drop-shadow-sm" />
+                          </div>
                         </div>
-                        <span className={`text-[11px] font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                          {getDisplayName(category)}
-                        </span>
-                        {isHardwareCategory(category) && (
-                          <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-orange-500 to-rose-500 text-white text-[8px] font-black uppercase tracking-wider shadow-sm shadow-orange-500/30">
-                            <Lock className="w-2 h-2" />
-                            MAIN
-                          </span>
-                        )}
+
+                        {/* Category Name & Sinhala Name (Clickable for inline cell edit) */}
+                        <div 
+                          className="flex flex-col min-w-0 flex-1 cursor-pointer"
+                          onClick={(e) => openCellPopover(category, isSinhala ? 'nameSinhala' : 'name', e)}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-xs font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                              {getDisplayName(category)}
+                            </span>
+                            {isHardwareCategory(category) && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-orange-500 to-rose-500 text-white text-[8px] font-black uppercase tracking-wider shadow-xs">
+                                <Lock className="w-2 h-2" />
+                                MAIN
+                              </span>
+                            )}
+                          </div>
+                          {category.nameSinhala && !isSinhala && (
+                            <span className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'} truncate`}>
+                              {category.nameSinhala}
+                            </span>
+                          )}
+                          {isSinhala && category.name && (
+                            <span className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'} truncate`}>
+                              {category.name}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <span className={`absolute -right-0.5 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-150 ${
-                        isDark ? 'text-slate-500' : 'text-slate-400'
-                      }`}>
+                      <span 
+                        onClick={(e) => openCellPopover(category, isSinhala ? 'nameSinhala' : 'name', e)}
+                        className={`absolute -right-0.5 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-150 cursor-pointer ${
+                          isDark ? 'text-slate-500' : 'text-slate-400'
+                        }`}
+                      >
                         <Pencil className="w-3 h-3" />
                       </span>
                     </td>
@@ -544,6 +602,13 @@ export const Categories: React.FC = () => {
         isOpen={categoryProductsModalCategory !== null}
         category={categoryProductsModalCategory}
         onClose={() => setCategoryProductsModalCategory(null)}
+      />
+
+      {/* ── Large Photo Hover Preview Portal ── */}
+      <CategoryHoverPreview
+        data={hoverData}
+        position={hoverPos}
+        isVisible={isHoverVisible}
       />
     </div>
   );
