@@ -324,7 +324,7 @@ export const Invoices: React.FC = () => {
             className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-slate-500 to-slate-600 hover:from-slate-600 hover:to-slate-700 text-white rounded-lg font-medium transition-all shadow shadow-slate-500/20 text-xs">
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} /> {loading ? 'Syncing...' : 'Refresh'}
           </button>
-          <button onClick={() => navigate('/invoices/quick-checkout')}
+          <button onClick={() => navigate('/invoices/quick-invoice')}
             className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600 text-white rounded-lg font-medium transition-all shadow shadow-orange-500/20 text-xs">
             <Plus className="w-3.5 h-3.5" /> {t('invoices.addInvoice')}
           </button>
@@ -578,7 +578,7 @@ export const Invoices: React.FC = () => {
                     <td className="px-2 py-1.5">
                       {/* 🌟 Invoice Number ක්ලික් කළ විට Quick Invoice Edit වෙත යොමු වීම */}
                       <button 
-                        onClick={() => navigate(`/invoices/quick-checkout?edit=${invoice.id}`)}
+                        onClick={() => navigate(`/invoices/quick-invoice?edit=${invoice.id}`)}
                         className={`text-[11px] font-mono font-bold hover:underline transition-all ${
                           isDark ? 'text-indigo-400 hover:text-indigo-300' : 'text-indigo-600 hover:text-indigo-700'
                         }`}
@@ -668,7 +668,7 @@ export const Invoices: React.FC = () => {
 
                           {/* Edit Action */}
                           <DropdownMenuItem
-                            onClick={() => navigate(`/invoices/quick-checkout?edit=${invoice.id}`)}
+                            onClick={() => navigate(`/invoices/quick-invoice?edit=${invoice.id}`)}
                             className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg hover:text-orange-400 focus:text-orange-400 focus:bg-orange-500/10"
                           >
                             <Edit2 className="w-3.5 h-3.5 text-orange-400" />
@@ -783,7 +783,7 @@ export const Invoices: React.FC = () => {
           onClose={() => setPreviewInvoice(null)}
           onEdit={() => {
             setPreviewInvoice(null);
-            navigate(`/invoices/quick-checkout?edit=${previewInvoice.id}`);
+            navigate(`/invoices/quick-invoice?edit=${previewInvoice.id}`);
           }}
         />
       )}

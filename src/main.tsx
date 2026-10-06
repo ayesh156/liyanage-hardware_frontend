@@ -69,21 +69,23 @@ const AppContent = () => {
               <Route path="/" element={
                 <ProtectedRoute>
                   <AdminLayout>
-                    <Navigate to="/invoices/quick-checkout" replace />
+                    <Navigate to="/invoices/quick-invoice" replace />
                   </AdminLayout>
                 </ProtectedRoute>
               } />
-              <Route path="/invoices/quick-checkout" element={
-                <ProtectedRoute>
-                  <AdminLayout>
-                    <QuickCheckout />
-                  </AdminLayout>
-                </ProtectedRoute>
-              } />
+              {/* Canonical Quick Invoice Route */}
               <Route path="/invoices/quick-invoice" element={
                 <ProtectedRoute>
                   <AdminLayout>
                     <QuickCheckout />
+                  </AdminLayout>
+                </ProtectedRoute>
+              } />
+              {/* Fallback redirect for legacy /invoices/quick-checkout */}
+              <Route path="/invoices/quick-checkout" element={
+                <ProtectedRoute>
+                  <AdminLayout>
+                    <Navigate to="/invoices/quick-invoice" replace />
                   </AdminLayout>
                 </ProtectedRoute>
               } />
@@ -97,7 +99,7 @@ const AppContent = () => {
               <Route path="/invoices/create" element={
                 <ProtectedRoute>
                   <AdminLayout>
-                    <Navigate to="/invoices/quick-checkout" replace />
+                    <Navigate to="/invoices/quick-invoice" replace />
                   </AdminLayout>
                 </ProtectedRoute>
               } />

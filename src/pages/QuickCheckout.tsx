@@ -134,10 +134,11 @@ export const QuickCheckout: React.FC = () => {
     }
   }, [editingCell]);
 
-  // Set document title
+  // Set document title cleanly without truncation (EN: Quick Invoice | Liyanage Hardware, SI: ඉක්මන් ඉන්වොයිසිය | ලියනගේ හාඩ්වෙයාර්)
   useEffect(() => {
-    document.title = `${t('quickCheckout.title')} | Liyanage Hardware`;
-  }, [t]);
+    const brandName = i18n.language === 'si' ? 'ලියනගේ හාඩ්වෙයාර්' : 'Liyanage Hardware';
+    document.title = `${t('quickCheckout.title')} | ${brandName}`;
+  }, [t, i18n.language]);
 
   // ── In-place Edit mode via query param ──
   const editInvoiceId = searchParams.get('edit');

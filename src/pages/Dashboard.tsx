@@ -510,7 +510,7 @@ export const Dashboard: React.FC = () => {
         
         {/* Quick Invoice - Featured Action */}
         <Link 
-          to="/invoices/quick-checkout"
+          to="/invoices/quick-invoice"
           className={`flex items-center justify-between p-4 mb-4 rounded-xl border-2 transition-all hover:scale-[1.01] ${
             theme === 'dark' 
               ? 'bg-gradient-to-r from-amber-500/20 to-orange-500/20 border-amber-500/40 hover:border-amber-400' 

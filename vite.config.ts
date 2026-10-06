@@ -7,6 +7,16 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3002',
+        changeOrigin: true,
+      },
+      '/public': {
+        target: 'http://localhost:3002',
+        changeOrigin: true,
+      },
+    },
     fs: {
       allow: [".", "./src"],
       deny: [".env", ".env.*", "*.{crt,pem}", "**/.git/**"],

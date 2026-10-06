@@ -90,16 +90,44 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
     e.stopPropagation();
     setIsDragging(false);
 
+    // 1. Native File drop (Explorer / Finder / Desktop)
     const file = e.dataTransfer.files?.[0];
     if (file) {
       processImageFile(file);
       return;
     }
 
+    // 2. URI List drop
+    const uriData = e.dataTransfer.getData('text/uri-list');
+    if (uriData && (uriData.startsWith('http://') || uriData.startsWith('https://'))) {
+      onChange(uriData.trim());
+      setShowSuccessBadge(true);
+      setTimeout(() => setShowSuccessBadge(false), 2200);
+      return;
+    }
+
+    // 3. HTML image drag from another web page
+    const htmlData = e.dataTransfer.getData('text/html');
+    if (htmlData) {
+      const match = htmlData.match(/<img[^>]+src=["'](https?:\/\/[^"']+|data:image\/[^"']+)["']/i);
+      if (match && match[1]) {
+        onChange(match[1]);
+        setShowSuccessBadge(true);
+        setTimeout(() => setShowSuccessBadge(false), 2200);
+        return;
+      }
+    }
+
+    // 4. Plain text URL drop
     const textData = e.dataTransfer.getData('text/plain');
     if (textData) {
       const trimmed = textData.trim();
-      if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:image/')) {
+      if (
+        trimmed.startsWith('http://') ||
+        trimmed.startsWith('https://') ||
+        trimmed.startsWith('data:image/') ||
+        trimmed.startsWith('/public/category-img/')
+      ) {
         onChange(trimmed);
         setShowSuccessBadge(true);
         setTimeout(() => setShowSuccessBadge(false), 2200);
@@ -132,7 +160,8 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
       if (
         trimmed.startsWith('http://') ||
         trimmed.startsWith('https://') ||
-        trimmed.startsWith('data:image/')
+        trimmed.startsWith('data:image/') ||
+        trimmed.startsWith('/public/category-img/')
       ) {
         e.preventDefault();
         setErrorMessage(null);
@@ -143,6 +172,21 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
       }
     }
   }, [onChange, processImageFile]);
+
+  // Window-level paste listener for modal convenience
+  useEffect(() => {
+    const handleGlobalPaste = (e: ClipboardEvent) => {
+      // Don't intercept paste inside text inputs unless focused in the dropzone
+      const target = e.target as HTMLElement;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') && target !== dropzoneRef.current) {
+        return;
+      }
+      handlePaste(e);
+    };
+
+    window.addEventListener('paste', handleGlobalPaste);
+    return () => window.removeEventListener('paste', handleGlobalPaste);
+  }, [handlePaste]);
 
   const handleApplyUrl = (e?: React.FormEvent) => {
     if (e) e.preventDefault();

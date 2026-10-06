@@ -85,7 +85,7 @@ const OmniboxDropdown: React.FC = () => {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const searchRoutes: SearchRoute[] = [
-    { path: '/invoices/quick-checkout', label: t('quickCheckout.title'), keywords: ['quick', 'checkout', 'invoice', 'sale', 'billing', 'fast'], icon: Zap },
+    { path: '/invoices/quick-invoice', label: t('quickCheckout.title'), keywords: ['quick', 'checkout', 'invoice', 'sale', 'billing', 'fast'], icon: Zap },
     { path: '/invoices', label: t('nav.invoices'), keywords: ['invoice', 'billing', 'sales', 'receipt'], icon: FileText },
     { path: '/products', label: t('nav.products'), keywords: ['product', 'inventory', 'stock', 'item', 'goods'], icon: Package },
     { path: '/product-category', label: t('nav.productCategory'), keywords: ['category', 'product category', 'group'], icon: FolderTree },
@@ -250,7 +250,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
   }, [profileDropdownOpen]);
 
   const navItems = [
-    { path: '/invoices/quick-checkout', icon: Zap, label: 'quickCheckout.title', badge: null },
+    { path: '/invoices/quick-invoice', icon: Zap, label: 'quickCheckout.title', badge: null },
     { path: '/invoices', icon: FileText, label: 'nav.invoices', badge: '12' },
     { path: '/products', icon: Package, label: 'nav.products', badge: null },
     { path: '/product-category', icon: FolderTree, label: 'nav.productCategory', badge: null },

@@ -23,7 +23,7 @@ export const Login: React.FC = () => {
     try {
       await login(username, password);
       // If we reach here, login succeeded
-      navigate('/invoices/quick-checkout', { replace: true });
+      navigate('/invoices/quick-invoice', { replace: true });
     } catch (err: unknown) {
       // login() throws with the exact error from the backend
       setError(err instanceof Error ? err.message : 'Invalid credentials');
