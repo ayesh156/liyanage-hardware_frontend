@@ -19,12 +19,22 @@ import {
 } from 'lucide-react';
 import { CategoryImageUploader } from '../categories/CategoryImageUploader';
 
-interface CategoryFormModalProps {
+/**
+ * Props for the CategoryFormModal component.
+ */
+export interface CategoryFormModalProps {
+  /** Controls modal visibility */
   isOpen: boolean;
+  /** Callback fired when modal is closed or cancelled */
   onClose: () => void;
+  /** Callback fired when form is submitted with valid category data */
   onSave: (category: Partial<Category>) => void;
-  category: Category | null;
-  categories: Category[];
+  /** Category to edit. If null or omitted, modal functions in create/add mode */
+  category?: Category | null;
+  /** Alias for `category` providing initial data for editing purposes */
+  initialData?: Category | null;
+  /** Optional list of existing categories for reference */
+  categories?: Category[];
 }
 
 export const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
@@ -32,11 +42,13 @@ export const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
   onClose,
   onSave,
   category,
+  initialData,
   categories,
 }) => {
   const { theme } = useTheme();
   const { t } = useTranslation();
-  const isEditing = !!category;
+  const activeCategory = category ?? initialData ?? null;
+  const isEditing = !!activeCategory;
   const isDark = theme === 'dark';
 
   const [formData, setFormData] = useState<Partial<Category>>({
@@ -50,13 +62,13 @@ export const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (category) {
+    if (activeCategory) {
       setFormData({
-        name: category.name,
-        nameSinhala: category.nameSinhala || '',
-        icon: category.icon || '',
-        imageUrl: category.imageUrl || '',
-        description: category.description || '',
+        name: activeCategory.name,
+        nameSinhala: activeCategory.nameSinhala || '',
+        icon: activeCategory.icon || '',
+        imageUrl: activeCategory.imageUrl || '',
+        description: activeCategory.description || '',
       });
     } else {
       setFormData({
@@ -68,7 +80,7 @@ export const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
       });
     }
     setErrors({});
-  }, [category, isOpen]);
+  }, [activeCategory, isOpen]);
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -214,3 +226,5 @@ export const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
     </Dialog>
   );
 };
+
+export default CategoryFormModal;
