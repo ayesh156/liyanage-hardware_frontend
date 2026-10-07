@@ -23,6 +23,7 @@ const FinancialReports = lazy(() => import("./pages/FinancialReports").then(m =>
 const Products = lazy(() => import("./pages/Products").then(m => ({ default: m.Products })));
 const Categories = lazy(() => import("./pages/Categories").then(m => ({ default: m.Categories })));
 const Suppliers = lazy(() => import("./pages/Suppliers"));
+const GRN = lazy(() => import("./pages/GRN"));
 const Customers = lazy(() => import("./pages/Customers").then(m => ({ default: m.Customers })));
 const Settings = lazy(() => import("./pages/Settings").then(m => ({ default: m.Settings })));
 const Help = lazy(() => import("./pages/Help").then(m => ({ default: m.Help })));
@@ -143,6 +144,13 @@ const AppContent = () => {
                 <ProtectedRoute>
                   <AdminLayout>
                     <Suppliers />
+                  </AdminLayout>
+                </ProtectedRoute>
+              } />
+              <Route path="/grn" element={
+                <ProtectedRoute>
+                  <AdminLayout>
+                    <GRN />
                   </AdminLayout>
                 </ProtectedRoute>
               } />

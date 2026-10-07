@@ -203,7 +203,30 @@ export const api = {
 
   delete: <T>(endpoint: string, fullResponse?: boolean, options?: Omit<ApiOptions, 'method' | 'body' | 'params' | 'fullResponse'>) =>
     request<T>(endpoint, { method: 'DELETE', fullResponse, ...options }),
+
+  upload: async <T>(endpoint: string, formData: FormData): Promise<T> => {
+    const url = `${API_BASE}${endpoint}`;
+    const token =
+      sessionStorage.getItem('auth_token') ||
+      localStorage.getItem('token') ||
+      localStorage.getItem('auth_token');
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+      credentials: 'include',
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      throw new Error(json?.message || json?.error || `Upload failed with status ${res.status}`);
+    }
+    return json?.data ?? json;
+  },
 };
 
-export { REQUEST_TIMEOUT as REQUEST_TIMEOUT_MS };
+export { API_BASE, REQUEST_TIMEOUT as REQUEST_TIMEOUT_MS };
 export default api;

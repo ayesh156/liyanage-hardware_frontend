@@ -11,7 +11,7 @@ import {
   Package, FileText, Users, LayoutDashboard, Settings, LogOut,
   Moon, Sun, Menu, X, ChevronLeft, ChevronRight, Bell, Search,
   User, HelpCircle, ChevronDown, Sparkles, TrendingUp, Shield,
-  FolderTree, Building, Truck, Zap, Clock
+  FolderTree, Building, Truck, Zap, Clock, Layers
 } from 'lucide-react';
 import { useIsMobile } from '../hooks/use-mobile';
 
@@ -91,6 +91,7 @@ const OmniboxDropdown: React.FC = () => {
     { path: '/product-category', label: t('nav.productCategory'), keywords: ['category', 'product category', 'group'], icon: FolderTree },
     { path: '/customers', label: t('nav.customers'), keywords: ['customer', 'client', 'buyer', 'person'], icon: Users },
     { path: '/suppliers', label: t('nav.suppliers'), keywords: ['supplier', 'vendor', 'provider'], icon: Truck },
+    { path: '/grn', label: t('nav.grn'), keywords: ['grn', 'goods', 'received', 'notes', 'stock', 'receipt', 'delivery', 'bill'], icon: Layers },
     { path: '/financial-reports', label: t('nav.financialReports'), keywords: ['financial', 'report', 'analytics', 'revenue', 'profit', 'money'], icon: TrendingUp },
     { path: '/settings', label: t('nav.settings'), keywords: ['settings', 'configuration', 'preferences', 'options'], icon: Settings },
     { path: '/help', label: t('nav.helpCenter'), keywords: ['help', 'support', 'faq', 'guide', 'contact'], icon: HelpCircle },
@@ -256,6 +257,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
     { path: '/product-category', icon: FolderTree, label: 'nav.productCategory', badge: null },
     { path: '/customers', icon: Users, label: 'nav.customers', badge: '3' },
     { path: '/suppliers', icon: Truck, label: 'nav.suppliers', badge: null },
+    { path: '/grn', icon: Layers, label: 'nav.grn', badge: null },
     { path: '/financial-reports', icon: TrendingUp, label: 'nav.financialReports', badge: null },
   ];
 

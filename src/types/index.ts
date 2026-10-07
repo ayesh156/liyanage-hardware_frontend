@@ -193,21 +193,87 @@ export interface SupplierDelivery {
   notes?: string;
 }
 
+export interface GRNImageItem {
+  url: string;
+  name?: string;
+  source?: 'upload' | 'gdrive' | 'url';
+  size?: number;
+  fileType?: 'image' | 'pdf';
+  isPdf?: boolean;
+  mimeType?: string;
+}
+
+export interface GRNItem {
+  id?: string;
+  grnId?: string;
+  name: string;
+  unitPrice: number;
+  qty: number;
+  subtotal: number;
+  createdAt?: string;
+}
+
+export interface SupplierSettlement {
+  id: string;
+  supplierId: string;
+  grnId?: string | null;
+  amount: number;
+  paymentMethod: 'CASH' | 'CHEQUE' | 'BANK_TRANSFER' | string;
+  note?: string | null;
+  createdAt: string;
+  grn?: {
+    grnNumber: string;
+  };
+}
+
+export interface GRN {
+  id: string;
+  grnNumber: string;
+  supplierId: string;
+  supplier?: {
+    id: string;
+    name: string;
+    companyName?: string | null;
+    mobileNumber?: string | null;
+    telephoneNumber?: string | null;
+    currentBalance?: number;
+  };
+  totalAmount: number;
+  paidAmount: number;
+  dueAmount: number;
+  status: 'PAID' | 'PARTIAL' | 'DUE' | string;
+  images?: (GRNImageItem | string)[] | null;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items?: GRNItem[];
+  settlements?: SupplierSettlement[];
+}
+
 export interface Supplier {
   id: string;
   name: string;
-  contactPerson: string;
-  email: string;
-  phone: string;
-  address: string;
+  companyName?: string | null;
+  mobileNumber?: string | null;
+  telephoneNumber?: string | null;
+  startingBalance?: number;
+  currentBalance?: number;
+  contactPerson?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
   brands?: string[];
   categories?: string[];
   paymentTerms?: string;
-  isActive: boolean;
-  paymentType: SupplierPaymentType;
+  isActive?: boolean;
+  paymentType?: SupplierPaymentType;
   creditBalance?: number;
   creditLimit?: number;
   creditDueDate?: string;
   lastPaymentDate?: string;
   deliveries?: SupplierDelivery[];
+  grns?: GRN[];
+  settlements?: SupplierSettlement[];
+  grnsCount?: number;
+  settlementsCount?: number;
 }

@@ -1,1172 +1,520 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useIsMobile } from '../hooks/use-mobile';
-import { Supplier, SupplierDelivery, Product } from '../types/index';
-import { mockSuppliers, mockProducts } from '../data/mockData';
+import { Supplier } from '../types';
+import api from '../lib/api';
 import { 
-  Truck, Plus, Search, Filter, RefreshCw, Edit2, Trash2, 
-  Banknote, CreditCard, Phone, Mail, MapPin, Calendar,
-  AlertTriangle, Clock, ChevronDown, ChevronUp, Package,
-  DollarSign, User, Building2, FileText, Bell, X, MoreVertical, SortAsc, SortDesc
+  Truck, Plus, Search, RefreshCw, Edit2, Trash2, 
+  Banknote, Phone, Smartphone, MapPin, Building2, 
+  ShieldAlert, Sparkles, Layers, ArrowUpRight
 } from 'lucide-react';
-import { DeleteConfirmationModal } from '../components/modals/DeleteConfirmationModal';
 import { SupplierFormModal } from '../components/modals/SupplierFormModal';
-import { SearchableSelect } from '../components/ui/searchable-select';
+import { GRNFormModal } from '../components/modals/GRNFormModal';
+import { SupplierPendingGRNsModal } from '../components/modals/SupplierPendingGRNsModal';
+import { SupplierLedgerModal } from '../components/modals/SupplierLedgerModal';
+import { DeleteConfirmationModal } from '../components/modals/DeleteConfirmationModal';
+import { SupplierRowActionMenu } from '../components/suppliers/SupplierRowActionMenu';
 import { toast } from 'react-toastify';
+import { cn } from '../lib/utils';
 
-type TabFilter = 'all' | 'cash' | 'credit';
-
-export default function Suppliers() {
+/**
+ * Dedicated Supplier Management Directory Page.
+ * 
+ * Features:
+ * - Dedicated strictly to Supplier profiles, company details, contact numbers, and starting balances.
+ * - Live ledger balance tracking with debt alerts.
+ * - Floating portal 3-dots action menu with Add GRN, Settle Balance, Edit, and Delete actions.
+ * - Reliance pattern SupplierPendingGRNsModal for settling outstanding GRNs.
+ * - Clean navigation integration with Goods Received Notes (`/grn`).
+ */
+export default function SuppliersPage() {
   const { t } = useTranslation();
   const { theme } = useTheme();
+  const navigate = useNavigate();
+  const isDark = theme === 'dark';
   const isMobile = useIsMobile();
-  
-  const [suppliers, setSuppliers] = useState<Supplier[]>(mockSuppliers);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<TabFilter>('all');
-  const [expandedSupplier, setExpandedSupplier] = useState<string | null>(null);
-  const [mobileActionSupplier, setMobileActionSupplier] = useState<Supplier | null>(null);
-  
-  // Filter and sort states
-  const [showFilters, setShowFilters] = useState(false);
-  const [locationFilter, setLocationFilter] = useState<string>('all');
-  const [creditStatusFilter, setCreditStatusFilter] = useState<string>('all'); // all, overdue, due_soon, ok
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  
-  // Modal states
-  const [isFormModalOpen, setIsFormModalOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | undefined>(undefined);
+
+  // Suppliers State
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [isLoadingSuppliers, setIsLoadingSuppliers] = useState<boolean>(true);
+  const [supplierSearch, setSupplierSearch] = useState<string>('');
+  const [supplierSummary, setSupplierSummary] = useState<{ totalOutstanding: number; totalStartingBalance: number }>({
+    totalOutstanding: 0,
+    totalStartingBalance: 0,
+  });
+
+  // Modal States
+  const [isSupplierModalOpen, setIsSupplierModalOpen] = useState<boolean>(false);
+  const [selectedSupplierForEdit, setSelectedSupplierForEdit] = useState<Supplier | undefined>(undefined);
+
+  const [isGrnModalOpen, setIsGrnModalOpen] = useState<boolean>(false);
+  const [preselectedSupplierIdForGrn, setPreselectedSupplierIdForGrn] = useState<string | undefined>(undefined);
+
+  const [isPendingGrnsModalOpen, setIsPendingGrnsModalOpen] = useState<boolean>(false);
+  const [selectedSupplierForPendingGrns, setSelectedSupplierForPendingGrns] = useState<Supplier | null>(null);
+
+  const [isLedgerModalOpen, setIsLedgerModalOpen] = useState<boolean>(false);
+  const [selectedSupplierForLedger, setSelectedSupplierForLedger] = useState<Supplier | null>(null);
+
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
   const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
 
-  // Calculate credit alerts
-  const creditAlerts = useMemo(() => {
-    const today = new Date();
-    return suppliers
-      .filter(s => s.paymentType === 'credit' && s.creditDueDate && s.creditBalance && s.creditBalance > 0)
-      .map(s => {
-        const dueDate = new Date(s.creditDueDate!);
-        const diffTime = dueDate.getTime() - today.getTime();
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        return { supplier: s, daysUntilDue: diffDays };
-      })
-      .filter(a => a.daysUntilDue <= 7) // Alert for due within 7 days
-      .sort((a, b) => a.daysUntilDue - b.daysUntilDue);
-  }, [suppliers]);
+  // ── Fetch Suppliers from Live Backend ──
+  const fetchSuppliers = useCallback(async () => {
+    setIsLoadingSuppliers(true);
+    try {
+      const res = await api.get<{
+        data: Supplier[];
+        meta: any;
+        summary: { totalOutstanding: number; totalStartingBalance: number };
+      }>('/suppliers', { search: supplierSearch || undefined }, true);
 
-  // Show notifications for upcoming due dates
-  useEffect(() => {
-    creditAlerts.forEach(alert => {
-      if (alert.daysUntilDue <= 0) {
-      toast.error(
-          `${alert.supplier.name}: ${t('suppliers.overdue', { days: Math.abs(alert.daysUntilDue) })}`,
-          { autoClose: 10000 }
-        );
-      } else if (alert.daysUntilDue <= 3) {
-        toast.warning(
-          `${alert.supplier.name}: ${t('suppliers.dueIn', { days: alert.daysUntilDue })}`,
-          { autoClose: 8000 }
-        );
-      }
-    });
-  }, []);
-
-  // Helper function to get due date status
-  const getDueDateStatus = (dueDate: string) => {
-    const today = new Date();
-    const due = new Date(dueDate);
-    const diffDays = Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    
-    if (diffDays < 0) return { status: 'overdue', days: Math.abs(diffDays), color: 'red' };
-    if (diffDays === 0) return { status: 'today', days: 0, color: 'orange' };
-    if (diffDays <= 7) return { status: 'soon', days: diffDays, color: 'yellow' };
-    return { status: 'ok', days: diffDays, color: 'green' };
-  };
-
-  // Get unique locations for filter
-  const allLocations = useMemo(() => {
-    const locations = Array.from(new Set(suppliers.map(s => s.address).filter(Boolean)));
-    return locations.sort();
-  }, [suppliers]);
-
-  // Filter and sort suppliers
-  const filteredSuppliers = useMemo(() => {
-    let filtered = suppliers.filter(supplier => {
-      const matchesSearch = 
-        supplier.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        supplier.contactPerson.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        supplier.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (supplier.address && supplier.address.toLowerCase().includes(searchQuery.toLowerCase()));
-      
-      const matchesTab = 
-        activeTab === 'all' || supplier.paymentType === activeTab;
-      
-      const matchesLocation = 
-        locationFilter === 'all' || supplier.address === locationFilter;
-      
-      // Credit status filter logic
-      let matchesCreditStatus = true;
-      if (creditStatusFilter !== 'all' && supplier.paymentType === 'credit') {
-        if (supplier.creditDueDate && supplier.creditBalance && supplier.creditBalance > 0) {
-          const dueStatus = getDueDateStatus(supplier.creditDueDate);
-          if (creditStatusFilter === 'overdue') {
-            matchesCreditStatus = dueStatus.status === 'overdue';
-          } else if (creditStatusFilter === 'due_soon') {
-            matchesCreditStatus = dueStatus.status === 'soon' || dueStatus.status === 'today';
-          } else if (creditStatusFilter === 'ok') {
-            matchesCreditStatus = dueStatus.status === 'ok';
-          }
-        } else {
-          matchesCreditStatus = false;
+      if (res && res.data) {
+        setSuppliers(res.data);
+        if (res.summary) {
+          setSupplierSummary(res.summary);
         }
       }
-      
-      return matchesSearch && matchesTab && matchesLocation && matchesCreditStatus && supplier.isActive;
-    });
+    } catch (err: any) {
+      console.error('Failed to fetch suppliers:', err);
+      toast.error(err?.message || 'Failed to load suppliers from server');
+    } finally {
+      setIsLoadingSuppliers(false);
+    }
+  }, [supplierSearch]);
 
-    // Apply sorting
-    filtered.sort((a, b) => {
-      const comparison = a.name.localeCompare(b.name);
-      return sortOrder === 'asc' ? comparison : -comparison;
-    });
+  useEffect(() => {
+    fetchSuppliers();
+  }, [fetchSuppliers]);
 
-    return filtered;
-  }, [suppliers, searchQuery, activeTab, locationFilter, creditStatusFilter, sortOrder]);
+  // ── Live Optimistic State Refresh on Settlement / Updates ──
+  useEffect(() => {
+    const handleSync = () => {
+      fetchSuppliers();
+    };
+    window.addEventListener('balance-updated', handleSync);
+    window.addEventListener('supplier-updated', handleSync);
+    window.addEventListener('grn-updated', handleSync);
+    return () => {
+      window.removeEventListener('balance-updated', handleSync);
+      window.removeEventListener('supplier-updated', handleSync);
+      window.removeEventListener('grn-updated', handleSync);
+    };
+  }, [fetchSuppliers]);
 
-  // Stats
-  const stats = useMemo(() => ({
-    total: suppliers.filter(s => s.isActive).length,
-    cash: suppliers.filter(s => s.isActive && s.paymentType === 'cash').length,
-    credit: suppliers.filter(s => s.isActive && s.paymentType === 'credit').length,
-    alerts: creditAlerts.length,
-  }), [suppliers, creditAlerts]);
-
-  const handleAddSupplier = () => {
-    setSelectedSupplier(undefined);
-    setIsFormModalOpen(true);
+  // ── Handlers ──
+  const handleOpenAddSupplier = () => {
+    setSelectedSupplierForEdit(undefined);
+    setIsSupplierModalOpen(true);
   };
 
-  const handleEditSupplier = (supplier: Supplier) => {
-    setSelectedSupplier(supplier);
-    setIsFormModalOpen(true);
+  const handleOpenEditSupplier = (supplier: Supplier) => {
+    setSelectedSupplierForEdit(supplier);
+    setIsSupplierModalOpen(true);
   };
 
-  const handleDeleteClick = (supplier: Supplier) => {
+  const handleOpenAddGrn = (preselectSupplierId?: string) => {
+    setPreselectedSupplierIdForGrn(preselectSupplierId);
+    setIsGrnModalOpen(true);
+  };
+
+  const handleOpenSettleSupplier = (supplier: Supplier) => {
+    setSelectedSupplierForPendingGrns(supplier);
+    setIsPendingGrnsModalOpen(true);
+  };
+
+  const handleOpenLedger = (supplier: Supplier) => {
+    setSelectedSupplierForLedger(supplier);
+    setIsLedgerModalOpen(true);
+  };
+
+  const handlePromptDeleteSupplier = (supplier: Supplier) => {
     setSupplierToDelete(supplier);
     setIsDeleteModalOpen(true);
   };
 
-  const handleDeleteConfirm = () => {
-    if (supplierToDelete) {
-      setSuppliers(prev => prev.filter(s => s.id !== supplierToDelete.id));
-      toast.success(t('suppliers.supplierDeleted'));
+  const handleConfirmDelete = async () => {
+    if (!supplierToDelete) return;
+    try {
+      await api.delete(`/suppliers/${supplierToDelete.id}`);
+      toast.success(`Supplier "${supplierToDelete.name}" deleted successfully`);
+      fetchSuppliers();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to delete supplier');
+    } finally {
       setIsDeleteModalOpen(false);
       setSupplierToDelete(null);
     }
   };
 
-  const handleSaveSupplier = (supplier: Supplier) => {
-    if (selectedSupplier) {
-      setSuppliers(prev => prev.map(s => s.id === supplier.id ? supplier : s));
-    } else {
-      setSuppliers(prev => [...prev, supplier]);
-    }
-    toast.success(t('suppliers.supplierSaved'));
-    setIsFormModalOpen(false);
-  };
-
-  const toggleSupplierExpand = (supplierId: string) => {
-    setExpandedSupplier(prev => prev === supplierId ? null : supplierId);
-  };
-
-  const formatCurrency = (amount: number) => {
-    return `Rs. ${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
-  };
-
   return (
-    <div className={`${isMobile ? 'pb-20' : ''} space-y-4 md:space-y-6`}>
-        {/* Mobile Header - Compact */}
-        {isMobile ? (
-          <div className="sticky top-0 z-10 -mx-4 -mt-4 px-4 py-3 backdrop-blur-lg bg-opacity-90 border-b" style={{
-            backgroundColor: theme === 'dark' ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.9)',
-            borderColor: theme === 'dark' ? 'rgba(51, 65, 85, 0.5)' : 'rgba(226, 232, 240, 0.8)'
-          }}>
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h1 className={`text-xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                  {t('suppliers.title')}
-                </h1>
-                <p className={`text-xs mt-0.5 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-                  {stats.total} {t('suppliers.totalSuppliers')}
-                </p>
-              </div>
-              <button
-                onClick={handleAddSupplier}
-                className="p-3 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-full shadow-lg shadow-orange-500/30 active:scale-95 transition-transform"
-              >
-                <Plus className="w-5 h-5" />
-              </button>
+    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-[1600px] mx-auto min-h-screen">
+      {/* ── Top Header Bar ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-black tracking-tight flex items-center gap-2.5 text-slate-100">
+            <div className="p-2.5 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-lg shadow-orange-500/25">
+              <Truck className="w-6 h-6" />
             </div>
-            
-            {/* Mobile Search Bar */}
-            <div className="relative">
-              <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`} />
-              <input
-                type="text"
-                placeholder={t('suppliers.searchPlaceholder')}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className={`w-full pl-10 pr-4 py-2.5 rounded-xl border transition-colors text-sm ${
-                  theme === 'dark'
-                    ? 'bg-slate-800/50 border-slate-700 text-white placeholder-slate-500 focus:border-orange-500'
-                    : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-orange-500'
-                } focus:outline-none focus:ring-2 focus:ring-orange-500/20`}
-              />
-            </div>
-          </div>
-        ) : (
-          /* Desktop Header */
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <h1 className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                {t('suppliers.title')}
-              </h1>
-              <p className={`text-sm mt-1 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-                {t('suppliers.subtitle')}
-              </p>
-            </div>
-            <button
-              onClick={handleAddSupplier}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl font-medium shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 transition-all"
-            >
-              <Plus className="w-5 h-5" />
-              {t('suppliers.addSupplier')}
-            </button>
-          </div>
-        )}
-
-        {/* Credit Alerts Banner */}
-        {creditAlerts.length > 0 && (
-          <div className={`p-4 rounded-xl border ${theme === 'dark' ? 'bg-amber-500/10 border-amber-500/20' : 'bg-amber-50 border-amber-200'}`}>
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-amber-500/20">
-                <Bell className="w-5 h-5 text-amber-500" />
-              </div>
-              <div className="flex-1">
-                <h3 className={`font-semibold ${theme === 'dark' ? 'text-amber-400' : 'text-amber-700'}`}>
-                  {t('suppliers.creditAlert')} ({creditAlerts.length})
-                </h3>
-                <p className={`text-sm ${theme === 'dark' ? 'text-amber-400/70' : 'text-amber-600'}`}>
-                  {creditAlerts.map(a => a.supplier.name).join(', ')}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Stats Cards - Mobile Grid (2x2) */}
-        {isMobile ? (
-          <div className="-mx-4 px-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}>
-                <div className={`p-2 rounded-lg w-fit ${theme === 'dark' ? 'bg-purple-500/20' : 'bg-purple-100'}`}>
-                  <Truck className="w-4 h-4 text-purple-500" />
-                </div>
-                <p className={`text-2xl font-bold mt-2 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{stats.total}</p>
-                <p className={`text-xs mt-0.5 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>{t('suppliers.totalSuppliers')}</p>
-              </div>
-              <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}>
-                <div className={`p-2 rounded-lg w-fit ${theme === 'dark' ? 'bg-green-500/20' : 'bg-green-100'}`}>
-                  <Banknote className="w-4 h-4 text-green-500" />
-                </div>
-                <p className={`text-2xl font-bold mt-2 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{stats.cash}</p>
-                <p className={`text-xs mt-0.5 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>{t('suppliers.cashSuppliers')}</p>
-              </div>
-              <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}>
-                <div className={`p-2 rounded-lg w-fit ${theme === 'dark' ? 'bg-orange-500/20' : 'bg-orange-100'}`}>
-                  <CreditCard className="w-4 h-4 text-orange-500" />
-                </div>
-                <p className={`text-2xl font-bold mt-2 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{stats.credit}</p>
-                <p className={`text-xs mt-0.5 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>{t('suppliers.creditSuppliers')}</p>
-              </div>
-              <div className={`p-3 rounded-xl border ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}>
-                <div className={`p-2 rounded-lg w-fit ${stats.alerts > 0 ? 'bg-red-500/20' : theme === 'dark' ? 'bg-slate-700' : 'bg-slate-100'}`}>
-                  <AlertTriangle className={`w-4 h-4 ${stats.alerts > 0 ? 'text-red-500' : theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`} />
-                </div>
-                <p className={`text-2xl font-bold mt-2 ${stats.alerts > 0 ? 'text-red-500' : theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{stats.alerts}</p>
-                <p className={`text-xs mt-0.5 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>{t('suppliers.paymentDue')}</p>
-              </div>
-            </div>
-          </div>
-        ) : (
-          /* Desktop Stats Grid */
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className={`p-4 rounded-xl border ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}>
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${theme === 'dark' ? 'bg-purple-500/20' : 'bg-purple-100'}`}>
-                  <Truck className="w-5 h-5 text-purple-500" />
-                </div>
-                <div>
-                  <p className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{stats.total}</p>
-                  <p className={`text-xs ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>{t('suppliers.totalSuppliers')}</p>
-                </div>
-              </div>
-            </div>
-            <div className={`p-4 rounded-xl border ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}>
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${theme === 'dark' ? 'bg-green-500/20' : 'bg-green-100'}`}>
-                  <Banknote className="w-5 h-5 text-green-500" />
-                </div>
-                <div>
-                  <p className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{stats.cash}</p>
-                  <p className={`text-xs ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>{t('suppliers.cashSuppliers')}</p>
-                </div>
-              </div>
-            </div>
-            <div className={`p-4 rounded-xl border ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}>
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${theme === 'dark' ? 'bg-orange-500/20' : 'bg-orange-100'}`}>
-                  <CreditCard className="w-5 h-5 text-orange-500" />
-                </div>
-                <div>
-                  <p className={`text-2xl font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{stats.credit}</p>
-                  <p className={`text-xs ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>{t('suppliers.creditSuppliers')}</p>
-                </div>
-              </div>
-            </div>
-            <div className={`p-4 rounded-xl border ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}>
-              <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-lg ${stats.alerts > 0 ? 'bg-red-500/20' : theme === 'dark' ? 'bg-slate-700' : 'bg-slate-100'}`}>
-                  <AlertTriangle className={`w-5 h-5 ${stats.alerts > 0 ? 'text-red-500' : theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`} />
-                </div>
-                <div>
-                  <p className={`text-2xl font-bold ${stats.alerts > 0 ? 'text-red-500' : theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>{stats.alerts}</p>
-                  <p className={`text-xs ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>{t('suppliers.paymentDue')}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Toolbar - Desktop Only */}
-        {!isMobile && (
-          <div className={`p-4 rounded-xl border ${theme === 'dark' ? 'bg-slate-800/30 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}>
-            <div className="flex flex-col gap-4">
-              {/* Top row - Tabs and Search */}
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                {/* Tabs */}
-                <div className={`flex items-center gap-1 p-1 rounded-lg ${theme === 'dark' ? 'bg-slate-900/50' : 'bg-slate-100'}`}>
-                  <button
-                    onClick={() => setActiveTab('all')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                      activeTab === 'all'
-                        ? 'bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow-lg'
-                        : theme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    {t('suppliers.allSuppliers')} ({stats.total})
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('cash')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                      activeTab === 'cash'
-                        ? 'bg-green-500 text-white shadow-lg'
-                        : theme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <Banknote className="w-4 h-4" />
-                    {t('suppliers.cashTab')} ({stats.cash})
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('credit')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${
-                      activeTab === 'credit'
-                        ? 'bg-orange-500 text-white shadow-lg'
-                        : theme === 'dark' ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <CreditCard className="w-4 h-4" />
-                    {t('suppliers.creditTab')} ({stats.credit})
-                  </button>
-                </div>
-
-                {/* Search and Controls */}
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`} />
-                    <input
-                      type="text"
-                      placeholder={t('suppliers.searchPlaceholder')}
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className={`w-full md:w-64 pl-10 pr-4 py-2 rounded-lg border transition-colors ${
-                        theme === 'dark'
-                          ? 'bg-slate-900/50 border-slate-700 text-white placeholder-slate-500 focus:border-orange-500'
-                          : 'bg-slate-50 border-slate-200 text-slate-900 placeholder-slate-400 focus:border-orange-500'
-                      } focus:outline-none focus:ring-2 focus:ring-orange-500/20`}
-                    />
-                  </div>
-
-                  {/* Filter Button */}
-                  <button
-                    onClick={() => setShowFilters(!showFilters)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all border ${
-                      locationFilter !== 'all' || creditStatusFilter !== 'all'
-                        ? 'bg-orange-500 text-white border-orange-500'
-                        : theme === 'dark' 
-                          ? 'border-slate-700 bg-slate-800/50 text-slate-300 hover:bg-slate-700' 
-                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    <Filter className="w-4 h-4" />
-                    {t('common.filter')}
-                    {(locationFilter !== 'all' || creditStatusFilter !== 'all') && (
-                      <span className="bg-white/20 px-1.5 py-0.5 rounded text-xs">
-                        {[locationFilter !== 'all', creditStatusFilter !== 'all'].filter(Boolean).length}
-                      </span>
-                    )}
-                    <ChevronDown className={`w-4 h-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
-                  </button>
-
-                  {/* Sort Button */}
-                  <button
-                    onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                    className={`p-2 rounded-lg border transition-colors ${
-                      theme === 'dark' ? 'border-slate-700 hover:bg-slate-800' : 'border-slate-200 hover:bg-slate-50'
-                    }`}
-                  >
-                    {sortOrder === 'asc' ? <SortAsc className="w-4 h-4" /> : <SortDesc className="w-4 h-4" />}
-                  </button>
-
-                  {/* Clear Filters */}
-                  {(locationFilter !== 'all' || creditStatusFilter !== 'all' || searchQuery) && (
-                    <button
-                      onClick={() => {
-                        setSearchQuery('');
-                        setLocationFilter('all');
-                        setCreditStatusFilter('all');
-                        setSortOrder('asc');
-                      }}
-                      className={`px-3 py-2 rounded-lg transition-colors ${
-                        theme === 'dark'
-                          ? 'text-slate-400 hover:text-white hover:bg-slate-800'
-                          : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
-                      }`}
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Expanded Filters */}
-              {showFilters && (
-                <div className={`flex flex-wrap gap-4 pt-4 border-t ${theme === 'dark' ? 'border-slate-700/50' : 'border-slate-200'}`}>
-                  {/* Location Filter */}
-                  <div className="flex-1 min-w-[200px]">
-                    <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>
-                      <MapPin className="w-4 h-4 inline mr-1" />
-                      {t('filters.location')}
-                    </label>
-                    <SearchableSelect
-                      value={locationFilter}
-                      onValueChange={setLocationFilter}
-                      placeholder={t('filters.allLocations')}
-                      theme={theme}
-                      options={[
-                        { value: 'all', label: t('filters.allLocations') },
-                        ...allLocations.map(location => ({
-                          value: location,
-                          label: location
-                        }))
-                      ]}
-                    />
-                  </div>
-
-                  {/* Credit Status Filter */}
-                  {activeTab !== 'cash' && (
-                    <div className="flex-1 min-w-[200px]">
-                      <label className={`block text-sm font-medium mb-2 ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>
-                        <Clock className="w-4 h-4 inline mr-1" />
-                        {t('filters.creditStatus')}
-                      </label>
-                      <SearchableSelect
-                        value={creditStatusFilter}
-                        onValueChange={setCreditStatusFilter}
-                        placeholder={t('filters.allCreditStatus')}
-                        theme={theme}
-                        options={[
-                          { value: 'all', label: t('filters.allCreditStatus') },
-                          { value: 'overdue', label: t('filters.overdue') },
-                          { value: 'due_soon', label: t('filters.dueSoon') },
-                          { value: 'ok', label: t('filters.onTrack') }
-                        ]}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Mobile Filter Tabs and Controls */}
-        {isMobile && (
-          <div className="-mx-4 px-4 space-y-3">
-            {/* Tabs */}
-            <div className="overflow-x-auto pb-2 no-scrollbar -mx-4 px-4">
-              <div className={`flex items-center gap-2 p-1 rounded-lg min-w-max ${theme === 'dark' ? 'bg-slate-800/50' : 'bg-slate-100'}`}>
-                <button
-                  onClick={() => setActiveTab('all')}
-                  className={`px-3 py-2 rounded-lg text-xs font-medium transition-all whitespace-nowrap overflow-hidden truncate max-w-[140px] ${
-                    activeTab === 'all'
-                      ? 'bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow-lg'
-                      : theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
-                  }`}
-                >
-                  {t('suppliers.allSuppliers')} ({stats.total})
-                </button>
-                <button
-                  onClick={() => setActiveTab('cash')}
-                  className={`px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2 whitespace-nowrap overflow-hidden truncate max-w-[140px] ${
-                    activeTab === 'cash'
-                      ? 'bg-green-500 text-white shadow-lg'
-                      : theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
-                  }`}
-                >
-                  <Banknote className="w-3 h-3" />
-                  {t('suppliers.cashTab')} ({stats.cash})
-                </button>
-                <button
-                  onClick={() => setActiveTab('credit')}
-                  className={`px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2 whitespace-nowrap overflow-hidden truncate max-w-[140px] ${
-                    activeTab === 'credit'
-                      ? 'bg-orange-500 text-white shadow-lg'
-                      : theme === 'dark' ? 'text-slate-400' : 'text-slate-600'
-                  }`}
-                >
-                  <CreditCard className="w-3 h-3" />
-                  {t('suppliers.creditTab')} ({stats.credit})
-                </button>
-              </div>
-            </div>
-
-            {/* Mobile Controls Row */}
-            <div className="flex items-center gap-2">
-              {/* Filter Button */}
-              <button
-                onClick={() => setShowFilters(!showFilters)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all border flex-shrink-0 ${
-                  locationFilter !== 'all' || creditStatusFilter !== 'all'
-                    ? 'bg-orange-500 text-white border-orange-500'
-                    : theme === 'dark' 
-                      ? 'border-slate-700 bg-slate-800/50 text-slate-300' 
-                      : 'border-slate-200 bg-white text-slate-600'
-                }`}
-              >
-                <Filter className="w-4 h-4" />
-                {t('common.filter')}
-                {(locationFilter !== 'all' || creditStatusFilter !== 'all') && (
-                  <span className="bg-white/20 px-1.5 py-0.5 rounded text-xs">
-                    {[locationFilter !== 'all', creditStatusFilter !== 'all'].filter(Boolean).length}
-                  </span>
-                )}
-              </button>
-
-              {/* Sort Button */}
-              <button
-                onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
-                className={`p-2 rounded-lg border transition-transform ${
-                  theme === 'dark' ? 'border-slate-700 hover:bg-slate-800' : 'border-slate-200 hover:bg-slate-50'
-                }`}
-              >
-                <SortAsc className={`w-4 h-4 transition-transform ${sortOrder === 'desc' ? 'rotate-180' : ''}`} />
-              </button>
-
-              {/* Clear Filters */}
-              {(locationFilter !== 'all' || creditStatusFilter !== 'all') && (
-                <button
-                  onClick={() => {
-                    setLocationFilter('all');
-                    setCreditStatusFilter('all');
-                    setSortOrder('asc');
-                  }}
-                  className={`p-2 rounded-lg transition-colors ${
-                    theme === 'dark'
-                      ? 'text-slate-400 hover:bg-slate-800'
-                      : 'text-slate-500 hover:bg-slate-100'
-                  }`}
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-
-            {/* Mobile Expanded Filters */}
-            {showFilters && (
-              <div className={`p-3 rounded-xl border space-y-3 ${
-                theme === 'dark' ? 'bg-slate-800/30 border-slate-700/50' : 'bg-white border-slate-200'
-              }`}>
-                {/* Location Filter */}
-                <div>
-                  <label className={`block text-xs font-medium mb-1.5 ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>
-                    <MapPin className="w-3 h-3 inline mr-1" />
-                    {t('filters.location')}
-                  </label>
-                  <SearchableSelect
-                    value={locationFilter}
-                    onValueChange={setLocationFilter}
-                    placeholder={t('filters.allLocations')}
-                    theme={theme}
-                    options={[
-                      { value: 'all', label: t('filters.allLocations') },
-                      ...allLocations.map(location => ({
-                        value: location,
-                        label: location
-                      }))
-                    ]}
-                  />
-                </div>
-
-                {/* Credit Status Filter */}
-                {activeTab !== 'cash' && (
-                  <div>
-                    <label className={`block text-xs font-medium mb-1.5 ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>
-                      <Clock className="w-3 h-3 inline mr-1" />
-                      {t('filters.creditStatus')}
-                    </label>
-                    <SearchableSelect
-                      value={creditStatusFilter}
-                      onValueChange={setCreditStatusFilter}
-                      placeholder={t('filters.allCreditStatus')}
-                      theme={theme}
-                      options={[
-                        { value: 'all', label: t('filters.allCreditStatus') },
-                        { value: 'overdue', label: t('filters.overdue') },
-                        { value: 'due_soon', label: t('filters.dueSoon') },
-                        { value: 'ok', label: t('filters.onTrack') }
-                      ]}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Suppliers List */}
-        <div className="space-y-4">
-          {filteredSuppliers.length > 0 ? (
-            filteredSuppliers.map(supplier => {
-              const isExpanded = expandedSupplier === supplier.id;
-              const dueStatus = supplier.creditDueDate ? getDueDateStatus(supplier.creditDueDate) : null;
-              
-              return (
-                <div
-                  key={supplier.id}
-                  className={`rounded-xl border overflow-hidden transition-all ${
-                    theme === 'dark' ? 'bg-slate-800/30 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'
-                  }`}
-                >
-                  {/* Supplier Header - Mobile Optimized */}
-                  <div className={isMobile ? 'p-3' : 'p-4'}>
-                    {isMobile ? (
-                      /* Mobile Compact Layout */
-                      <>
-                        {/* Top Row: Icon + Name + Credit Badge */}
-                        <div className="flex items-start gap-2.5 mb-3">
-                          <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                            supplier.paymentType === 'cash'
-                              ? 'bg-green-500/20 text-green-500'
-                              : 'bg-orange-500/20 text-orange-500'
-                          }`}>
-                            {supplier.paymentType === 'cash' ? <Banknote className="w-6 h-6" /> : <CreditCard className="w-6 h-6" />}
-                          </div>
-                          
-                          <div className="flex-1 min-w-0">
-                            <h3 className={`text-base font-semibold leading-tight mb-1.5 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                              {supplier.name}
-                            </h3>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0 ${
-                                supplier.paymentType === 'cash'
-                                  ? 'bg-green-500/10 text-green-500 border border-green-500/20'
-                                  : 'bg-orange-500/10 text-orange-500 border border-orange-500/20'
-                              }`}>
-                                {supplier.paymentType === 'cash' ? t('suppliers.cashTab') : t('suppliers.creditTab')}
-                              </span>
-                              {dueStatus && dueStatus.status !== 'ok' && (
-                                <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-medium flex items-center gap-1 ${
-                                  dueStatus.color === 'red' ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
-                                  dueStatus.color === 'orange' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' :
-                                  'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20'
-                                }`}>
-                                  <AlertTriangle className="w-2.5 h-2.5" />
-                                  {dueStatus.status === 'overdue' ? `${Math.abs(dueStatus.days)}d overdue` :
-                                   dueStatus.status === 'today' ? 'Due today' :
-                                   `${dueStatus.days}d left`}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Action Buttons */}
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            <button
-                              onClick={() => setMobileActionSupplier(supplier)}
-                              className={`p-2 rounded-lg transition-colors ${theme === 'dark' ? 'hover:bg-slate-700 active:bg-slate-600' : 'hover:bg-slate-100 active:bg-slate-200'}`}
-                            >
-                              <MoreVertical className="w-5 h-5" />
-                            </button>
-                            <button
-                              onClick={() => toggleSupplierExpand(supplier.id)}
-                              className={`p-2 rounded-lg transition-colors ${theme === 'dark' ? 'hover:bg-slate-700 active:bg-slate-600' : 'hover:bg-slate-100 active:bg-slate-200'}`}
-                            >
-                              {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Contact Info Row */}
-                        <div className={`flex flex-col gap-2 p-2.5 rounded-lg ${theme === 'dark' ? 'bg-slate-800/30' : 'bg-slate-50'}`}>
-                          <div className={`flex items-center gap-2 text-xs ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>
-                            <User className="w-3.5 h-3.5 flex-shrink-0 text-slate-400" />
-                            <span className="truncate">{supplier.contactPerson}</span>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <a 
-                              href={`tel:${supplier.phone}`}
-                              className={`flex items-center gap-1.5 text-xs font-medium ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'} active:opacity-70`}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Phone className="w-3.5 h-3.5 flex-shrink-0" />
-                              {supplier.phone}
-                            </a>
-                            <a 
-                              href={`mailto:${supplier.email}`}
-                              className={`flex items-center gap-1.5 text-xs font-medium truncate ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'} active:opacity-70`}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Mail className="w-3.5 h-3.5 flex-shrink-0" />
-                              <span className="truncate">{supplier.email}</span>
-                            </a>
-                          </div>
-                        </div>
-
-                        {/* Credit Amount - Mobile */}
-                        {supplier.paymentType === 'credit' && supplier.creditBalance && (
-                          <div className={`mt-2.5 p-2.5 rounded-lg flex items-center justify-between ${theme === 'dark' ? 'bg-orange-500/10 border border-orange-500/20' : 'bg-orange-50 border border-orange-200'}`}>
-                            <span className={`text-xs font-medium ${theme === 'dark' ? 'text-orange-400' : 'text-orange-700'}`}>
-                              {t('suppliers.outstandingCredit')}
-                            </span>
-                            <span className="text-lg font-bold text-orange-500">
-                              {formatCurrency(supplier.creditBalance)}
-                            </span>
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      /* Desktop Layout */
-                      <>
-                        <div className="flex items-start justify-between gap-3">
-                          {/* Left: Avatar + Info */}
-                          <div className="flex items-start gap-3 flex-1 min-w-0">
-                            {/* Avatar */}
-                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${
-                          supplier.paymentType === 'cash'
-                            ? 'bg-green-500/20 text-green-500'
-                            : 'bg-orange-500/20 text-orange-500'
-                        }`}>
-                          {supplier.paymentType === 'cash' ? <Banknote className="w-6 h-6" /> : <CreditCard className="w-6 h-6" />}
-                        </div>
-                        
-                        {/* Info */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className={`text-lg font-semibold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                              {supplier.name}
-                            </h3>
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${
-                              supplier.paymentType === 'cash'
-                                ? 'bg-green-500/10 text-green-500 border border-green-500/20'
-                                : 'bg-orange-500/10 text-orange-500 border border-orange-500/20'
-                            }`}>
-                              {supplier.paymentType === 'cash' ? t('suppliers.cashTab') : t('suppliers.creditTab')}
-                            </span>
-                            {dueStatus && dueStatus.status !== 'ok' && (
-                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1 ${
-                                dueStatus.color === 'red' ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
-                                dueStatus.color === 'orange' ? 'bg-orange-500/10 text-orange-500 border border-orange-500/20' :
-                                'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20'
-                              }`}>
-                                <AlertTriangle className="w-3 h-3" />
-                                {dueStatus.status === 'overdue' ? t('suppliers.overdue', { days: dueStatus.days }) :
-                                 dueStatus.status === 'today' ? t('suppliers.dueToday') :
-                                 t('suppliers.dueIn', { days: dueStatus.days })}
-                              </span>
-                            )}
-                          </div>
-                          
-                          {/* Contact Info - Desktop */}
-                          <div className={`flex items-center gap-4 mt-1 text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-                              <span className="flex items-center gap-1">
-                                <User className="w-3.5 h-3.5" />
-                                {supplier.contactPerson}
-                              </span>
-                              <a 
-                                href={`tel:${supplier.phone}`}
-                                className={`flex items-center gap-1 ${theme === 'dark' ? 'hover:text-blue-400' : 'hover:text-blue-600'} transition-colors`}
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <Phone className="w-3.5 h-3.5" />
-                                {supplier.phone}
-                              </a>
-                              <a 
-                                href={`mailto:${supplier.email}`}
-                                className={`flex items-center gap-1 ${theme === 'dark' ? 'hover:text-blue-400' : 'hover:text-blue-600'} transition-colors`}
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <Mail className="w-3.5 h-3.5" />
-                                {supplier.email}
-                              </a>
-                            </div>
-
-                        </div>
-                      </div>
-
-                      {/* Right: Credit Amount + Actions */}
-                      <div className="flex items-start gap-2 flex-shrink-0">
-                        {supplier.paymentType === 'credit' && supplier.creditBalance && (
-                          <div className={`text-right ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>
-                            <p className="text-xs text-slate-500">{t('suppliers.outstandingCredit')}</p>
-                            <p className="text-lg font-bold text-orange-500">{formatCurrency(supplier.creditBalance)}</p>
-                          </div>
-                        )}
-                        <button
-                          onClick={() => handleEditSupplier(supplier)}
-                          className={`p-2 rounded-lg transition-colors ${theme === 'dark' ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteClick(supplier)}
-                          className="p-2 rounded-lg text-red-500 hover:bg-red-500/10 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => toggleSupplierExpand(supplier.id)}
-                          className={`p-2 rounded-lg transition-colors ${theme === 'dark' ? 'hover:bg-slate-700' : 'hover:bg-slate-100'}`}
-                        >
-                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                        </button>
-                      </div>
-                    </div>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Expanded Content - Delivery History */}
-                  {isExpanded && (
-                    <div className={`border-t ${theme === 'dark' ? 'border-slate-700/50' : 'border-slate-200'}`}>
-                      <div className="p-4">
-                        <div className="flex items-center justify-between mb-4">
-                          <h4 className={`font-semibold flex items-center gap-2 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                            <Package className="w-4 h-4" />
-                            {t('suppliers.deliveryHistory')}
-                          </h4>
-                        </div>
-
-                        {supplier.deliveries && supplier.deliveries.length > 0 ? (
-                          isMobile ? (
-                            /* Mobile Card Layout */
-                            <div className="space-y-3">
-                              {supplier.deliveries.map(delivery => (
-                                <div key={delivery.id} className={`p-3 rounded-lg border ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700/50' : 'bg-slate-50 border-slate-200'}`}>
-                                  <div className="flex items-start justify-between mb-2">
-                                    <div className="flex-1">
-                                      <p className={`font-medium text-sm ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                                        {delivery.productName}
-                                      </p>
-                                      <div className={`flex items-center gap-1 mt-1 text-xs ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-                                        <Calendar className="w-3 h-3" />
-                                        {new Date(delivery.deliveryDate).toLocaleDateString()}
-                                      </div>
-                                    </div>
-                                    <div className="text-right">
-                                      <p className="text-lg font-bold text-green-500">{formatCurrency(delivery.totalAmount)}</p>
-                                      <p className={`text-xs ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>
-                                        {t('suppliers.totalAmount')}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <div className="grid grid-cols-2 gap-2 text-xs">
-                                    <div>
-                                      <p className={theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}>{t('suppliers.quantity')}</p>
-                                      <p className={`font-medium ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>{delivery.quantity}</p>
-                                    </div>
-                                    <div>
-                                      <p className={theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}>{t('suppliers.unitPrice')}</p>
-                                      <p className={`font-medium ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>{formatCurrency(delivery.unitPrice)}</p>
-                                    </div>
-                                  </div>
-                                  {delivery.invoiceNumber && (
-                                    <div className={`mt-2 pt-2 border-t ${theme === 'dark' ? 'border-slate-700' : 'border-slate-200'}`}>
-                                      <div className="flex items-center gap-1 text-xs">
-                                        <FileText className="w-3 h-3 text-slate-400" />
-                                        <span className={theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}>{delivery.invoiceNumber}</span>
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            /* Desktop Table Layout */
-                            <div className="overflow-x-auto">
-                              <table className="w-full">
-                                <thead>
-                                  <tr className={theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}>
-                                    <th className="text-left text-xs font-medium py-2 px-3">{t('suppliers.deliveryDate')}</th>
-                                    <th className="text-left text-xs font-medium py-2 px-3">{t('suppliers.productDelivered')}</th>
-                                    <th className="text-right text-xs font-medium py-2 px-3">{t('suppliers.quantity')}</th>
-                                    <th className="text-right text-xs font-medium py-2 px-3">{t('suppliers.unitPrice')}</th>
-                                    <th className="text-right text-xs font-medium py-2 px-3">{t('suppliers.totalAmount')}</th>
-                                    <th className="text-left text-xs font-medium py-2 px-3">{t('suppliers.invoiceNumber')}</th>
-                                  </tr>
-                                </thead>
-                                <tbody className={`divide-y ${theme === 'dark' ? 'divide-slate-700/50' : 'divide-slate-100'}`}>
-                                  {supplier.deliveries.map(delivery => (
-                                    <tr key={delivery.id} className={theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}>
-                                      <td className="py-2 px-3 text-sm">
-                                        <span className="flex items-center gap-1">
-                                          <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                                          {new Date(delivery.deliveryDate).toLocaleDateString()}
-                                        </span>
-                                      </td>
-                                      <td className="py-2 px-3 text-sm font-medium">{delivery.productName}</td>
-                                      <td className="py-2 px-3 text-sm text-right">{delivery.quantity}</td>
-                                      <td className="py-2 px-3 text-sm text-right">{formatCurrency(delivery.unitPrice)}</td>
-                                      <td className="py-2 px-3 text-sm text-right font-medium text-green-500">{formatCurrency(delivery.totalAmount)}</td>
-                                      <td className="py-2 px-3 text-sm">
-                                        {delivery.invoiceNumber && (
-                                          <span className="flex items-center gap-1">
-                                            <FileText className="w-3.5 h-3.5 text-slate-400" />
-                                            {delivery.invoiceNumber}
-                                          </span>
-                                        )}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          )
-                        ) : (
-                          <div className={`text-center py-8 ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>
-                            <Package className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                            <p>{t('suppliers.noDeliveries')}</p>
-                          </div>
-                        )}
-
-                        {/* Credit Details for Credit Suppliers */}
-                        {supplier.paymentType === 'credit' && (
-                          <div className={`mt-4 p-${isMobile ? '3' : '4'} rounded-lg ${theme === 'dark' ? 'bg-slate-900/50' : 'bg-slate-50'}`}>
-                            <div className={`grid ${isMobile ? 'grid-cols-2 gap-3' : 'grid-cols-2 md:grid-cols-4 gap-4'}`}>
-                              <div>
-                                <p className={`text-xs ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>{t('suppliers.creditLimit')}</p>
-                                <p className={`font-semibold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                                  {supplier.creditLimit ? formatCurrency(supplier.creditLimit) : '-'}
-                                </p>
-                              </div>
-                              <div>
-                                <p className={`text-xs ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>{t('suppliers.creditBalance')}</p>
-                                <p className="font-semibold text-orange-500">
-                                  {supplier.creditBalance ? formatCurrency(supplier.creditBalance) : formatCurrency(0)}
-                                </p>
-                              </div>
-                              <div>
-                                <p className={`text-xs ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>{t('suppliers.creditDueDate')}</p>
-                                <p className={`font-semibold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                                  {supplier.creditDueDate ? new Date(supplier.creditDueDate).toLocaleDateString() : '-'}
-                                </p>
-                              </div>
-                              <div>
-                                <p className={`text-xs ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>{t('suppliers.lastPaymentDate')}</p>
-                                <p className={`font-semibold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                                  {supplier.lastPaymentDate ? new Date(supplier.lastPaymentDate).toLocaleDateString() : '-'}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Products from this Supplier */}
-                        {(() => {
-                          const supplierProducts = mockProducts.filter(p => p.supplierId === supplier.id);
-                          return (
-                            <div className={`mt-4 pt-4 border-t ${theme === 'dark' ? 'border-slate-700/50' : 'border-slate-200'}`}>
-                              <h4 className={`font-semibold flex items-center gap-2 mb-3 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                                <Package className="w-4 h-4" />
-                                {t('suppliers.productsFromSupplier')} ({supplierProducts.length})
-                              </h4>
-                              {supplierProducts.length > 0 ? (
-                                <div className={`grid gap-3 ${isMobile ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'}`}>
-                                  {supplierProducts.map(product => (
-                                    <div
-                                      key={product.id}
-                                      className={`p-3 rounded-lg border ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200'}`}
-                                    >
-                                      <div className="flex items-center justify-between">
-                                        <div>
-                                          <p className={`font-medium text-sm ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                                            {product.name}
-                                          </p>
-                                          {product.nameAlt && (
-                                            <p className={`text-xs ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>
-                                              {product.nameAlt}
-                                            </p>
-                                          )}
-                                          <p className={`text-xs mt-1 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-                                            SKU: {product.sku}
-                                          </p>
-                                        </div>
-                                        <div className="text-right">
-                                          <p className="text-sm font-bold text-green-500">
-                                            {formatCurrency(product.retailPrice || product.price || 0)}
-                                          </p>
-                                          <p className={`text-xs ${
-                                            product.stock <= (product.minStock || 10) 
-                                              ? product.stock === 0 ? 'text-red-500' : 'text-yellow-500' 
-                                              : theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
-                                          }`}>
-                                            {t('products.stockLabel')}: {product.stock}
-                                          </p>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className={`text-center py-4 ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>
-                                  <Package className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                                  <p className="text-sm">{t('suppliers.noProductsLinked')}</p>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          ) : (
-            <div className={`text-center py-16 rounded-xl border ${theme === 'dark' ? 'bg-slate-800/30 border-slate-700/50' : 'bg-white border-slate-200'}`}>
-              <Truck className={`w-16 h-16 mx-auto mb-4 ${theme === 'dark' ? 'text-slate-600' : 'text-slate-300'}`} />
-              <h3 className={`text-lg font-semibold mb-2 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                {t('suppliers.noSuppliersFound')}
-              </h3>
-              <p className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-                {t('suppliers.adjustFilters')}
-              </p>
-            </div>
-          )}
+            <span>{t('suppliers.title', 'Suppliers Directory')}</span>
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+            {t('suppliers.subtitle', 'Supplier directory, company details, contact numbers, and starting balances')}
+          </p>
         </div>
 
-        {/* Modals */}
-        <SupplierFormModal
-          isOpen={isFormModalOpen}
-          supplier={selectedSupplier}
-          onClose={() => setIsFormModalOpen(false)}
-          onSave={handleSaveSupplier}
-        />
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => fetchSuppliers()}
+            className={cn(
+              'p-2.5 rounded-xl border transition-all duration-200 focus:outline-none',
+              isDark
+                ? 'border-slate-800 bg-slate-900/80 hover:bg-slate-800 text-slate-300'
+                : 'border-slate-200 bg-white hover:bg-slate-100 text-slate-700 shadow-sm'
+            )}
+            title="Refresh Live Data"
+          >
+            <RefreshCw className={cn('w-4 h-4', isLoadingSuppliers && 'animate-spin text-orange-400')} />
+          </button>
 
-        <DeleteConfirmationModal
-          isOpen={isDeleteModalOpen}
-          title={t('suppliers.deleteSupplier')}
-          message={t('suppliers.deleteConfirm')}
-          onConfirm={handleDeleteConfirm}
-          onCancel={() => setIsDeleteModalOpen(false)}
-        />
+          <button
+            onClick={() => navigate('/grn')}
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-xs sm:text-sm font-bold border border-cyan-500/30 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 transition-all"
+          >
+            <Layers className="w-4 h-4" />
+            {t('suppliers.viewGrns', 'View GRNs')}
+          </button>
 
-        {/* Mobile Action Sheet - Bottom Drawer */}
-        {isMobile && mobileActionSupplier && (
-          <>
-            {/* Backdrop */}
-            <div 
-              className="fixed inset-0 bg-black/50 z-50 animate-in fade-in duration-200"
-            />
-            {/* Action Sheet */}
-            <div className={`fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl border-t animate-in slide-in-from-bottom duration-300 ${
-              theme === 'dark' ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
-            }`}>
-              <div className="p-4">
-                {/* Handle Bar */}
-                <div className="w-12 h-1 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mb-6" />
-                
-                {/* Supplier Info */}
-                <div className="mb-4 pb-4 border-b dark:border-slate-700">
-                  <h3 className={`text-lg font-semibold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                    {mobileActionSupplier.name}
-                  </h3>
-                  <p className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-                    {mobileActionSupplier.contactPerson}
-                  </p>
-                </div>
-
-                {/* Actions */}
-                <div className="space-y-2">
-                  <button
-                    onClick={() => {
-                      handleEditSupplier(mobileActionSupplier);
-                      setMobileActionSupplier(null);
-                    }}
-                    className={`w-full flex items-center gap-3 p-4 rounded-xl transition-colors ${
-                      theme === 'dark' 
-                        ? 'bg-slate-800/50 hover:bg-slate-800 active:bg-slate-700' 
-                        : 'bg-slate-50 hover:bg-slate-100 active:bg-slate-200'
-                    }`}
-                  >
-                    <Edit2 className={`w-5 h-5 ${theme === 'dark' ? 'text-blue-400' : 'text-blue-600'}`} />
-                    <span className={`font-medium ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-                      {t('suppliers.editSupplier')}
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      handleDeleteClick(mobileActionSupplier);
-                      setMobileActionSupplier(null);
-                    }}
-                    className="w-full flex items-center gap-3 p-4 rounded-xl transition-colors bg-red-500/10 hover:bg-red-500/20 active:bg-red-500/30"
-                  >
-                    <Trash2 className="w-5 h-5 text-red-500" />
-                    <span className="font-medium text-red-500">
-                      {t('suppliers.deleteSupplier')}
-                    </span>
-                  </button>
-
-                  <button
-                    onClick={() => setMobileActionSupplier(null)}
-                    className={`w-full p-4 rounded-xl font-medium transition-colors ${
-                      theme === 'dark'
-                        ? 'bg-slate-800/50 text-slate-300 hover:bg-slate-800 active:bg-slate-700'
-                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200 active:bg-slate-300'
-                    }`}
-                  >
-                    {t('common.cancel')}
-                  </button>
-                </div>
-
-                {/* Safe area spacing for mobile */}
-                <div className="h-safe-area-inset-bottom" />
-              </div>
-            </div>
-          </>
-        )}
+          <button
+            onClick={handleOpenAddSupplier}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-gradient-to-r from-orange-500 to-rose-600 hover:from-orange-600 hover:to-rose-700 text-white shadow-lg shadow-orange-500/25 transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            {t('suppliers.addSupplier', 'Add Supplier')}
+          </button>
+        </div>
       </div>
+
+      {/* ── Key Metrics Overview Cards ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+        {/* Total Suppliers */}
+        <div
+          className={cn(
+            'p-4 rounded-2xl border relative overflow-hidden transition-all',
+            isDark ? 'bg-slate-900/90 border-slate-800/80 shadow-lg' : 'bg-white border-slate-200 shadow-sm'
+          )}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              {t('suppliers.totalSuppliers', 'Total Suppliers')}
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-orange-500/10 text-orange-400 flex items-center justify-center border border-orange-500/20">
+              <Building2 className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="text-2xl font-black tracking-tight text-slate-100 font-mono">
+            {suppliers.length}
+          </div>
+          <p className="text-[10px] text-slate-400 mt-1">{t('suppliers.activeVendors', 'Active hardware distributors & vendors')}</p>
+        </div>
+
+        {/* Total Starting Balance */}
+        <div
+          className={cn(
+            'p-4 rounded-2xl border relative overflow-hidden transition-all',
+            isDark ? 'bg-slate-900/90 border-slate-800/80 shadow-lg' : 'bg-white border-slate-200 shadow-sm'
+          )}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400">
+              {t('suppliers.startingBalance', 'Initial Starting Balance')}
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center border border-amber-500/20">
+              <Banknote className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="text-2xl font-black tracking-tight text-amber-400 font-mono">
+            Rs. {supplierSummary.totalStartingBalance.toLocaleString('en-LK', { minimumFractionDigits: 2 })}
+          </div>
+          <p className="text-[10px] text-slate-400 mt-1">{t('suppliers.openingAccountsTotal', 'Opening accounts balance total')}</p>
+        </div>
+
+        {/* Outstanding Supplier Debt */}
+        <div
+          className={cn(
+            'p-4 rounded-2xl border relative overflow-hidden transition-all',
+            isDark ? 'bg-slate-900/90 border-slate-800/80 shadow-lg' : 'bg-white border-slate-200 shadow-sm'
+          )}
+        >
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-rose-400">
+              {t('suppliers.totalOutstanding', 'Total Outstanding Due')}
+            </span>
+            <div className="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center border border-rose-500/20">
+              <ShieldAlert className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="text-2xl font-black tracking-tight text-rose-500 font-mono">
+            Rs. {supplierSummary.totalOutstanding.toLocaleString('en-LK', { minimumFractionDigits: 2 })}
+          </div>
+          <p className="text-[10px] text-slate-400 mt-1">{t('suppliers.liveUnpaidDebt', 'Live unpaid debt to settle across suppliers')}</p>
+        </div>
+      </div>
+
+      {/* ── Filter and Search Controls ── */}
+      <div className="flex items-center gap-3">
+        <div
+          className={cn(
+            'flex-1 p-2.5 px-3 rounded-2xl border flex items-center gap-2.5 w-full',
+            isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+          )}
+        >
+          <Search className="w-4 h-4 text-slate-400 shrink-0" />
+          <input
+            type="text"
+            placeholder={t('suppliers.searchTablePlaceholder', 'Search suppliers by name, company, phone number, or address...')}
+            value={supplierSearch}
+            onChange={(e) => setSupplierSearch(e.target.value)}
+            className={cn(
+              'w-full bg-transparent border-none text-xs sm:text-sm focus:outline-none',
+              isDark ? 'text-white placeholder-slate-500' : 'text-slate-900 placeholder-slate-400'
+            )}
+          />
+        </div>
+      </div>
+
+      {/* ── Suppliers Table ── */}
+      <div
+        className={cn(
+          'rounded-2xl border overflow-hidden',
+          isDark ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
+        )}
+      >
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead>
+              <tr
+                className={cn(
+                  'border-b text-[11px] font-bold uppercase tracking-wider',
+                  isDark ? 'bg-slate-950/70 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'
+                )}
+              >
+                <th className="p-4">{t('suppliers.supplierName', 'Supplier Name')}</th>
+                <th className="p-4">{t('suppliers.companyName', 'Company Name')}</th>
+                <th className="p-4">{t('suppliers.contacts', 'Contact Numbers')}</th>
+                <th className="p-4">{t('suppliers.address', 'Address')}</th>
+                <th className="p-4 text-right">{t('suppliers.startingBalance', 'Starting Balance')}</th>
+                <th className="p-4 text-right">{t('suppliers.currentBalance', 'Current Due Balance')}</th>
+                <th className="p-4 text-center">{t('suppliers.grnsCount', 'GRNs')}</th>
+                <th className="p-4 text-right">{t('common.actions', 'Actions')}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800/50">
+              {suppliers.length > 0 ? (
+                suppliers.map((s) => {
+                  const curBalance = Number(s.currentBalance || 0);
+                  const hasDue = curBalance > 0;
+
+                  return (
+                    <tr
+                      key={s.id}
+                      className={cn(
+                        'transition-colors',
+                        isDark ? 'hover:bg-slate-800/40' : 'hover:bg-slate-50'
+                      )}
+                    >
+                      {/* Name */}
+                      <td className="p-4 font-bold text-slate-100 flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-orange-500/10 text-orange-400 flex items-center justify-center font-bold text-xs shrink-0">
+                          {s.name.charAt(0).toUpperCase()}
+                        </div>
+                        <span className="truncate">{s.name}</span>
+                      </td>
+
+                      {/* Company Name */}
+                      <td className="p-4 font-medium text-slate-300">
+                        {s.companyName || <span className="text-slate-500 italic">{t('suppliers.individual', 'Individual')}</span>}
+                      </td>
+
+                      {/* Contact Numbers */}
+                      <td className="p-4">
+                        <div className="space-y-0.5">
+                          {s.mobileNumber && (
+                            <div className="flex items-center gap-1.5 font-mono text-[11px] text-slate-300">
+                              <Smartphone className="w-3 h-3 text-orange-400 shrink-0" />
+                              <span>{s.mobileNumber}</span>
+                            </div>
+                          )}
+                          {s.telephoneNumber && (
+                            <div className="flex items-center gap-1.5 font-mono text-[11px] text-slate-400">
+                              <Phone className="w-3 h-3 text-slate-500 shrink-0" />
+                              <span>{s.telephoneNumber}</span>
+                            </div>
+                          )}
+                          {!s.mobileNumber && !s.telephoneNumber && (
+                            <span className="text-slate-500 text-[11px]">-</span>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Address */}
+                      <td className="p-4 max-w-xs truncate text-slate-400">
+                        {s.address ? (
+                          <div className="flex items-center gap-1.5 text-[11px] truncate">
+                            <MapPin className="w-3 h-3 text-slate-500 shrink-0" />
+                            <span className="truncate">{s.address}</span>
+                          </div>
+                        ) : (
+                          <span className="text-slate-500">-</span>
+                        )}
+                      </td>
+
+                      {/* Starting Balance */}
+                      <td className="p-4 text-right font-mono text-slate-400 font-medium">
+                        Rs. {Number(s.startingBalance || 0).toLocaleString('en-LK', { minimumFractionDigits: 2 })}
+                      </td>
+
+                      {/* Current Balance */}
+                      <td className="p-4 text-right">
+                        <span
+                          className={cn(
+                            'font-mono font-bold text-sm',
+                            hasDue ? 'text-rose-400' : 'text-emerald-400'
+                          )}
+                        >
+                          Rs. {curBalance.toLocaleString('en-LK', { minimumFractionDigits: 2 })}
+                        </span>
+                        {hasDue && (
+                          <span className="block text-[10px] text-rose-500 font-medium">
+                            {t('suppliers.outstandingDue', 'Outstanding Due')}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* GRNs Count button */}
+                      <td className="p-4 text-center">
+                        <button
+                          type="button"
+                          onClick={() => navigate('/grn')}
+                          className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-slate-700 transition-colors inline-flex items-center gap-1"
+                          title={t('suppliers.viewGrns', 'View GRNs')}
+                        >
+                          <span>{s.grnsCount || 0} {t('suppliers.grnsCount', 'GRNs')}</span>
+                          <ArrowUpRight className="w-3 h-3" />
+                        </button>
+                      </td>
+
+                      {/* Actions Menu */}
+                      <td className="p-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {hasDue && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenSettleSupplier(s)}
+                              className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 transition-all flex items-center gap-1"
+                              title={t('suppliers.settle', 'Settle')}
+                            >
+                              <Banknote className="w-3.5 h-3.5" />
+                              {t('suppliers.settle', 'Settle')}
+                            </button>
+                          )}
+
+                          <SupplierRowActionMenu
+                            supplier={s}
+                            onViewLedger={(supp) => handleOpenLedger(supp)}
+                            onAddGrn={(suppId) => handleOpenAddGrn(suppId)}
+                            onSettle={(supp) => handleOpenSettleSupplier(supp)}
+                            onEdit={(supp) => handleOpenEditSupplier(supp)}
+                            onDelete={(supp) => handlePromptDeleteSupplier(supp)}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={8} className="p-8 text-center text-slate-400 text-xs">
+                    {isLoadingSuppliers ? t('suppliers.loadingSuppliers', 'Loading suppliers from database...') : t('suppliers.noSuppliersQuery', 'No suppliers found matching your query.')}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Supplier Form Modal (Add & Edit) ── */}
+      <SupplierFormModal
+        isOpen={isSupplierModalOpen}
+        supplier={selectedSupplierForEdit}
+        onClose={() => {
+          setIsSupplierModalOpen(false);
+          setSelectedSupplierForEdit(undefined);
+        }}
+        onSuccess={() => {
+          fetchSuppliers();
+        }}
+      />
+
+      {/* ── GRN Creation Modal from Supplier Quick Action ── */}
+      <GRNFormModal
+        isOpen={isGrnModalOpen}
+        suppliers={suppliers}
+        initialSupplierId={preselectedSupplierIdForGrn}
+        onClose={() => {
+          setIsGrnModalOpen(false);
+          setPreselectedSupplierIdForGrn(undefined);
+        }}
+        onSuccess={() => {
+          fetchSuppliers();
+        }}
+      />
+
+      {/* ── Supplier Pending GRNs Settlement Modal (Reliance Pattern) ── */}
+      <SupplierPendingGRNsModal
+        isOpen={isPendingGrnsModalOpen}
+        supplier={selectedSupplierForPendingGrns}
+        onClose={() => {
+          setIsPendingGrnsModalOpen(false);
+          setSelectedSupplierForPendingGrns(null);
+        }}
+        onSuccess={() => {
+          fetchSuppliers();
+        }}
+      />
+
+      {/* ── Comprehensive Supplier Ledger View Modal ── */}
+      <SupplierLedgerModal
+        isOpen={isLedgerModalOpen}
+        supplierId={selectedSupplierForLedger?.id || null}
+        onClose={() => {
+          setIsLedgerModalOpen(false);
+          setSelectedSupplierForLedger(null);
+        }}
+        onOpenSettle={(supp) => {
+          setIsLedgerModalOpen(false);
+          handleOpenSettleSupplier(supp);
+        }}
+        onOpenAddGrn={(suppId) => {
+          setIsLedgerModalOpen(false);
+          handleOpenAddGrn(suppId);
+        }}
+      />
+
+      {/* ── Delete Confirmation Modal ── */}
+      <DeleteConfirmationModal
+        isOpen={isDeleteModalOpen}
+        title={t('suppliers.deleteSupplierConfirmTitle', 'Delete Supplier')}
+        message={t('suppliers.deleteSupplierConfirmMessage', 'Are you sure you want to delete "{{name}}"? All associated historical records will be safely handled.', { name: supplierToDelete?.name })}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => {
+          setIsDeleteModalOpen(false);
+          setSupplierToDelete(null);
+        }}
+      />
+    </div>
   );
 }

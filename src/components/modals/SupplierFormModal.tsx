@@ -1,344 +1,354 @@
 import React, { useState, useEffect } from 'react';
-import { Supplier, SupplierDelivery } from '../../types/index';
 import { useTranslation } from 'react-i18next';
+import { Supplier } from '../../types/index';
 import { useTheme } from '../../contexts/ThemeContext';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/dialog';
 import { 
-  Truck, User, Mail, Phone, MapPin, Save, Banknote, CreditCard,
-  DollarSign, Calendar, Plus, Trash2, Package
+  Building2, User, Phone, Smartphone, MapPin, 
+  DollarSign, Mail, Check, Loader2, Landmark
 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { toast } from 'react-toastify';
+import api from '../../lib/api';
+import { cn } from '../../lib/utils';
 
-interface SupplierFormModalProps {
+export interface SupplierFormModalProps {
   isOpen: boolean;
   supplier?: Supplier;
   onClose: () => void;
-  onSave: (supplier: Supplier) => void;
+  onSuccess: (savedSupplier: Supplier) => void;
 }
 
 interface SupplierFormData {
   name: string;
+  companyName: string;
+  address: string;
+  mobileNumber: string;
+  telephoneNumber: string;
+  startingBalance: number | string;
   contactPerson: string;
   email: string;
-  phone: string;
-  address: string;
-  paymentType: 'cash' | 'credit';
-  creditLimit?: number;
-  creditBalance?: number;
-  creditDueDate?: string;
-  isActive: boolean;
 }
 
+/**
+ * Modal dialog for creating and editing Supplier records with unified CategoryFormModal styling.
+ */
 export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
   isOpen,
   supplier,
   onClose,
-  onSave,
+  onSuccess,
 }) => {
   const { t } = useTranslation();
   const { theme } = useTheme();
-  
+  const isDark = theme === 'dark';
+  const isEditing = !!supplier;
+
   const [formData, setFormData] = useState<SupplierFormData>({
     name: '',
+    companyName: '',
+    address: '',
+    mobileNumber: '',
+    telephoneNumber: '',
+    startingBalance: 0,
     contactPerson: '',
     email: '',
-    phone: '',
-    address: '',
-    paymentType: 'cash',
-    creditLimit: 0,
-    creditBalance: 0,
-    creditDueDate: '',
-    isActive: true,
   });
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (supplier) {
       setFormData({
-        name: supplier.name,
-        contactPerson: supplier.contactPerson,
-        email: supplier.email,
-        phone: supplier.phone,
-        address: supplier.address,
-        paymentType: supplier.paymentType,
-        creditLimit: supplier.creditLimit || 0,
-        creditBalance: supplier.creditBalance || 0,
-        creditDueDate: supplier.creditDueDate || '',
-        isActive: supplier.isActive,
+        name: supplier.name || '',
+        companyName: supplier.companyName || '',
+        address: supplier.address || '',
+        mobileNumber: supplier.mobileNumber || supplier.phone || '',
+        telephoneNumber: supplier.telephoneNumber || '',
+        startingBalance: supplier.startingBalance ?? 0,
+        contactPerson: supplier.contactPerson || '',
+        email: supplier.email || '',
       });
     } else {
       setFormData({
         name: '',
+        companyName: '',
+        address: '',
+        mobileNumber: '',
+        telephoneNumber: '',
+        startingBalance: 0,
         contactPerson: '',
         email: '',
-        phone: '',
-        address: '',
-        paymentType: 'cash',
-        creditLimit: 0,
-        creditBalance: 0,
-        creditDueDate: '',
-        isActive: true,
       });
     }
+    setErrors({});
   }, [supplier, isOpen]);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newSupplier: Supplier = {
-      id: supplier?.id || `sup-${Date.now()}`,
-      name: formData.name,
-      contactPerson: formData.contactPerson,
-      email: formData.email,
-      phone: formData.phone,
-      address: formData.address,
-      paymentType: formData.paymentType,
-      creditLimit: formData.paymentType === 'credit' ? formData.creditLimit : undefined,
-      creditBalance: formData.paymentType === 'credit' ? formData.creditBalance : undefined,
-      creditDueDate: formData.paymentType === 'credit' ? formData.creditDueDate : undefined,
-      isActive: formData.isActive,
-      deliveries: supplier?.deliveries || [],
-    };
-    onSave(newSupplier);
+  const validate = () => {
+    const errs: Record<string, string> = {};
+    if (!formData.name.trim()) {
+      errs.name = t('suppliers.nameRequired', 'Supplier name is required');
+    }
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
   };
 
-  if (!isOpen) return null;
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validate()) return;
 
-  const isEditing = !!supplier;
-  const inputClasses = `w-full px-4 py-2.5 border rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition-all text-sm ${
-    theme === 'dark'
-      ? 'border-slate-700 bg-slate-800/50 text-white placeholder-slate-500'
-      : 'border-slate-300 bg-slate-50 text-slate-900 placeholder-slate-400'
-  }`;
-  const labelClasses = `text-xs font-medium ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`;
+    setIsSubmitting(true);
+    try {
+      const payload = {
+        name: formData.name.trim(),
+        companyName: formData.companyName.trim() || undefined,
+        address: formData.address.trim() || undefined,
+        mobileNumber: formData.mobileNumber.trim() || undefined,
+        telephoneNumber: formData.telephoneNumber.trim() || undefined,
+        startingBalance: Number(formData.startingBalance || 0),
+        contactPerson: formData.contactPerson.trim() || undefined,
+        email: formData.email.trim() || undefined,
+      };
+
+      let saved: Supplier;
+      if (isEditing && supplier?.id) {
+        saved = await api.put<Supplier>(`/suppliers/${supplier.id}`, payload);
+        toast.success(`Supplier "${saved.name}" updated successfully!`);
+      } else {
+        saved = await api.post<Supplier>('/suppliers', payload);
+        toast.success(`Supplier "${saved.name}" added successfully!`);
+      }
+
+      onSuccess(saved);
+      onClose();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to save supplier profile');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const inputClass = (hasError?: boolean) =>
+    cn(
+      'w-full h-9 px-3 rounded-xl border text-xs font-medium transition-all focus:outline-none focus:ring-1',
+      hasError
+        ? 'border-rose-500/80 bg-rose-500/10 focus:ring-rose-500/30 text-rose-300'
+        : isDark
+        ? 'border-slate-700/60 bg-slate-900/60 text-white placeholder:text-slate-500 focus:border-orange-500/80 focus:ring-orange-500/30'
+        : 'border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:border-orange-500/80 focus:ring-orange-500/30 shadow-sm'
+    );
+
+  const labelClass = 'text-[11px] font-semibold tracking-wide uppercase text-slate-400 flex items-center gap-1.5 mb-1';
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className={`max-w-2xl max-h-[90vh] overflow-y-auto p-0 ${
-        theme === 'dark' ? 'bg-slate-900 border-slate-700/50' : 'bg-white border-slate-200'
-      }`}>
-        <DialogHeader className="sr-only">
-          <DialogTitle>{isEditing ? t('suppliers.editSupplier') : t('suppliers.addSupplier')}</DialogTitle>
-          <DialogDescription>
-            {isEditing ? t('suppliers.editDescription') : t('suppliers.addDescription')}
-          </DialogDescription>
-        </DialogHeader>
-        {/* Gradient Header */}
-        <div className={`p-5 text-white ${isEditing 
-          ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-red-500' 
-          : 'bg-gradient-to-r from-orange-500 via-rose-500 to-pink-500'
-        }`} aria-hidden="true">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
-              <Truck className="w-6 h-6" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold">
-                {isEditing ? t('suppliers.editSupplier') : t('suppliers.addSupplier')}
-              </h2>
-              <p className="text-white/80 text-sm">
-                {t('suppliers.subtitle')}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Basic Info */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className={`${labelClasses} flex items-center gap-1`}>
-                <Truck className="w-3.5 h-3.5" /> {t('suppliers.supplierName')} *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className={inputClasses}
-                placeholder="e.g., INSEE Cement Ltd."
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className={`${labelClasses} flex items-center gap-1`}>
-                <User className="w-3.5 h-3.5" /> {t('suppliers.contactPerson')} *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.contactPerson}
-                onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
-                className={inputClasses}
-                placeholder="e.g., John Silva"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className={`${labelClasses} flex items-center gap-1`}>
-                <Mail className="w-3.5 h-3.5" /> {t('suppliers.email')} *
-              </label>
-              <input
-                type="email"
-                required
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                className={inputClasses}
-                placeholder="supplier@example.com"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className={`${labelClasses} flex items-center gap-1`}>
-                <Phone className="w-3.5 h-3.5" /> {t('suppliers.phone')} *
-              </label>
-              <input
-                type="tel"
-                required
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                className={inputClasses}
-                placeholder="077 123 4567"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className={`${labelClasses} flex items-center gap-1`}>
-              <MapPin className="w-3.5 h-3.5" /> {t('suppliers.address')}
-            </label>
-            <textarea
-              value={formData.address}
-              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              rows={2}
-              className={`${inputClasses} resize-none`}
-              placeholder="Full address..."
-            />
-          </div>
-
-          {/* Payment Type Selection */}
-          <div className="space-y-3">
-            <label className={`${labelClasses} flex items-center gap-1`}>
-              <DollarSign className="w-3.5 h-3.5" /> {t('suppliers.paymentType')} *
-            </label>
-            <div className="flex gap-3">
-              <label className={`flex-1 flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${
-                formData.paymentType === 'cash'
-                  ? theme === 'dark' 
-                    ? 'border-green-500 bg-green-500/10 text-green-400' 
-                    : 'border-green-500 bg-green-50 text-green-700'
-                  : theme === 'dark'
-                    ? 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-600'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-              }`}>
-                <input
-                  type="radio"
-                  name="paymentType"
-                  value="cash"
-                  checked={formData.paymentType === 'cash'}
-                  onChange={() => setFormData({ ...formData, paymentType: 'cash' })}
-                  className="sr-only"
-                />
-                <Banknote className="w-6 h-6" />
-                <div>
-                  <p className="font-medium">{t('suppliers.cashTab')}</p>
-                  <p className={`text-xs ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>
-                    Pay on delivery
-                  </p>
-                </div>
-              </label>
-              <label className={`flex-1 flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${
-                formData.paymentType === 'credit'
-                  ? theme === 'dark' 
-                    ? 'border-orange-500 bg-orange-500/10 text-orange-400' 
-                    : 'border-orange-500 bg-orange-50 text-orange-700'
-                  : theme === 'dark'
-                    ? 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-600'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-              }`}>
-                <input
-                  type="radio"
-                  name="paymentType"
-                  value="credit"
-                  checked={formData.paymentType === 'credit'}
-                  onChange={() => setFormData({ ...formData, paymentType: 'credit' })}
-                  className="sr-only"
-                />
-                <CreditCard className="w-6 h-6" />
-                <div>
-                  <p className="font-medium">{t('suppliers.creditTab')}</p>
-                  <p className={`text-xs ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>
-                    Pay later with terms
-                  </p>
-                </div>
-              </label>
-            </div>
-          </div>
-
-          {/* Credit Fields (shown only for credit suppliers) */}
-          {formData.paymentType === 'credit' && (
-            <div className={`p-4 rounded-xl border ${theme === 'dark' ? 'border-orange-500/30 bg-orange-500/5' : 'border-orange-200 bg-orange-50'}`}>
-              <h4 className={`font-medium mb-4 flex items-center gap-2 ${theme === 'dark' ? 'text-orange-400' : 'text-orange-700'}`}>
-                <CreditCard className="w-4 h-4" />
-                Credit Details
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-1.5">
-                  <label className={labelClasses}>{t('suppliers.creditLimit')}</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="1000"
-                    value={formData.creditLimit}
-                    onChange={(e) => setFormData({ ...formData, creditLimit: parseFloat(e.target.value) || 0 })}
-                    className={inputClasses}
-                    placeholder="0.00"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className={labelClasses}>{t('suppliers.creditBalance')}</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="100"
-                    value={formData.creditBalance}
-                    onChange={(e) => setFormData({ ...formData, creditBalance: parseFloat(e.target.value) || 0 })}
-                    className={inputClasses}
-                    placeholder="0.00"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className={labelClasses}>{t('suppliers.creditDueDate')}</label>
-                  <input
-                    type="date"
-                    value={formData.creditDueDate}
-                    onChange={(e) => setFormData({ ...formData, creditDueDate: e.target.value })}
-                    className={inputClasses}
-                  />
-                </div>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        className={cn(
+          'sm:max-w-xl max-h-[92vh] overflow-y-auto p-0 gap-0 rounded-2xl border shadow-2xl',
+          isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+        )}
+      >
+        <form onSubmit={handleSubmit} className="flex flex-col h-full">
+          {/* Header */}
+          <DialogHeader
+            className={cn(
+              'px-5 py-3.5 border-b flex flex-row items-center justify-between',
+              isDark ? 'border-slate-800 bg-slate-900/80' : 'border-slate-200 bg-slate-50/50'
+            )}
+          >
+            <div className="flex items-center gap-2.5 text-left">
+              <div className="p-2 rounded-xl bg-gradient-to-br from-orange-500 to-rose-500 text-white shadow-md shadow-orange-500/20">
+                <Building2 className="w-4 h-4" />
+              </div>
+              <div>
+                <DialogTitle className="text-sm font-bold tracking-tight">
+                  {isEditing ? t('suppliers.editProfile', 'Edit Supplier Profile') : t('suppliers.newSupplier', 'New Supplier')}
+                </DialogTitle>
+                <DialogDescription className="text-[11px] text-slate-400 mt-0.5">
+                  {isEditing
+                    ? t('suppliers.updating', 'Updating {{name}}', { name: supplier.name })
+                    : t('suppliers.createRecordDesc', 'Create supplier record with starting balance tracking')}
+                </DialogDescription>
               </div>
             </div>
-          )}
+          </DialogHeader>
 
-          {/* Form Actions */}
-          <div className={`flex justify-end gap-3 pt-4 border-t ${theme === 'dark' ? 'border-slate-700/50' : 'border-slate-200'}`}>
+          {/* Form Content */}
+          <div className="p-5 space-y-3.5 overflow-y-auto">
+            {/* Supplier Name */}
+            <div>
+              <label className={labelClass}>
+                <User className="w-3.5 h-3.5 text-orange-500" />
+                {t('suppliers.supplierName', 'Supplier Name')} <span className="text-rose-500">*</span>
+              </label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. ACL Cables PLC / Nimal Hardware Supplies"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className={inputClass(!!errors.name)}
+                autoFocus
+              />
+              {errors.name && <p className="text-[10px] text-rose-500 mt-1">{errors.name}</p>}
+            </div>
+
+            {/* Company Name */}
+            <div>
+              <label className={labelClass}>
+                <Landmark className="w-3.5 h-3.5 text-orange-500" />
+                {t('suppliers.companyName', 'Company / Business Name')}
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. ACL Commercial Distributions"
+                value={formData.companyName}
+                onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+                className={inputClass()}
+              />
+            </div>
+
+            {/* Phone Numbers Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className={labelClass}>
+                  <Smartphone className="w-3.5 h-3.5 text-orange-500" />
+                  {t('suppliers.mobileNumber', 'Mobile Number')}
+                </label>
+                <input
+                  type="tel"
+                  placeholder="077 123 4567"
+                  value={formData.mobileNumber}
+                  onChange={(e) => setFormData({ ...formData, mobileNumber: e.target.value })}
+                  className={inputClass()}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>
+                  <Phone className="w-3.5 h-3.5 text-orange-500" />
+                  {t('suppliers.telephoneNumber', 'Telephone')}
+                </label>
+                <input
+                  type="tel"
+                  placeholder="011 234 5678"
+                  value={formData.telephoneNumber}
+                  onChange={(e) => setFormData({ ...formData, telephoneNumber: e.target.value })}
+                  className={inputClass()}
+                />
+              </div>
+            </div>
+
+            {/* Address */}
+            <div>
+              <label className={labelClass}>
+                <MapPin className="w-3.5 h-3.5 text-orange-500" />
+                {t('suppliers.address', 'Physical Address')}
+              </label>
+              <textarea
+                rows={2}
+                placeholder="e.g. No. 45, Commercial Road, Colombo 11"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                className={cn(
+                  'w-full p-2.5 rounded-xl border text-xs font-medium resize-none transition-all focus:outline-none focus:ring-1',
+                  isDark
+                    ? 'border-slate-700/60 bg-slate-900/60 text-white placeholder:text-slate-500 focus:border-orange-500/80 focus:ring-orange-500/30'
+                    : 'border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:border-orange-500/80 focus:ring-orange-500/30 shadow-sm'
+                )}
+              />
+            </div>
+
+            {/* Starting Balance & Email Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className={labelClass}>
+                  <DollarSign className="w-3.5 h-3.5 text-orange-500" />
+                  {t('suppliers.startingBalanceLkr', 'Starting Balance (LKR)')}
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    value={formData.startingBalance}
+                    onChange={(e) => setFormData({ ...formData, startingBalance: e.target.value })}
+                    className={cn(inputClass(), 'pl-7 font-mono font-medium')}
+                  />
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">
+                    Rs.
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  {t('suppliers.startingBalanceDesc', 'Outstanding balance brought forward from legacy ledger.')}
+                </p>
+              </div>
+
+              <div>
+                <label className={labelClass}>
+                  <Mail className="w-3.5 h-3.5 text-orange-500" />
+                  {t('suppliers.emailContactNote', 'Email / Contact Note')}
+                </label>
+                <input
+                  type="email"
+                  placeholder="supplier@domain.com"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className={inputClass()}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <DialogFooter
+            className={cn(
+              'px-5 py-3 border-t flex flex-row items-center justify-end gap-2 sm:gap-2',
+              isDark ? 'border-slate-800 bg-slate-900/90' : 'border-slate-200 bg-slate-50'
+            )}
+          >
             <button
               type="button"
               onClick={onClose}
-              className={`px-4 py-2 rounded-xl font-medium transition-colors ${
-                theme === 'dark' ? 'text-slate-400 hover:text-white hover:bg-slate-800' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
+              disabled={isSubmitting}
+              className={cn(
+                'px-4 py-2 rounded-xl text-xs font-semibold transition-colors',
+                isDark
+                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+              )}
             >
-              {t('common.cancel')}
+              {t('common.cancel', 'Cancel')}
             </button>
             <button
               type="submit"
-              className="px-6 py-2 bg-gradient-to-r from-orange-500 to-rose-500 text-white rounded-xl font-medium shadow-lg shadow-orange-500/25 hover:shadow-orange-500/40 transition-all flex items-center gap-2"
+              disabled={isSubmitting}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600 text-white shadow-lg shadow-orange-500/20 transition-all disabled:opacity-50"
             >
-              <Save className="w-4 h-4" />
-              {t('common.save')}
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  {t('common.saving', 'Saving...')}
+                </>
+              ) : (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  {isEditing ? t('suppliers.updateSupplier', 'Update Supplier') : t('suppliers.saveSupplier', 'Save Supplier')}
+                </>
+              )}
             </button>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
   );
 };
+
+export default SupplierFormModal;

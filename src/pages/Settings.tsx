@@ -41,6 +41,13 @@ import {
   Edit3,
   RefreshCw
 } from 'lucide-react';
+import { SearchableSelect, SearchableSelectOption } from '../components/ui/searchable-select';
+
+const ROLE_OPTIONS: SearchableSelectOption[] = [
+  { value: 'CASHIER', label: 'Cashier' },
+  { value: 'STAFF', label: 'Staff' },
+  { value: 'ADMIN', label: 'Admin' },
+];
 
 // ── Types ──
 
@@ -682,15 +689,14 @@ export const Settings: React.FC = () => {
                     </div>
                     <div>
                       <label className={labelClass}>Role</label>
-                      <select
+                      <SearchableSelect
+                        options={ROLE_OPTIONS}
                         value={userForm.role}
-                        onChange={(e) => setUserForm({ ...userForm, role: e.target.value as any })}
-                        className={`${inputClass} appearance-none`}
-                      >
-                        <option value="CASHIER">Cashier</option>
-                        <option value="STAFF">Staff</option>
-                        <option value="ADMIN">Admin</option>
-                      </select>
+                        onValueChange={(val) => setUserForm({ ...userForm, role: val as any })}
+                        placeholder="Select Role..."
+                        theme={theme === 'dark' ? 'dark' : 'light'}
+                        triggerClassName="h-10 text-sm rounded-xl"
+                      />
                     </div>
                   </div>
                   <div className="flex justify-end gap-3 pt-2">

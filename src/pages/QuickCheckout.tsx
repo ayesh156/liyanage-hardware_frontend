@@ -3397,7 +3397,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                         const filteredCategoryProducts = catProducts;
 
                         return (
-                          <div className={`${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border relative flex flex-col min-w-0 w-full max-w-full overflow-x-hidden overflow-x-clip min-h-0`}>
+                          <div className={`${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border relative flex flex-col min-w-0 w-full max-w-full overflow-x-hidden min-h-0`}>
                             <>
                               <div
                                 onMouseDown={handlePopoverDragStart}
