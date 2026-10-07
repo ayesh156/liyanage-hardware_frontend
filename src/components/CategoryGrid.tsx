@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next';
 import { mockCategories } from '../data/mockData';
 import { Category, InventoryProduct } from '../types/index';
-import { resolveImageUrl } from '../lib/utils';
+import { resolveImageUrl, extractGoogleDriveFileId } from '../lib/utils';
 import { useTheme } from '../contexts/ThemeContext';
 import { useCatalog } from '../contexts/CatalogContext';
 import { Search, Package, ChevronDown, ChevronUp, Plus } from 'lucide-react';
@@ -286,12 +286,22 @@ export const CategoryGrid: React.FC<CategoryGridProps> = ({ onItemSelect }) => {
                 <img
                   src={resolveImageUrl(cat.imageUrl)}
                   alt={isSinhala ? (cat.nameSinhala || cat.name) : cat.name}
+                  referrerPolicy="no-referrer"
+                  crossOrigin="anonymous"
                   loading="lazy"
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain"
                   onError={(e) => {
-                    (e.currentTarget as HTMLElement).style.display = 'none';
-                    const fallback = e.currentTarget.parentElement?.querySelector('.grid-cat-fallback');
-                    if (fallback) (fallback as HTMLElement).classList.remove('hidden');
+                    // Automatic fallback to alternative Google CDN if thumbnail fails
+                    const target = e.currentTarget;
+                    const fileId = extractGoogleDriveFileId(cat.imageUrl || target.src);
+                    if (fileId && !target.dataset.fallbackTried) {
+                      target.dataset.fallbackTried = "true";
+                      target.src = `https://lh3.googleusercontent.com/d/${fileId}=w1000`;
+                    } else {
+                      (e.currentTarget as HTMLElement).style.display = 'none';
+                      const fallback = e.currentTarget.parentElement?.querySelector('.grid-cat-fallback');
+                      if (fallback) (fallback as HTMLElement).classList.remove('hidden');
+                    }
                   }}
                 />
               ) : null}

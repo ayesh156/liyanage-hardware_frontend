@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useTranslation } from 'react-i18next';
 import { optimizeCategoryImage } from '../../utils/imageOptimizer';
-import { resolveImageUrl } from '../../lib/utils';
+import { resolveImageUrl, normalizeGoogleDriveUrl, extractGoogleDriveFileId } from '../../lib/utils';
 import { 
   UploadCloud, X, Image as ImageIcon, Loader2, AlertCircle, Check, Link2, RefreshCw
 } from 'lucide-react';
@@ -25,7 +25,8 @@ interface CategoryImageUploaderProps {
  * A versatile image upload component for category management supporting:
  * - Native file selection and automatic WebP compression
  * - Drag-and-drop from desktop, file explorer, or web pages
- * - Clipboard pasting (Ctrl+V / screenshots / image URLs)
+ * - Clipboard pasting (Ctrl+V / screenshots / Google Drive share links / image URLs)
+ * - Automatic conversion of Google Drive share links (`/file/d/ID` or `?id=ID`) to direct image CDN links (`https://lh3.googleusercontent.com/d/ID`)
  * - Direct external image URL entry
  * - High-contrast theme-aware badges for Light and Dark modes
  */
@@ -117,7 +118,8 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
     // 2. URI List drop
     const uriData = e.dataTransfer.getData('text/uri-list');
     if (uriData && (uriData.startsWith('http://') || uriData.startsWith('https://'))) {
-      onChange(uriData.trim());
+      const normalizedUrl = normalizeGoogleDriveUrl(uriData.trim());
+      onChange(normalizedUrl);
       setShowSuccessBadge(true);
       setTimeout(() => setShowSuccessBadge(false), 2200);
       return;
@@ -128,7 +130,8 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
     if (htmlData) {
       const match = htmlData.match(/<img[^>]+src=["'](https?:\/\/[^"']+|data:image\/[^"']+)["']/i);
       if (match && match[1]) {
-        onChange(match[1]);
+        const normalizedUrl = normalizeGoogleDriveUrl(match[1]);
+        onChange(normalizedUrl);
         setShowSuccessBadge(true);
         setTimeout(() => setShowSuccessBadge(false), 2200);
         return;
@@ -145,14 +148,20 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
         trimmed.startsWith('data:image/') ||
         trimmed.startsWith('/public/category-img/')
       ) {
-        onChange(trimmed);
+        const normalizedUrl = normalizeGoogleDriveUrl(trimmed);
+        onChange(normalizedUrl);
         setShowSuccessBadge(true);
         setTimeout(() => setShowSuccessBadge(false), 2200);
       }
     }
   };
 
-  // Global & Dropzone Paste Handler (Ctrl+V)
+  /**
+   * Global & Dropzone Paste Handler (Ctrl+V)
+   * Captures raw clipboard image files, or pastes text URLs.
+   * If a Google Drive share link is pasted, extracts the file ID via regex
+   * and auto-transforms it to https://lh3.googleusercontent.com/d/FILE_ID.
+   */
   const handlePaste = useCallback((e: React.ClipboardEvent | ClipboardEvent) => {
     const items = e.clipboardData?.items;
     if (!items) return;
@@ -183,7 +192,8 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
         e.preventDefault();
         setErrorMessage(null);
         setImgLoadError(false);
-        onChange(trimmed);
+        const normalizedUrl = normalizeGoogleDriveUrl(trimmed);
+        onChange(normalizedUrl);
         setShowSuccessBadge(true);
         setTimeout(() => setShowSuccessBadge(false), 2200);
       }
@@ -205,6 +215,10 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
     return () => window.removeEventListener('paste', handleGlobalPaste);
   }, [handlePaste]);
 
+  /**
+   * Applies manually entered URL, auto-transforming Google Drive share links
+   * into direct viewable image URLs.
+   */
   const handleApplyUrl = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const trimmed = urlInput.trim();
@@ -220,9 +234,10 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
       return;
     }
 
+    const normalizedUrl = normalizeGoogleDriveUrl(trimmed);
     setErrorMessage(null);
     setImgLoadError(false);
-    onChange(trimmed);
+    onChange(normalizedUrl);
     setUrlInput('');
     setShowUrlInput(false);
     setShowSuccessBadge(true);
@@ -303,7 +318,20 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
               <img
                 src={resolveImageUrl(value)}
                 alt="Category Preview"
-                onError={() => setImgLoadError(true)}
+                referrerPolicy="no-referrer"
+                crossOrigin="anonymous"
+                loading="lazy"
+                onError={(e) => {
+                  // Automatic fallback to alternative Google CDN if thumbnail fails
+                  const target = e.currentTarget;
+                  const fileId = extractGoogleDriveFileId(value || target.src);
+                  if (fileId && !target.dataset.fallbackTried) {
+                    target.dataset.fallbackTried = "true";
+                    target.src = `https://lh3.googleusercontent.com/d/${fileId}=w1000`;
+                  } else {
+                    setImgLoadError(true);
+                  }
+                }}
                 className="relative z-10 max-h-full max-w-full object-contain p-2 transition-transform duration-300 group-hover:scale-105"
               />
             )}
@@ -330,6 +358,8 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
                     ? `WebP (${Math.round(value!.length / 1024)} KB)` 
                     : value!.startsWith('/')
                     ? 'Uploaded File'
+                    : (value!.includes('googleusercontent.com') || value!.includes('drive.google.com') || value!.includes('thumbnail?id='))
+                    ? 'Google Drive Image'
                     : 'Web Image Link'}
                 </span>
               </div>
@@ -426,9 +456,9 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
                   <input
                     type="url"
                     value={urlInput}
-                    onChange={(e) => setUrlInput(e.target.value)}
+                    onChange={(e) => setUrlInput(normalizeGoogleDriveUrl(e.target.value))}
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleApplyUrl(); } }}
-                    placeholder="https://example.com/image.png"
+                    placeholder="https://example.com/image.png or Google Drive link"
                     className={`w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all ${
                       isDark
                         ? 'bg-zinc-950 border-slate-700 text-white placeholder:text-slate-500'

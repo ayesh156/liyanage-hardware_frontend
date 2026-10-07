@@ -18,6 +18,7 @@ import {
   FolderTree, Tag, Languages, FileText
 } from 'lucide-react';
 import { CategoryImageUploader } from '../categories/CategoryImageUploader';
+import { normalizeGoogleDriveUrl } from '../../lib/utils';
 
 /**
  * Props for the CategoryFormModal component.
@@ -67,7 +68,7 @@ export const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
         name: activeCategory.name,
         nameSinhala: activeCategory.nameSinhala || '',
         icon: activeCategory.icon || '',
-        imageUrl: activeCategory.imageUrl || '',
+        imageUrl: normalizeGoogleDriveUrl(activeCategory.imageUrl) || '',
         description: activeCategory.description || '',
       });
     } else {
@@ -94,12 +95,17 @@ export const CategoryFormModal: React.FC<CategoryFormModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (validateForm()) {
-      onSave(formData);
+      const sanitizedPayload: Partial<Category> = {
+        ...formData,
+        imageUrl: formData.imageUrl ? normalizeGoogleDriveUrl(formData.imageUrl) : formData.imageUrl,
+      };
+      onSave(sanitizedPayload);
     }
   };
 
   const handleChange = (field: keyof Category, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    const finalValue = (field === 'imageUrl' && value) ? normalizeGoogleDriveUrl(value) : value;
+    setFormData(prev => ({ ...prev, [field]: finalValue }));
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
     }

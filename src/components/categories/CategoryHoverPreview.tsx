@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Package, Tag } from 'lucide-react';
 import { Category } from '../../types';
-import { resolveImageUrl } from '../../lib/utils';
+import { resolveImageUrl, extractGoogleDriveFileId } from '../../lib/utils';
 
 export interface CategoryHoverData {
   category: Category;
@@ -138,8 +138,21 @@ export const CategoryHoverPreview: React.FC<CategoryHoverPreviewProps> = ({
             <img
               src={resolveImageUrl(category.imageUrl)}
               alt={category.name}
-              className="w-full h-full object-cover"
-              onError={() => setImageError(true)}
+              referrerPolicy="no-referrer"
+              crossOrigin="anonymous"
+              loading="lazy"
+              onError={(e) => {
+                // Automatic fallback to alternative Google CDN if thumbnail fails
+                const target = e.currentTarget;
+                const fileId = extractGoogleDriveFileId(category.imageUrl || target.src);
+                if (fileId && !target.dataset.fallbackTried) {
+                  target.dataset.fallbackTried = "true";
+                  target.src = `https://lh3.googleusercontent.com/d/${fileId}=w1000`;
+                } else {
+                  setImageError(true);
+                }
+              }}
+              className="w-full h-full object-contain"
             />
           ) : (
             <div className="w-full h-full bg-slate-100 dark:bg-slate-900 rounded-xl p-6 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500">

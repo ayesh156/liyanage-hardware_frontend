@@ -5,7 +5,7 @@ import { useIsMobile } from '../hooks/use-mobile';
 import { useCatalog } from '../contexts/CatalogContext';
 import { useAuth } from '../contexts/AuthContext';
 import { Category } from '../types/index';
-import { resolveImageUrl } from '../lib/utils';
+import { resolveImageUrl, extractGoogleDriveFileId } from '../lib/utils';
 import { CategoryFormModal } from '../components/modals/CategoryFormModal';
 import { DeleteConfirmationModal } from '../components/modals/DeleteConfirmationModal';
 import { CategoryProductsModal } from '../components/modals/CategoryProductsModal';
@@ -360,11 +360,22 @@ export const Categories: React.FC = () => {
                             <img
                               src={resolveImageUrl(category.imageUrl)}
                               alt={getDisplayName(category)}
-                              className="w-full h-full object-cover transition-transform duration-200 group-hover/thumb:scale-110"
+                              referrerPolicy="no-referrer"
+                              crossOrigin="anonymous"
+                              loading="lazy"
+                              className="w-full h-full object-contain transition-transform duration-200 group-hover/thumb:scale-110"
                               onError={(e) => {
-                                (e.currentTarget as HTMLElement).style.display = 'none';
-                                const fallback = e.currentTarget.parentElement?.querySelector('.cat-fallback');
-                                if (fallback) (fallback as HTMLElement).classList.remove('hidden');
+                                // Automatic fallback to alternative Google CDN if thumbnail fails
+                                const target = e.currentTarget;
+                                const fileId = extractGoogleDriveFileId(category.imageUrl || target.src);
+                                if (fileId && !target.dataset.fallbackTried) {
+                                  target.dataset.fallbackTried = "true";
+                                  target.src = `https://lh3.googleusercontent.com/d/${fileId}=w1000`;
+                                } else {
+                                  (e.currentTarget as HTMLElement).style.display = 'none';
+                                  const fallback = e.currentTarget.parentElement?.querySelector('.cat-fallback');
+                                  if (fallback) (fallback as HTMLElement).classList.remove('hidden');
+                                }
                               }}
                             />
                           ) : null}

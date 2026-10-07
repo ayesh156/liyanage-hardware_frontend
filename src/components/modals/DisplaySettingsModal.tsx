@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useCatalog } from '../../contexts/CatalogContext';
 import { Category } from '../../types/index';
-import { resolveImageUrl } from '../../lib/utils';
+import { resolveImageUrl, extractGoogleDriveFileId } from '../../lib/utils';
 import { X, Eye, EyeOff, GripVertical, Search, ArrowUpDown, CheckCircle, Package, FolderTree } from 'lucide-react';
 import { toast } from 'react-toastify';
 
@@ -420,11 +420,22 @@ export const DisplaySettingsModal: React.FC<DisplaySettingsModalProps> = ({ isOp
                         <img
                           src={resolveImageUrl(cat.imageUrl)}
                           alt={getCategoryDisplayName(cat)}
-                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                          crossOrigin="anonymous"
+                          loading="lazy"
+                          className="w-full h-full object-contain"
                           onError={(e) => {
-                            (e.currentTarget as HTMLElement).style.display = 'none';
-                            const fallback = e.currentTarget.parentElement?.querySelector('.display-modal-cat-fallback');
-                            if (fallback) (fallback as HTMLElement).classList.remove('hidden');
+                            // Automatic fallback to alternative Google CDN if thumbnail fails
+                            const target = e.currentTarget;
+                            const fileId = extractGoogleDriveFileId(cat.imageUrl || target.src);
+                            if (fileId && !target.dataset.fallbackTried) {
+                              target.dataset.fallbackTried = "true";
+                              target.src = `https://lh3.googleusercontent.com/d/${fileId}=w1000`;
+                            } else {
+                              (e.currentTarget as HTMLElement).style.display = 'none';
+                              const fallback = e.currentTarget.parentElement?.querySelector('.display-modal-cat-fallback');
+                              if (fallback) (fallback as HTMLElement).classList.remove('hidden');
+                            }
                           }}
                         />
                       ) : null}

@@ -11,7 +11,7 @@ import { DisplaySettingsModal } from '../components/modals/DisplaySettingsModal'
 import { mockProducts } from '../data/mockData';
 import { api } from '../lib/api';
 import { Product, Invoice, InvoiceItem, FlattenedProduct, InventoryProduct, Customer } from '../types/index';
-import { flattenProducts, resolveImageUrl } from '../lib/utils';
+import { flattenProducts, resolveImageUrl, extractGoogleDriveFileId } from '../lib/utils';
 import { printInvoice } from '../components/modals/PrintInvoiceModal';
 import ThermalReceiptPreview from '../components/ThermalReceiptPreview';
 import { ShortcutMapOverlay, ShortcutHintsBar, CheckoutMode, InvoiceStep } from '../components/ShortcutMapOverlay';
@@ -3272,10 +3272,20 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                                   <img
                                     src={resolveImageUrl(cat.imageUrl)}
                                     alt={displayName}
+                                    referrerPolicy="no-referrer"
+                                    crossOrigin="anonymous"
                                     loading="lazy"
-                                    className="object-cover w-full h-full rounded-t-xl group-hover:scale-105 transition-transform duration-300 pointer-events-none"
-                                    onError={() => {
-                                      setFailedCategoryImages((prev) => new Set(prev).add(cat.id));
+                                    className="object-contain w-full h-full rounded-t-xl group-hover:scale-105 transition-transform duration-300 pointer-events-none p-1"
+                                    onError={(e) => {
+                                      // Automatic fallback to alternative Google CDN if thumbnail fails
+                                      const target = e.currentTarget;
+                                      const fileId = extractGoogleDriveFileId(cat.imageUrl || target.src);
+                                      if (fileId && !target.dataset.fallbackTried) {
+                                        target.dataset.fallbackTried = "true";
+                                        target.src = `https://lh3.googleusercontent.com/d/${fileId}=w1000`;
+                                      } else {
+                                        setFailedCategoryImages((prev) => new Set(prev).add(cat.id));
+                                      }
                                     }}
                                   />
                                 ) : (

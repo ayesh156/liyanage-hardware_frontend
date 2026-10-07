@@ -141,17 +141,67 @@ export function flattenProducts(products: Product[]): FlattenedProduct[] {
 }
 
 /**
+ * Extracts the unique Google Drive file ID from a URL or raw ID string.
+ * Supports standard share URLs, open?id URLs, thumbnail URLs, and lh3 usercontent URLs.
+ * 
+ * @param url - Raw Google Drive URL or share link
+ * @returns 25+ character alphanumeric file ID string or null
+ */
+export function extractGoogleDriveFileId(url?: string | null): string | null {
+  if (!url || typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  const match = trimmed.match(/(?:\/d\/|id=)([a-zA-Z0-9_-]{25,})/);
+  return match && match[1] ? match[1] : null;
+}
+
+/**
+ * Normalizes Google Drive shareable URLs into direct, CORS-friendly image CDN URLs.
+ * 
+ * Google Drive share links (e.g. `https://drive.google.com/file/d/FILE_ID/view?usp=sharing`
+ * or `https://drive.google.com/open?id=FILE_ID`) cannot be used directly inside standard HTML
+ * tags due to Google permission screens and cross-origin (CORS) restrictions.
+ * 
+ * This helper extracts the unique Google Drive file ID via `/(?:\/d\/|id=)([a-zA-Z0-9_-]{25,})/`
+ * and automatically transforms it to the high-performance, robust Google Drive Thumbnail CDN endpoint:
+ * `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`
+ * This specific endpoint avoids CORS/403 blocks that often occur with direct `/view` links.
+ *
+ * @param url - Raw image URL or pasted Google Drive share link
+ * @returns Direct viewable image CDN URL or original URL string
+ */
+export function normalizeGoogleDriveUrl(url?: string | null): string {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  
+  if (
+    trimmed.includes('drive.google.com') ||
+    trimmed.includes('docs.google.com') ||
+    trimmed.includes('googleusercontent.com')
+  ) {
+    const fileId = extractGoogleDriveFileId(trimmed);
+    if (fileId) {
+      return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
+    }
+  }
+  
+  return trimmed;
+}
+
+/**
  * Resolves full image URL considering multi-domain production environments.
- * Prepends VITE_API_URL / backend origin for relative local paths.
+ * Prepends VITE_API_URL / backend origin for relative local paths, and normalizes
+ * Google Drive share links into direct viewable image CDN endpoints.
  */
 export const resolveImageUrl = (url?: string | null): string => {
   if (!url) return '';
-  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
-    return url;
+  const normalized = normalizeGoogleDriveUrl(url);
+  if (normalized.startsWith('http://') || normalized.startsWith('https://') || normalized.startsWith('data:')) {
+    return normalized;
   }
   const rawApiUrl = (import.meta as any).env?.VITE_API_URL || 'https://api.liyanage.ecosystemlk.app';
   const backendUrl = rawApiUrl.replace(/\/api\/?$/, '');
   const cleanBase = backendUrl.replace(/\/+$/, '');
-  const cleanPath = url.startsWith('/') ? url : `/${url}`;
+  const cleanPath = normalized.startsWith('/') ? normalized : `/${normalized}`;
   return `${cleanBase}${cleanPath}`;
 };
+
