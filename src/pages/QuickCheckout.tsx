@@ -3273,7 +3273,6 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                                     src={resolveImageUrl(cat.imageUrl)}
                                     alt={displayName}
                                     referrerPolicy="no-referrer"
-                                    crossOrigin="anonymous"
                                     loading="lazy"
                                     className="object-contain w-full h-full rounded-t-xl group-hover:scale-105 transition-transform duration-300 pointer-events-none p-1"
                                     onError={(e) => {

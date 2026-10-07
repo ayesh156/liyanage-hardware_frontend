@@ -319,7 +319,6 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
                 src={resolveImageUrl(value)}
                 alt="Category Preview"
                 referrerPolicy="no-referrer"
-                crossOrigin="anonymous"
                 loading="lazy"
                 onError={(e) => {
                   // Automatic fallback to alternative Google CDN if thumbnail fails

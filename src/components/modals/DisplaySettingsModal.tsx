@@ -421,7 +421,6 @@ export const DisplaySettingsModal: React.FC<DisplaySettingsModalProps> = ({ isOp
                           src={resolveImageUrl(cat.imageUrl)}
                           alt={getCategoryDisplayName(cat)}
                           referrerPolicy="no-referrer"
-                          crossOrigin="anonymous"
                           loading="lazy"
                           className="w-full h-full object-contain"
                           onError={(e) => {

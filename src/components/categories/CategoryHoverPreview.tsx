@@ -139,7 +139,6 @@ export const CategoryHoverPreview: React.FC<CategoryHoverPreviewProps> = ({
               src={resolveImageUrl(category.imageUrl)}
               alt={category.name}
               referrerPolicy="no-referrer"
-              crossOrigin="anonymous"
               loading="lazy"
               onError={(e) => {
                 // Automatic fallback to alternative Google CDN if thumbnail fails

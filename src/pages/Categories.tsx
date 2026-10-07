@@ -361,7 +361,6 @@ export const Categories: React.FC = () => {
                               src={resolveImageUrl(category.imageUrl)}
                               alt={getDisplayName(category)}
                               referrerPolicy="no-referrer"
-                              crossOrigin="anonymous"
                               loading="lazy"
                               className="w-full h-full object-contain transition-transform duration-200 group-hover/thumb:scale-110"
                               onError={(e) => {

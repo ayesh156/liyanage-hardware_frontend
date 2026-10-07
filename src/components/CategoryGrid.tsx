@@ -287,7 +287,6 @@ export const CategoryGrid: React.FC<CategoryGridProps> = ({ onItemSelect }) => {
                   src={resolveImageUrl(cat.imageUrl)}
                   alt={isSinhala ? (cat.nameSinhala || cat.name) : cat.name}
                   referrerPolicy="no-referrer"
-                  crossOrigin="anonymous"
                   loading="lazy"
                   className="w-full h-full object-contain"
                   onError={(e) => {
