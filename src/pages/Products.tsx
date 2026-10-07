@@ -13,6 +13,7 @@ import { InventoryProduct } from '../types';
 import api from '../lib/api';
 import { ProductTable } from '../components/ProductTable';
 import { ProductFormModal } from '../components/ProductFormModal';
+import { TableSkeleton } from '../components/ui/TableSkeleton';
 
 export const Products: React.FC = () => {
   const { t } = useTranslation();
@@ -108,12 +109,7 @@ export const Products: React.FC = () => {
 
       {/* Loading State */}
       {isInventoryLoading && (
-        <div className={`flex items-center justify-center py-12 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
-            <p className="text-xs">Loading inventory...</p>
-          </div>
-        </div>
+        <TableSkeleton rows={8} columns={6} theme={isDark ? 'dark' : 'light'} showSummaryCards={false} showSearchFilter={false} />
       )}
 
       {/* Error State */}

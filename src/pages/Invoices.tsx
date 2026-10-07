@@ -551,12 +551,19 @@ export const Invoices: React.FC = () => {
             </thead>
             <tbody className={`divide-y ${isDark ? 'divide-slate-700/40' : 'divide-slate-200'}`}>
               {loading && (
-                <tr>
-                  <td colSpan={7} className={`px-2 py-8 text-center text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                    <RefreshCw className={`w-8 h-8 mx-auto mb-2 animate-spin ${isDark ? 'text-slate-600' : 'text-slate-300'}`} />
-                    Loading invoices from server...
-                  </td>
-                </tr>
+                <>
+                  {Array.from({ length: 8 }).map((_, rIdx) => (
+                    <tr key={rIdx} className={`animate-pulse ${isDark ? 'bg-slate-900/40' : 'bg-slate-50/50'}`}>
+                      <td className="px-2 py-3"><div className={`h-4 rounded-full w-24 ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`} /></td>
+                      <td className="px-2 py-3"><div className={`h-4 rounded-full w-36 ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`} /></td>
+                      <td className="px-2 py-3"><div className={`h-4 rounded-full w-20 ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`} /></td>
+                      <td className="px-2 py-3"><div className={`h-4 rounded-full w-20 ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`} /></td>
+                      <td className="px-2 py-3"><div className={`h-4 rounded-full w-24 ml-auto ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`} /></td>
+                      <td className="px-2 py-3"><div className={`h-6 rounded-full w-16 mx-auto ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`} /></td>
+                      <td className="px-2 py-3"><div className={`h-6 rounded-lg w-16 mx-auto ${isDark ? 'bg-slate-800' : 'bg-slate-200'}`} /></td>
+                    </tr>
+                  ))}
+                </>
               )}
               {!loading && filteredInvoices.length === 0 && (
                 <tr>

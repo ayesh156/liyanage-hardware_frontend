@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from 'react-i18next';
 import { useIsMobile } from '../hooks/use-mobile';
+import api from '../lib/api';
 import { 
   TrendingUp, TrendingDown, DollarSign, Calendar, Download, 
   FileText, ArrowUpRight, ArrowDownRight,
@@ -78,30 +79,41 @@ export const FinancialReports: React.FC = () => {
     const fetchLiveFinancialReport = async () => {
       setLoading(true);
       try {
-        const params = new URLSearchParams();
-        if (preset) params.append('period', preset);
+        const queryParams: Record<string, string | undefined> = {
+          period: preset,
+        };
         if (preset === 'custom') {
-          if (startDate) params.append('startDate', startDate);
-          if (endDate) params.append('endDate', endDate);
+          if (startDate) queryParams.startDate = startDate;
+          if (endDate) queryParams.endDate = endDate;
         }
 
-        const res = await fetch(`/api/reports/financial?${params.toString()}`);
-        if (res.ok) {
-          const json = await res.json();
-          const payload = json.data || json;
-          if (isMounted) {
-            if (Array.isArray(payload.transactions)) {
-              setTransactions(payload.transactions);
-            } else {
-              setTransactions([]);
-            }
-            if (payload.summary) {
-              setLiveSummary(payload.summary);
-            }
+        const res = await api.get<any>('/reports/financial', queryParams);
+        if (isMounted) {
+          const payload = res?.data || res || {};
+          const txList = Array.isArray(payload.transactions)
+            ? payload.transactions
+            : Array.isArray(res?.transactions)
+            ? res.transactions
+            : [];
+          const summaryObj = payload.summary || res?.summary || null;
+
+          setTransactions(txList);
+          if (summaryObj) {
+            setLiveSummary({
+              totalRevenue: Number(summaryObj.totalRevenue || 0),
+              totalExpenses: Number(summaryObj.totalExpenses || 0),
+              netProfit: Number(summaryObj.netProfit || 0),
+              profitMargin: Number(summaryObj.profitMargin || 0),
+              customerOutstanding: Number(summaryObj.customerOutstanding || 0),
+              supplierDue: Number(summaryObj.supplierDue || 0),
+            });
           }
         }
       } catch (err) {
         console.error('Error fetching live financial report:', err);
+        if (isMounted) {
+          setTransactions([]);
+        }
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -651,8 +663,9 @@ export const FinancialReports: React.FC = () => {
 
             <div className="h-72 w-full">
               {loading ? (
-                <div className="h-full flex items-center justify-center text-slate-500 text-sm">
-                  Loading financial stream...
+                <div className="h-full flex flex-col items-center justify-center gap-3 p-6 animate-pulse bg-slate-900/40 rounded-2xl border border-slate-800/60">
+                  <div className="w-10 h-10 rounded-xl bg-slate-800/80" />
+                  <div className="h-3 w-40 bg-slate-800/80 rounded-full" />
                 </div>
               ) : trendChartData.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-slate-500 text-sm gap-2">
@@ -884,6 +897,7 @@ export const FinancialReports: React.FC = () => {
 
         {/* Live Data Table */}
         <DataTable
+          loading={loading}
           data={filteredTransactions}
           columns={[
             {

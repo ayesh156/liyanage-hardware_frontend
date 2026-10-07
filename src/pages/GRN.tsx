@@ -582,10 +582,25 @@ export default function GRNPage() {
                     </tr>
                   );
                 })
+              ) : isLoadingGrns ? (
+                <>
+                  {Array.from({ length: 8 }).map((_, rIdx) => (
+                    <tr key={rIdx} className="animate-pulse bg-slate-900/40">
+                      <td className="p-3"><div className="h-4 rounded-full w-24 bg-slate-800" /></td>
+                      <td className="p-3"><div className="h-4 rounded-full w-36 bg-slate-800" /></td>
+                      <td className="p-3"><div className="h-4 rounded-full w-24 bg-slate-800" /></td>
+                      <td className="p-3"><div className="h-4 rounded-full w-24 bg-slate-800" /></td>
+                      <td className="p-3"><div className="h-4 rounded-full w-24 bg-slate-800" /></td>
+                      <td className="p-3"><div className="h-4 rounded-full w-24 bg-slate-800" /></td>
+                      <td className="p-3"><div className="h-6 rounded-full w-20 bg-slate-800" /></td>
+                      <td className="p-3"><div className="h-6 rounded-lg w-28 ml-auto bg-slate-800" /></td>
+                    </tr>
+                  ))}
+                </>
               ) : (
                 <tr>
                   <td colSpan={8} className="p-8 text-center text-slate-400 text-xs">
-                    {isLoadingGrns ? t('grn.loadingGrns', 'Loading GRN records from server...') : t('grn.noGrnsFound', 'No Goods Received Notes found matching your filters.')}
+                    {t('grn.noGrnsFound', 'No Goods Received Notes found matching your filters.')}
                   </td>
                 </tr>
               )}

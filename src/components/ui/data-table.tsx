@@ -2,6 +2,7 @@ import * as React from "react";
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTranslation } from 'react-i18next';
+import { TableSkeleton } from "./TableSkeleton";
 
 // ============================================================================
 // DataTable Types
@@ -327,14 +328,14 @@ export function DataTable<T>({
 
       {/* Loading State */}
       {loading && (
-        <div className={cn(
-          "flex items-center justify-center py-12",
-          theme === 'dark' ? 'text-slate-400' : 'text-slate-500'
-        )}>
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin" />
-            <p className="text-sm">Loading data...</p>
-          </div>
+        <div className="p-4">
+          <TableSkeleton
+            rows={pageSize || 8}
+            columns={columns.length || 6}
+            theme={theme}
+            showSummaryCards={false}
+            showSearchFilter={false}
+          />
         </div>
       )}
 

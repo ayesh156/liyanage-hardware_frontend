@@ -434,10 +434,25 @@ export default function SuppliersPage() {
                     </tr>
                   );
                 })
+              ) : isLoadingSuppliers ? (
+                <>
+                  {Array.from({ length: 8 }).map((_, rIdx) => (
+                    <tr key={rIdx} className="animate-pulse bg-slate-900/40">
+                      <td className="p-3"><div className="h-4 rounded-full w-28 bg-slate-800" /></td>
+                      <td className="p-3"><div className="h-4 rounded-full w-36 bg-slate-800" /></td>
+                      <td className="p-3"><div className="h-4 rounded-full w-28 bg-slate-800" /></td>
+                      <td className="p-3"><div className="h-4 rounded-full w-32 bg-slate-800" /></td>
+                      <td className="p-3"><div className="h-4 rounded-full w-24 bg-slate-800" /></td>
+                      <td className="p-3"><div className="h-4 rounded-full w-24 bg-slate-800" /></td>
+                      <td className="p-3"><div className="h-6 rounded-full w-20 bg-slate-800" /></td>
+                      <td className="p-3"><div className="h-6 rounded-lg w-28 ml-auto bg-slate-800" /></td>
+                    </tr>
+                  ))}
+                </>
               ) : (
                 <tr>
                   <td colSpan={8} className="p-8 text-center text-slate-400 text-xs">
-                    {isLoadingSuppliers ? t('suppliers.loadingSuppliers', 'Loading suppliers from database...') : t('suppliers.noSuppliersQuery', 'No suppliers found matching your query.')}
+                    {t('suppliers.noSuppliersQuery', 'No suppliers found matching your query.')}
                   </td>
                 </tr>
               )}

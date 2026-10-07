@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useLoading } from '../contexts/LoadingContext';
 import { Zap, Eye, EyeOff, Shield, BarChart3 } from 'lucide-react';
 
 export const Login: React.FC = () => {
   const { login } = useAuth();
+  const { startLoading, finishLoading } = useLoading();
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -22,13 +24,16 @@ export const Login: React.FC = () => {
     setIsLoading(true);
     try {
       await login(username, password);
-      // If we reach here, login succeeded
+      // On successful authentication, invoke startLoading
+      startLoading('Initializing workspace & loading inventory...');
+      // Once tokens and user profile state are set, navigate to destination
       navigate('/invoices/quick-invoice', { replace: true });
+      // Call finishLoading directly after navigation initiates so it transitions smoothly through 100%
+      finishLoading();
     } catch (err: unknown) {
-      // login() throws with the exact error from the backend
       setError(err instanceof Error ? err.message : 'Invalid credentials');
-    } finally {
       setIsLoading(false);
+      finishLoading();
     }
   };
 

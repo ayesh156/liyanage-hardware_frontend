@@ -12,6 +12,7 @@ import {
   Percent, Tag, Edit3, PackagePlus, Trash2, Plus, Search, X,
   Calculator, Zap, Box, Save, XCircle, Info
 } from 'lucide-react';
+import { BrandFullLoader } from '../components/ui/BrandFullLoader';
 
 // Extended Invoice Item with discount tracking
 interface ExtendedInvoiceItem extends InvoiceItem {
@@ -336,22 +337,7 @@ export const EditInvoice: React.FC = () => {
 
   // Loading state
   if (loadingInvoice) {
-    return (
-      <div className={`min-h-screen flex items-center justify-center ${
-        theme === 'dark' ? 'bg-slate-900' : 'bg-slate-50'
-      }`}>
-        <div className="text-center">
-          <div className={`w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center ${
-            theme === 'dark' ? 'bg-blue-500/20' : 'bg-blue-100'
-          }`}>
-            <FileText className="w-10 h-10 text-blue-500 animate-pulse" />
-          </div>
-          <h2 className={`text-2xl font-bold mb-2 ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
-            Loading Invoice...
-          </h2>
-        </div>
-      </div>
-    );
+    return <BrandFullLoader message="Loading Invoice Details..." />;
   }
 
   if (invoiceNotFound || !originalInvoice) {

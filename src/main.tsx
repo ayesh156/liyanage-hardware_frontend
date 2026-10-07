@@ -9,11 +9,14 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import "./lib/i18n";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { AuthProvider } from "./contexts/AuthContext";
 import { CatalogProvider } from "./contexts/CatalogContext";
 import { SidebarProvider } from "./contexts/SidebarContext";
+import { LoadingProvider } from "./contexts/LoadingContext";
+import { ProtectedRoute } from "./components/ProtectedRoute";
 import { AdminLayout } from "./components/AdminLayout";
 import { Login } from "./pages/Login";
+import { BrandFullLoader } from "./components/ui/BrandFullLoader";
 
 // Lazy load all pages
 const QuickCheckout = lazy(() => import("./pages/QuickCheckout").then(m => ({ default: m.QuickCheckout })));
@@ -45,15 +48,6 @@ const queryClient = new QueryClient({
   },
 });
 
-// Protected Route wrapper
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuth();
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-  return <>{children}</>;
-};
-
 const AppContent = () => {
   return (
     <>
@@ -61,10 +55,11 @@ const AppContent = () => {
         <CatalogProvider>
           <SidebarProvider>
             <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-              <Suspense fallback={<div className="flex items-center justify-center h-screen bg-[#0a0f1a] text-slate-400">Loading...</div>}>
-                <Routes>
-                  {/* Public Login Route */}
-                  <Route path="/login" element={<Login />} />
+              <LoadingProvider>
+                <Suspense fallback={<BrandFullLoader />}>
+                  <Routes>
+                    {/* Public Login Route */}
+                    <Route path="/login" element={<Login />} />
 
               {/* Protected Routes - Wrapped in AdminLayout */}
               <Route path="/" element={
@@ -191,7 +186,8 @@ const AppContent = () => {
               } />
             </Routes>
           </Suspense>
-        </BrowserRouter>
+        </LoadingProvider>
+      </BrowserRouter>
         </SidebarProvider>
         </CatalogProvider>
       </AuthProvider>
