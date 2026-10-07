@@ -3197,7 +3197,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                   formatCartPrice={formatCartPrice}
                 />
 
-                {/* ── Quick Categories (live from DB, scrollable fixed-height grid) ── */}
+                {/* ── Quick Categories (live from DB, maximized image tile layout with compact padding & subtle theme-adaptive bottom text shadow) ── */}
                 <div className="rounded-2xl border bg-white/50 dark:bg-slate-900/40 border-slate-200/80 dark:border-slate-800/80 p-3 shadow-xs">
                   <div>
                     <div className="flex justify-between items-center mb-2.5 border-b border-slate-200/80 dark:border-slate-800/80 pb-2.5">
@@ -3232,8 +3232,6 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                           const categoryProducts = categoryProductMap.get(cat.name) || [];
                           const isSelected = activeCategoryPopover === cat.name;
                           const displayName = getCategoryDisplayName(cat, cat.name);
-                          const sinhalaName = cat.nameSinhala?.trim();
-                          const englishName = cat.name?.trim();
                           const hasImage = Boolean(cat.imageUrl && !failedCategoryImages.has(cat.id));
 
                           return (
@@ -3258,94 +3256,62 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                               onMouseEnter={(e) => showHoverPreview(e, { category: cat, productCount: categoryProducts.length })}
                               onMouseLeave={hideHoverPreview}
                               data-cat-id={cat.id}
-                              className={`relative overflow-hidden rounded-2xl w-full aspect-square border transition-all duration-200 group cursor-pointer text-left flex flex-col ${
-                                hasImage ? 'p-2 justify-end' : 'p-2.5 justify-between'
-                              } ${
+                              className={`relative overflow-hidden rounded-2xl w-full aspect-square border transition-all duration-150 group cursor-pointer text-left flex flex-col justify-between p-0 ${
                                 isSelected
-                                  ? 'ring-2 ring-emerald-500 border-transparent shadow-md scale-[1.02] transition-transform'
-                                  : hasImage
-                                  ? isDark
-                                    ? 'border-slate-800/80 hover:border-emerald-500/80 bg-slate-900/60 shadow-md'
-                                    : 'border-slate-200 hover:border-emerald-500/80 bg-white shadow-sm'
-                                  : 'bg-slate-50/90 hover:bg-slate-100 border border-slate-200 shadow-sm dark:bg-slate-900/70 dark:hover:bg-slate-800/80 dark:border-slate-800'
+                                  ? 'ring-2 ring-emerald-500 border-transparent shadow-md scale-[1.02] transition-transform bg-white dark:bg-slate-900'
+                                  : isDark
+                                  ? 'border-slate-800/80 hover:border-emerald-500/80 bg-slate-900 shadow-md'
+                                  : 'border-slate-200/90 hover:border-emerald-500/80 bg-slate-50/50 hover:bg-white shadow-xs'
                               }`}
                             >
-                              {hasImage ? (
-                                <>
-                                  {/* Background Image / Cover */}
+                              {/* ── Split Card Pattern: Upper Image Canvas + Dedicated Theme-Adaptive Bottom Text Strip ──
+                                  Guarantees 100% text contrast and readability across any uploaded category image (dark, light, busy, or transparent) */}
+                              {/* Upper Area: Category Image / Icon Container */}
+                              <div className="relative flex-1 w-full min-h-0 overflow-hidden bg-slate-100/80 dark:bg-slate-800/40 flex items-center justify-center">
+                                {hasImage ? (
                                   <img
                                     src={resolveImageUrl(cat.imageUrl)}
                                     alt={displayName}
                                     loading="lazy"
-                                    className="object-cover absolute inset-0 w-full h-full group-hover:scale-105 transition-transform duration-300 pointer-events-none"
+                                    className="object-cover w-full h-full rounded-t-xl group-hover:scale-105 transition-transform duration-300 pointer-events-none"
                                     onError={() => {
                                       setFailedCategoryImages((prev) => new Set(prev).add(cat.id));
                                     }}
                                   />
-
-                                  {/* Bottom Gradient Shadow Overlay */}
-                                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent pointer-events-none" />
-
-                                  {/* Top Product Count Badge */}
-                                  {categoryProducts.length > 0 && (
-                                    <div className="absolute top-1.5 right-1.5 z-10 px-1.5 py-0.5 rounded-full bg-black/60 backdrop-blur-md border border-white/10 text-[9px] font-mono text-zinc-300 flex items-center gap-0.5 shadow-xs">
-                                      <span>{categoryProducts.length}</span>
-                                    </div>
-                                  )}
-
-                                  {/* Selected Active Glow Indicator */}
-                                  {isSelected && (
-                                    <div className="absolute top-1.5 left-1.5 z-10 w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse" />
-                                  )}
-
-                                  {/* Bottom Text Placement — High-contrast white tones */}
-                                  <div className="relative z-10 text-center flex flex-col items-center justify-end pointer-events-none">
-                                    <span className="text-white font-bold drop-shadow-md text-xs line-clamp-1 max-w-full">
-                                      {englishName}
-                                    </span>
-                                    {sinhalaName && (
-                                      <span className="text-slate-200 font-medium drop-shadow text-[11px] truncate max-w-full mt-0.5">
-                                        {sinhalaName}
-                                      </span>
-                                    )}
+                                ) : (
+                                  <div className="text-emerald-600 bg-emerald-50 border border-emerald-100 dark:text-emerald-400 dark:bg-emerald-950/40 dark:border-emerald-800/50 p-2.5 rounded-xl shadow-2xs group-hover:scale-110 transition-transform duration-200">
+                                    <Package className="w-5 h-5" />
                                   </div>
-                                </>
-                              ) : (
-                                <>
-                                  {/* Top Row: Selection glow + count badge */}
-                                  <div className="flex items-center justify-between w-full z-10">
-                                    {isSelected ? (
-                                      <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse" />
-                                    ) : (
-                                      <div className="w-2 h-2" />
-                                    )}
-                                    {categoryProducts.length > 0 && (
-                                      <span className="px-1.5 py-0.5 rounded-full bg-slate-200/80 text-slate-700 text-[10px] font-semibold dark:bg-slate-800 dark:text-slate-300 border border-slate-300/60 dark:border-slate-700/60 font-mono">
-                                        {categoryProducts.length}
-                                      </span>
-                                    )}
-                                  </div>
+                                )}
 
-                                  {/* Centered Soft Slate / Emerald Icon */}
-                                  <div className="flex items-center justify-center my-auto transition-transform group-hover:scale-110 duration-200">
-                                    <div className="text-emerald-600 bg-emerald-50 border border-emerald-100 dark:text-emerald-400 dark:bg-emerald-950/40 dark:border-emerald-800/50 p-2 rounded-xl shadow-2xs">
-                                      <Package className="w-4 h-4" />
-                                    </div>
+                                {/* Top-Right Floating Product Count Badge */}
+                                {categoryProducts.length > 0 && (
+                                  <div className={`absolute top-1.5 right-1.5 z-10 px-1.5 py-0.5 rounded-full text-[9px] font-mono flex items-center gap-0.5 shadow-xs transition-colors duration-150 ${
+                                    hasImage
+                                      ? 'bg-black/60 backdrop-blur-md border border-white/10 text-zinc-300'
+                                      : 'bg-slate-200/80 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-300/60 dark:border-slate-700/60 font-semibold'
+                                  }`}>
+                                    <span>{categoryProducts.length}</span>
                                   </div>
+                                )}
 
-                                  {/* Bottom Text Placement — Adaptive theme text */}
-                                  <div className="text-center flex flex-col items-center justify-end w-full pointer-events-none">
-                                    <span className="text-slate-800 dark:text-slate-100 font-bold text-xs line-clamp-1 max-w-full">
-                                      {englishName}
-                                    </span>
-                                    {sinhalaName && (
-                                      <span className="text-slate-500 dark:text-slate-400 font-medium text-[11px] truncate max-w-full mt-0.5">
-                                        {sinhalaName}
-                                      </span>
-                                    )}
-                                  </div>
-                                </>
-                              )}
+                                {/* Top-Left Selected Active Glow Indicator */}
+                                {isSelected && (
+                                  <div className="absolute top-1.5 left-1.5 z-10 w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.9)] animate-pulse" />
+                                )}
+                              </div>
+
+                              {/* Lower Area: Dedicated Bottom Text Strip */}
+                              <div className="w-full px-1 shrink-0 bg-slate-100/95 text-slate-900 border-t border-slate-200/80 dark:bg-slate-900/95 dark:text-slate-100 dark:border-t dark:border-slate-800 transition-colors duration-150 flex items-center justify-center">
+                                <span
+                                  className={`truncate text-center block w-full transition-colors duration-150 ${
+                                    isSinhala ? 'text-[11px] font-semibold' : 'text-xs font-bold'
+                                  }`}
+                                  title={displayName}
+                                >
+                                  {displayName}
+                                </span>
+                              </div>
                             </button>
                           );
                         })}
