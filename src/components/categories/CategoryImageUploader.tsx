@@ -7,12 +7,28 @@ import {
   UploadCloud, X, Image as ImageIcon, Loader2, AlertCircle, Check, Link2, RefreshCw
 } from 'lucide-react';
 
+/**
+ * Props for the CategoryImageUploader component.
+ */
 interface CategoryImageUploaderProps {
+  /** Current image URL or base64 data URI */
   value?: string | null;
+  /** Callback fired when the image is selected, pasted, uploaded, or cleared */
   onChange: (imageUrl: string | null) => void;
+  /** Optional custom CSS class name */
   className?: string;
 }
 
+/**
+ * CategoryImageUploader
+ *
+ * A versatile image upload component for category management supporting:
+ * - Native file selection and automatic WebP compression
+ * - Drag-and-drop from desktop, file explorer, or web pages
+ * - Clipboard pasting (Ctrl+V / screenshots / image URLs)
+ * - Direct external image URL entry
+ * - High-contrast theme-aware badges for Light and Dark modes
+ */
 export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
   value,
   onChange,
@@ -308,8 +324,8 @@ export const CategoryImageUploader: React.FC<CategoryImageUploaderProps> = ({
             {/* Bottom Overlay Info & Action Bar */}
             <div className="absolute bottom-2 inset-x-2 z-20 flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 min-w-0">
-                <span className="px-2 py-0.5 rounded-full bg-black/70 backdrop-blur-md text-[10px] font-medium text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                  <Check className="w-2.5 h-2.5" />
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100/90 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/80 dark:text-emerald-400 dark:border-emerald-800/60 backdrop-blur-md text-[10px] font-medium flex items-center gap-1 shadow-xs">
+                  <Check className="w-2.5 h-2.5 text-emerald-700 dark:text-emerald-400" />
                   {value!.startsWith('data:image') 
                     ? `WebP (${Math.round(value!.length / 1024)} KB)` 
                     : value!.startsWith('/')
