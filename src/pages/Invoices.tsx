@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useLoading } from '../contexts/LoadingContext';
 import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 import {
@@ -144,6 +145,7 @@ export const Invoices: React.FC = () => {
   const { t } = useTranslation();
   const { theme } = useTheme();
   const { user: currentUser } = useAuth();
+  const { startLoading, finishLoading } = useLoading();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const isDark = theme === 'dark';
@@ -185,7 +187,10 @@ export const Invoices: React.FC = () => {
   };
 
   // ── Fetch invoices from live backend API ──
-  const fetchInvoicesHistory = useCallback(async () => {
+  const fetchInvoicesHistory = useCallback(async (isInitial = true) => {
+    if (isInitial) {
+      startLoading('Loading invoice history & ledgers...');
+    }
     try {
       setLoading(true);
       const response = await api.get<any[]>('/invoices', { perPage: 1000 }, true) as any;
@@ -197,17 +202,20 @@ export const Invoices: React.FC = () => {
       toast.error('Failed to sync live server invoices');
     } finally {
       setLoading(false);
+      if (isInitial) {
+        finishLoading();
+      }
     }
-  }, []);
+  }, [startLoading, finishLoading]);
 
   useEffect(() => {
-    fetchInvoicesHistory();
+    fetchInvoicesHistory(true);
   }, [fetchInvoicesHistory]);
 
   // 🌟 Live Auto-Refresh Listener: වෙනත් තැනකදී balance එකක් update වූ විට ඉන්වොයිස් පිටුවද live sync වීම
   useEffect(() => {
     const handleLiveInvoiceSync = () => {
-      fetchInvoicesHistory();
+      fetchInvoicesHistory(false);
     };
     window.addEventListener('balance-updated', handleLiveInvoiceSync);
     return () => window.removeEventListener('balance-updated', handleLiveInvoiceSync);

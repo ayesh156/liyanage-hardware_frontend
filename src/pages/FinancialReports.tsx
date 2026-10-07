@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from 'react-i18next';
 import { useIsMobile } from '../hooks/use-mobile';
+import { useLoading } from '../contexts/LoadingContext';
 import api from '../lib/api';
 import { 
   TrendingUp, TrendingDown, DollarSign, Calendar, Download, 
@@ -42,6 +43,7 @@ export const FinancialReports: React.FC = () => {
   const { theme } = useTheme();
   const { t } = useTranslation();
   const isMobile = useIsMobile();
+  const { startLoading, finishLoading } = useLoading();
   
   // Date Preset & Filter State
   const [preset, setPreset] = useState<PeriodPreset>('this_month');
@@ -77,6 +79,7 @@ export const FinancialReports: React.FC = () => {
   useEffect(() => {
     let isMounted = true;
     const fetchLiveFinancialReport = async () => {
+      startLoading('Loading financial reports & metrics...');
       setLoading(true);
       try {
         const queryParams: Record<string, string | undefined> = {
@@ -115,13 +118,16 @@ export const FinancialReports: React.FC = () => {
           setTransactions([]);
         }
       } finally {
-        if (isMounted) setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+          finishLoading();
+        }
       }
     };
 
     fetchLiveFinancialReport();
     return () => { isMounted = false; };
-  }, [preset, startDate, endDate]);
+  }, [preset, startDate, endDate, startLoading, finishLoading]);
 
   // Filter transactions for table display based on client search & filters
   const filteredTransactions = useMemo(() => {

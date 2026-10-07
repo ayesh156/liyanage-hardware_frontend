@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
 import { useIsMobile } from '../hooks/use-mobile';
+import { useLoading } from '../contexts/LoadingContext';
 import {
   Users, Plus, AlertTriangle, Wallet, UserCheck, UserX,
   CreditCard, Crown, ShoppingBag, BarChart3,
@@ -37,6 +38,7 @@ export const Customers: React.FC = () => {
   const { theme } = useTheme();
   const isMobile = useIsMobile();
   const isDark = theme === 'dark';
+  const { startLoading, finishLoading } = useLoading();
 
   // ── State ──
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -56,7 +58,10 @@ export const Customers: React.FC = () => {
   const [dueModalCustomer, setDueModalCustomer] = useState<Customer | null>(null);
 
   // ── Fetch customers from API ──
-  const fetchCustomers = useCallback(async (search?: string, page?: number, perPage?: number) => {
+  const fetchCustomers = useCallback(async (search?: string, page?: number, perPage?: number, isInitial = true) => {
+    if (isInitial) {
+      startLoading('Loading customer directory...');
+    }
     setLoading(true);
     try {
       const params: Record<string, string | number> = {};
@@ -72,18 +77,21 @@ export const Customers: React.FC = () => {
       toast.error('Failed to refresh customer list. Connection refused.');
     } finally {
       setLoading(false);
+      if (isInitial) {
+        finishLoading();
+      }
     }
-  }, []);
+  }, [startLoading, finishLoading]);
 
   // ── Initial load & refetch on search/page/pageSize change ──
   useEffect(() => {
-    fetchCustomers(searchQuery || undefined, currentPage, pageSize);
+    fetchCustomers(searchQuery || undefined, currentPage, pageSize, true);
   }, [fetchCustomers, currentPage, pageSize]);
 
   // 🌟 Live Auto-Refresh Listener: ගෙවීමක් සිදුවූ සැණින් Customer පිටුව සජීවීව යාවත්කාලීන වීම
   useEffect(() => {
     const handleLiveBalanceSync = () => {
-      fetchCustomers(searchQuery || undefined, currentPage, pageSize);
+      fetchCustomers(searchQuery || undefined, currentPage, pageSize, false);
     };
     window.addEventListener('balance-updated', handleLiveBalanceSync);
     return () => window.removeEventListener('balance-updated', handleLiveBalanceSync);

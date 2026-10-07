@@ -4,21 +4,19 @@ import { BrandFullLoader } from '../components/ui/BrandFullLoader';
 
 /**
  * @file LoadingContext.tsx
- * @description Executive Page Loading & Transition Coordinator.
+ * @description Executive Application Loader & Continuous Dynamic Progress Coordinator.
  * 
- * Performance & Transition Mechanics:
- * 1. Fast Hydration Curve (Page Refresh & Login):
- *    - Rapid fill from 0% to 60% within 200ms.
- *    - Climbs to ~90% between 200ms and 500ms.
- * 2. Guaranteed 100% Completion (finishLoading):
- *    - Animates remaining progress smoothly straight to 100% within 150ms.
- *    - Holds at 100% for a 120ms beat so the user visually sees emerald 100%.
- *    - Executes a 200ms CSS opacity fade-out before unmounting (isLoading = false).
- * 3. Fail-Safe Fallback:
- *    - Automatically ramps to 100% and finishes after a maximum of 1.2 seconds if a network request hangs.
- * 4. Section Navigation:
- *    - Internal route switches use a sleek top horizontal gradient progress bar without locking the screen.
- *    - Reserves full-screen splash for initial boot, hard refreshes, and post-login entry.
+ * Physics & Interpolation Mechanics:
+ * 1. Continuous Physics-Based Trickle Engine (0% -> 99.5%):
+ *    - Immediate Ease-In (0ms - 250ms): Fluidly climbs from 0% to ~48% upon request dispatch.
+ *    - Logarithmic Dynamic Trickle (250ms+): Asymptotically approaches 99.5% using a dynamic inverse-power curve.
+ *    - Zero Stalling Guarantee: Progress is strictly monotonic (P(t+dt) > P(t)), ensuring visible continuous movement at all times under any network latency.
+ * 2. Rapid Data Resolution (finishLoading):
+ *    - Upon API promise resolution, smoothly accelerates from current percentage straight to 100% (150ms quad ease-out).
+ *    - Holds at 100% for a 120ms beat to provide clear visual feedback.
+ *    - Executes a 200ms silky opacity fade-out before unmounting.
+ * 3. Route Loading Watcher:
+ *    - Lightweight top progress sweep for internal route changes without locking screen.
  */
 
 export interface LoadingContextType {
@@ -35,6 +33,32 @@ const LoadingContext = createContext<LoadingContextType | undefined>(undefined);
 interface LoadingProviderProps {
   children: React.ReactNode;
 }
+
+/**
+ * Calculates continuous logarithmic physics trickle progress based on elapsed time.
+ * Guaranteed strictly monotonic (P(t+dt) > P(t)) so the progress bar constantly advances
+ * smoothly without ever pausing, freezing, or stalling at a fixed number.
+ * 
+ * @param elapsedMs - Milliseconds elapsed since request dispatch
+ * @returns Bounded progress percentage strictly within [0, 99.5)
+ */
+export const calculateTrickleProgress = (elapsedMs: number): number => {
+  if (elapsedMs <= 0) return 0;
+
+  if (elapsedMs <= 250) {
+    // Initial rapid burst: 0% -> 48% within first 250ms for instant visual feedback
+    const t = elapsedMs / 250;
+    return 48 * Math.pow(t, 0.75);
+  }
+
+  // Logarithmic continuous trickle from 48% towards 99.5%
+  // Strictly monotonic: derivative is strictly positive for all elapsedMs > 250
+  const tSub = (elapsedMs - 250) / 1200;
+  const trickleFactor = 1 - 1 / (1 + Math.pow(tSub, 0.65));
+  const progress = 48 + 51.5 * trickleFactor;
+
+  return Math.min(99.5, progress);
+};
 
 /**
  * RouteLoadingWatcher monitors React Router location changes.
@@ -114,27 +138,14 @@ export const LoadingProvider: React.FC<LoadingProviderProps> = ({ children }) =>
       if (isFinishingRef.current) return;
 
       const elapsed = Date.now() - startTimeRef.current;
-      let nextProgress = 0;
+      const nextProgress = calculateTrickleProgress(elapsed);
 
-      if (elapsed <= 200) {
-        // Fast Ease-In: 0% -> 60% within 200ms
-        nextProgress = (elapsed / 200) * 60;
-      } else if (elapsed <= 500) {
-        // Steady Climb: 60% -> 90% between 200ms and 500ms
-        nextProgress = 60 + ((elapsed - 200) / 300) * 30;
-      } else {
-        // Organic Micro-increment stall approaching 95%
-        const stallTime = elapsed - 500;
-        nextProgress = 90 + 5 * (1 - Math.exp(-stallTime / 800));
-      }
-
-      if ((elapsed > 800 || nextProgress >= 85) && !customMessageRef.current) {
+      if (elapsed > 1000 && !customMessageRef.current) {
         setLoadingText('Preparing workspace & inventory...');
       }
 
-      const bounded = Math.min(95, Math.max(0, nextProgress));
-      currentProgressRef.current = bounded;
-      setProgress(bounded);
+      currentProgressRef.current = nextProgress;
+      setProgress(nextProgress);
 
       animationFrameRef.current = requestAnimationFrame(tick);
     };
@@ -209,12 +220,12 @@ export const LoadingProvider: React.FC<LoadingProviderProps> = ({ children }) =>
 
     runPhysicsLoop();
 
-    // Fail-safe fallback timeout: smoothly ramp to 100% after max 1.2s on standard refreshes
+    // Safety fallback timeout (15s) to recover if caller omits finishLoading()
     failSafeTimeoutRef.current = setTimeout(() => {
       if (!isFinishingRef.current) {
         finishLoading();
       }
-    }, 1200);
+    }, 15000);
   }, [clearAllTimers, runPhysicsLoop, finishLoading]);
 
   // Fast top bar loader sweep for internal route changes

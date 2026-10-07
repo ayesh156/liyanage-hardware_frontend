@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useLoading } from '../../contexts/LoadingContext';
+import { useLoading, calculateTrickleProgress } from '../../contexts/LoadingContext';
 
 interface BrandFullLoaderProps {
   message?: string;
@@ -57,17 +57,8 @@ export const BrandFullLoader: React.FC<BrandFullLoaderProps> = ({
       }
 
       if (!isSnappingRef.current) {
-        let current = 0;
-        if (elapsed <= 200) {
-          current = (elapsed / 200) * 60;
-        } else if (elapsed <= 500) {
-          current = 60 + ((elapsed - 200) / 300) * 30;
-        } else {
-          const stall = elapsed - 500;
-          current = 90 + 5 * (1 - Math.exp(-stall / 800));
-        }
-
-        setStandaloneProgress(Math.min(95, Math.max(0, current)));
+        const current = calculateTrickleProgress(elapsed);
+        setStandaloneProgress(current);
         animRef.current = requestAnimationFrame(tick);
       }
     };

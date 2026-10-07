@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useIsMobile } from '../hooks/use-mobile';
+import { useLoading } from '../contexts/LoadingContext';
 import { Supplier } from '../types';
 import api from '../lib/api';
 import { 
@@ -32,6 +33,7 @@ import { cn } from '../lib/utils';
 export default function SuppliersPage() {
   const { t } = useTranslation();
   const { theme } = useTheme();
+  const { startLoading, finishLoading } = useLoading();
   const navigate = useNavigate();
   const isDark = theme === 'dark';
   const isMobile = useIsMobile();
@@ -62,7 +64,10 @@ export default function SuppliersPage() {
   const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
 
   // ── Fetch Suppliers from Live Backend ──
-  const fetchSuppliers = useCallback(async () => {
+  const fetchSuppliers = useCallback(async (isInitial = true) => {
+    if (isInitial) {
+      startLoading('Loading supplier catalog & ledgers...');
+    }
     setIsLoadingSuppliers(true);
     try {
       const res = await api.get<{
@@ -82,17 +87,20 @@ export default function SuppliersPage() {
       toast.error(err?.message || 'Failed to load suppliers from server');
     } finally {
       setIsLoadingSuppliers(false);
+      if (isInitial) {
+        finishLoading();
+      }
     }
-  }, [supplierSearch]);
+  }, [supplierSearch, startLoading, finishLoading]);
 
   useEffect(() => {
-    fetchSuppliers();
+    fetchSuppliers(true);
   }, [fetchSuppliers]);
 
   // ── Live Optimistic State Refresh on Settlement / Updates ──
   useEffect(() => {
     const handleSync = () => {
-      fetchSuppliers();
+      fetchSuppliers(false);
     };
     window.addEventListener('balance-updated', handleSync);
     window.addEventListener('supplier-updated', handleSync);
