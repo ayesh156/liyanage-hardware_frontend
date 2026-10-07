@@ -10,7 +10,9 @@ import {
   resolveAttachmentViewUrl, 
   resolveAttachmentDownloadUrl, 
   extractGoogleDriveFileId, 
-  isPdfUrl 
+  isPdfUrl,
+  isRasterImage,
+  isPdfDocument
 } from '../../utils/imageUtils';
 import { cn } from '../../lib/utils';
 import { toast } from 'react-toastify';
@@ -51,29 +53,30 @@ export const LightboxModal: React.FC<LightboxModalProps> = ({
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Normalize list to standard GRNImageItem objects with strict unconditional PDF detection
+  // Normalize list to standard GRNImageItem objects with strict document type detection
   const normalizedItems: GRNImageItem[] = React.useMemo(() => {
     return items.map((it) => {
       if (typeof it === 'string') {
-        const isPdf = isPdfUrl(it);
+        const isImg = isRasterImage(it);
+        const isPdf = !isImg && isPdfDocument(it);
         return {
           url: it,
-          name: isPdf ? 'LHD PDF Document' : 'LHD Attachment',
+          name: isPdf ? 'Invoice Document' : 'Receipt Image',
           fileType: isPdf ? 'pdf' : 'image',
           isPdf: isPdf,
           mimeType: isPdf ? 'application/pdf' : undefined,
         };
       }
-      const isDocPdf =
-        it.isPdf === true ||
-        it.mimeType === 'application/pdf' ||
-        it.mimeType?.toLowerCase().includes('pdf') ||
-        it.fileType === 'pdf' ||
-        isPdfUrl(it) ||
-        isPdfUrl(it.url) ||
-        (it.name ? isPdfUrl(it.name) : false);
+      // Strict detection: images take absolute priority
+      const isImg = isRasterImage(it);
+      const isDocPdf = !isImg && (it.isPdf === true || it.mimeType === 'application/pdf' || it.fileType === 'pdf' || isPdfDocument(it));
+      // Strip any stray "(PDF)" from image display names
+      const cleanName = !isDocPdf && it.name
+        ? it.name.replace(/\s*\(PDF\)\s*/gi, '').trim()
+        : it.name;
       return {
         ...it,
+        name: cleanName,
         fileType: isDocPdf ? 'pdf' : (it.fileType || 'image'),
         isPdf: isDocPdf,
         mimeType: isDocPdf ? 'application/pdf' : it.mimeType,
@@ -83,14 +86,10 @@ export const LightboxModal: React.FC<LightboxModalProps> = ({
 
   const activeItem = normalizedItems[currentIndex] || normalizedItems[0];
   const rawUrl = activeItem?.url || '';
-  const isPdf =
-    activeItem?.isPdf === true ||
-    activeItem?.mimeType === 'application/pdf' ||
-    activeItem?.fileType === 'pdf' ||
-    isPdfUrl(activeItem) ||
-    isPdfUrl(rawUrl) ||
-    (activeItem?.name ? isPdfUrl(activeItem.name) : false);
-  const driveId = extractGoogleDriveFileId(rawUrl);
+  // Images take absolute priority: only mark as PDF if it's NOT a raster image
+  // Also trust the normalizedItem's already-resolved isPdf flag (set from explicit metadata)
+  const isPdf = !isRasterImage(activeItem) && (activeItem?.isPdf === true || activeItem?.mimeType === 'application/pdf' || isPdfDocument(activeItem));
+  const fileId = extractGoogleDriveFileId(rawUrl);
 
   // Direct URLs: Preview vs Download
   const previewUrl = resolveAttachmentViewUrl(rawUrl, isPdf);
@@ -268,10 +267,18 @@ export const LightboxModal: React.FC<LightboxModalProps> = ({
           </div>
           <div>
             <h3 className="text-xs sm:text-sm font-bold text-white truncate max-w-xs sm:max-w-md">
-              {activeItem.name || (isPdf ? t('lightbox.lhdInvoicePdf', 'LHD Invoice Document (PDF)') : t('lightbox.lhdReceiptImage', 'LHD Receipt Image'))}
+              {(() => {
+                if (activeItem.name && activeItem.name !== 'Google Drive Document') {
+                  return activeItem.name;
+                }
+                if (isPdf) {
+                  return t('lightbox.lhdInvoicePdf', 'Invoice Document (PDF)');
+                }
+                return t('lightbox.lhdReceiptImage', 'Receipt Image');
+              })()}
             </h3>
             <p className="text-[10px] text-slate-400 font-mono">
-              {t('lightbox.itemOf', { current: currentIndex + 1, total: normalizedItems.length })} {isPdf ? `• ${t('lightbox.pdfDocument', 'PDF Document')}` : `• ${t('lightbox.highResBill', 'High-Resolution Bill')}`}
+              {t('lightbox.itemOf', { current: currentIndex + 1, total: normalizedItems.length })} {isPdf ? `• ${t('lightbox.pdfDocument', 'PDF Document')}` : `• ${t('lightbox.imagePreview', 'Image Preview')}`}
             </p>
           </div>
         </div>
@@ -416,16 +423,16 @@ export const LightboxModal: React.FC<LightboxModalProps> = ({
               e.stopPropagation();
             }}
           >
-            {driveId ? (
+            {fileId ? (
               <iframe
-                src={`https://drive.google.com/file/d/${driveId}/preview`}
+                src={`https://drive.google.com/file/d/${fileId}/preview`}
                 className="w-full h-full border-0 rounded-xl bg-slate-900"
                 title={activeItem.name || 'PDF Document'}
                 allow="autoplay"
               />
             ) : (
               <iframe
-                src={`${previewUrl}#toolbar=1`}
+                src={`${previewUrl || rawUrl}#toolbar=1`}
                 className="w-full h-full border-0 rounded-xl bg-slate-900"
                 title={activeItem.name || 'PDF Document'}
               />
@@ -496,11 +503,7 @@ export const LightboxModal: React.FC<LightboxModalProps> = ({
           }}
         >
           {normalizedItems.map((item, idx) => {
-            const isItemPdf =
-              item.isPdf === true ||
-              item.mimeType === 'application/pdf' ||
-              item.fileType === 'pdf' ||
-              isPdfUrl(item);
+            const isItemPdf = !isRasterImage(item) && (item.isPdf === true || item.mimeType === 'application/pdf' || isPdfDocument(item));
             const thumbUrl = resolveAttachmentViewUrl(item.url, isItemPdf);
             const isSelected = idx === currentIndex;
 

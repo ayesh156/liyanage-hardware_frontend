@@ -49,15 +49,19 @@ export const GRNDetailsModal: React.FC<GRNDetailsModalProps> = ({
   const imagesList: GRNImageItem[] = Array.isArray(grn.images)
     ? (grn.images as any[]).map((img) => {
         if (typeof img === 'string') {
+          const isDocPdf = isPdfUrl(img);
           return {
             url: img,
-            name: 'Invoice Document',
-            fileType: isPdfUrl(img) ? 'pdf' : 'image',
+            name: isDocPdf ? 'Invoice Document' : 'Receipt Image',
+            fileType: isDocPdf ? 'pdf' : 'image',
+            isPdf: isDocPdf,
           };
         }
+        const isDocPdf = isPdfUrl(img);
         return {
           ...img,
-          fileType: isPdfUrl(img) ? 'pdf' : (img.fileType || 'image'),
+          fileType: isDocPdf ? 'pdf' : 'image',
+          isPdf: isDocPdf,
         };
       })
     : [];
@@ -220,7 +224,7 @@ export const GRNDetailsModal: React.FC<GRNDetailsModalProps> = ({
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
                   {imagesList.map((img, idx) => {
                     const resolved = normalizeImageUrl(img.url);
-                    const isPdf = isPdfUrl(img) || img.fileType === 'pdf' || isPdfUrl(resolved);
+                    const isPdf = isPdfUrl(img);
 
                     return (
                       <div

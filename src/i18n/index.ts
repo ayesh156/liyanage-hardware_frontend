@@ -867,10 +867,16 @@ export const translations = {
       marketing: 'Marketing',
       insurance: 'Insurance',
       otherExpenses: 'Other Expenses',
-      cash: 'Cash',
-      card: 'Card',
-      bankTransfer: 'Bank Transfer',
       cheque: 'Cheque',
+      exportCsv: 'Export CSV Data',
+      customRange: 'Custom Range',
+      allCategories: 'All Categories',
+      annualReport: 'Annual Financial Report',
+      report: 'Financial Report',
+      revenueVSExpense: 'Revenue vs Expense Trends',
+      categoryBreakdown: 'Category Breakdown',
+      revenueBreakdown: 'Revenue Categories',
+      expenseBreakdown: 'Expense Categories',
     },
     // Products Form
     productsForm: {
@@ -1329,6 +1335,19 @@ export const translations = {
       partiallyPaid: 'Partially Paid',
       fullyPaid: 'Fully Paid',
       selectSupplierError: 'Please select a supplier',
+      // ── Advance Payment / Credit Balance ──
+      advanceCredit: 'Advance Credit',
+      advanceCreditNote: 'Advance: Rs. {{amount}} credit with supplier',
+      // ── Drive Link Attachment Dialog ──
+      // Used in GRNAttachmentDropzone URL-link dialog
+      documentType: 'DOCUMENT TYPE',
+      imageType: 'Image',
+      pdfDocumentType: 'PDF Document',
+      pdfViewerNotice: 'Will be opened as an interactive multi-page PDF viewer',
+      imageViewerNotice: 'Will be opened as a zoomable image',
+      documentOrImageUrl: 'DOCUMENT / IMAGE URL',
+      attachPdf: 'Attach PDF',
+      attachImage: 'Attach Image',
     },
     settlement: {
       title: 'Supplier Settlement',
@@ -2304,10 +2323,16 @@ export const translations = {
       marketing: 'අලෙවිකරණය',
       insurance: 'රක්ෂණය',
       otherExpenses: 'වෙනත් වියදම්',
-      cash: 'මුදල්',
-      card: 'කාඩ්පත',
-      bankTransfer: 'බැංකු මාරු',
       cheque: 'චෙක්පත',
+      exportCsv: 'CSV දත්ත ලබාගන්න',
+      customRange: 'අභිරුචි කාලසීමාව',
+      allCategories: 'සියලු කාණ්ඩ',
+      annualReport: 'වාර්ෂික මූල්‍ය වාර්තාව',
+      report: 'මූල්‍ය වාර්තාව',
+      revenueVSExpense: 'ආදායම් සහ වියදම් ප්‍රවණතා',
+      categoryBreakdown: 'කාණ්ඩ අනුව බෙදීම',
+      revenueBreakdown: 'ආදායම් කාණ්ඩ',
+      expenseBreakdown: 'වියදම් කාණ්ඩ',
     },
     // Products Form
     productsForm: {
@@ -2765,6 +2790,19 @@ export const translations = {
       partiallyPaid: 'කොටසක් ගෙවූ',
       fullyPaid: 'සම්පූර්ණ ගෙවූ',
       selectSupplierError: 'කරුණාකර සැපයුම්කරුවෙකු තෝරන්න',
+      // ── අග්රිම ගෙවීම / ගිනුම් සාකුව ──
+      advanceCredit: 'අග්රිම ගිනුම',
+      advanceCreditNote: 'අග්රිම: රු. {{amount}} සැපයුම්කරු සපේයන් පවති',
+      // ── Drive සබැඳිය ඇමුණීමේ සංවාද කොටුව ──
+      // GRNAttachmentDropzone URL-link dialog හි භාවිතා වේ
+      documentType: 'ලේඛන වර්ගය',
+      imageType: 'ඡායාරූපය',
+      pdfDocumentType: 'PDF ලේඛනය',
+      pdfViewerNotice: 'බහු-පිටු PDF කියවනයක් ලෙස විවෘත වේ',
+      imageViewerNotice: 'විශාලනය කළ හැකි ඡායාරූපයක් ලෙස විවෘත වේ',
+      documentOrImageUrl: 'ලේඛන / ඡායාරූප සබැඳිය (URL)',
+      attachPdf: 'PDF අමුණන්න',
+      attachImage: 'ඡායාරූපය අමුණන්න',
     },
     settlement: {
       title: 'සැපයුම්කරු ණය පියවීම',

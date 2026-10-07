@@ -170,14 +170,53 @@ export const GRNFormModal: React.FC<GRNFormModalProps> = ({
     }));
   }, [suppliers]);
 
-  // Compute total amount based on items or manual entry
+  /**
+   * Calculates the running sub-total from all itemized line entries.
+   *
+   * Only relevant when `useItemization === true`.
+   * When itemization is disabled, `summaryTotal` is used directly as the bill amount.
+   *
+   * @returns {number} Sum of (unitPrice × qty) across all line item rows.
+   */
   const calculatedItemsTotal = useMemo(() => {
     return items.reduce((acc, it) => acc + (Number(it.subtotal) || 0), 0);
   }, [items]);
 
+  /**
+   * Resolves the final canonical bill total.
+   *
+   * - Itemization ENABLED  → auto-computed from line items (calculatedItemsTotal).
+   * - Itemization DISABLED → manual entry via summaryTotal input field.
+   *
+   * @type {number}
+   */
   const finalTotalAmount = useItemization ? calculatedItemsTotal : (parseFloat(summaryTotal) || 0);
+
+  /** Numeric representation of the paid/down-payment amount. */
   const paidAmount = parseFloat(paidAmountStr) || 0;
+
+  /**
+   * Remaining due balance after deducting the upfront payment.
+   *
+   * Edge cases:
+   * - If `paidAmount >= finalTotalAmount`: balance is 0 (fully settled or advance credit).
+   * - If `paidAmount > finalTotalAmount`: the overage becomes a credit balance tracked
+   *   separately; this function deliberately clamps to 0 to avoid negative balance errors.
+   * - Credit advance is gracefully allowed; no validation error is thrown.
+   *
+   * Formula: dueAmount = Math.max(0, totalAmount - paidAmount)
+   *
+   * @type {number}
+   */
   const calculatedDueAmount = Math.max(0, finalTotalAmount - paidAmount);
+
+  /**
+   * Detects when the user has paid MORE than the stated bill total,
+   * creating a supplier credit/advance balance situation.
+   *
+   * @type {boolean}
+   */
+  const isAdvancePayment = paidAmount > 0 && paidAmount > finalTotalAmount;
 
   // Recalculate item line subtotal
   const handleItemChange = (index: number, field: 'name' | 'unitPrice' | 'qty', value: string) => {
@@ -409,19 +448,31 @@ export const GRNFormModal: React.FC<GRNFormModalProps> = ({
                 />
               </div>
 
-              {/* Outstanding Due Balance */}
+              {/* Outstanding Due Balance — shows credit note if advance payment detected */}
               <div>
                 <span className={labelClass}>
-                  <ShieldAlert className="w-3.5 h-3.5 text-rose-500" />
-                  {t('grn.dueBalance', 'Remaining Due')}
+                  <ShieldAlert className={cn('w-3.5 h-3.5', isAdvancePayment ? 'text-blue-400' : 'text-rose-500')} />
+                  {isAdvancePayment
+                    ? t('grn.advanceCredit', 'Advance Credit')
+                    : t('grn.dueBalance', 'Remaining Due')}
                 </span>
-                <div
-                  className={cn(
-                    'font-mono font-bold text-base h-9 flex items-center',
-                    calculatedDueAmount > 0 ? 'text-rose-400' : 'text-emerald-400'
+                <div className="space-y-0.5">
+                  <div
+                    className={cn(
+                      'font-mono font-bold text-base h-9 flex items-center',
+                      calculatedDueAmount > 0 ? 'text-rose-400' : 'text-emerald-400'
+                    )}
+                  >
+                    Rs. {calculatedDueAmount.toLocaleString('en-LK', { minimumFractionDigits: 2 })}
+                  </div>
+                  {/* Advance payment notice — supplier owes us the overage */}
+                  {isAdvancePayment && (
+                    <p className="text-[10px] text-blue-400 font-medium">
+                      {t('grn.advanceCreditNote', 'Advance: Rs. {{amount}} credit with supplier', {
+                        amount: (paidAmount - finalTotalAmount).toLocaleString('en-LK', { minimumFractionDigits: 2 })
+                      })}
+                    </p>
                   )}
-                >
-                  Rs. {calculatedDueAmount.toLocaleString('en-LK', { minimumFractionDigits: 2 })}
                 </div>
               </div>
             </div>

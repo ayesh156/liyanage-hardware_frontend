@@ -7,6 +7,8 @@ import {
   compressImageFile, 
   resolveAttachmentViewUrl, 
   isPdfUrl, 
+  isPdfDocument,
+  isRasterImage,
   isGoogleDriveUrl 
 } from '../../utils/imageUtils';
 import { toast } from 'react-toastify';
@@ -66,6 +68,8 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [showUrlDialog, setShowUrlDialog] = useState<boolean>(false);
   const [urlInputValue, setUrlInputValue] = useState<string>('');
+  // Explicit document type selector in the URL dialog: 'image' | 'pdf'
+  const [docTypeSelection, setDocTypeSelection] = useState<'image' | 'pdf'>('image');
   
   // All Attachments Modal
   const [isAllAttachmentsOpen, setIsAllAttachmentsOpen] = useState<boolean>(false);
@@ -113,10 +117,11 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
 
         if (Array.isArray(uploadedResults)) {
           const formattedResults: GRNImageItem[] = uploadedResults.map((item) => {
-            const isItemPdf = isPdfUrl(item);
+            const isItemPdf = item.isPdf === true || item.mimeType === 'application/pdf' || item.fileType === 'pdf' || isPdfUrl(item);
             return {
               ...item,
-              fileType: isItemPdf ? 'pdf' : 'image',
+              name: item.name,
+              fileType: isItemPdf ? 'pdf' : (item.fileType || 'image'),
               isPdf: isItemPdf,
               mimeType: isItemPdf ? 'application/pdf' : item.mimeType,
             };
@@ -138,41 +143,84 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
 
   /**
    * Links a user-supplied external web URL or Google Drive share link.
-   * Ensures Google Drive and external PDF links explicitly preserve `isPdf: true` and `mimeType: 'application/pdf'`.
+   * Ensures Google Drive and external PDF links strictly evaluate PDF status without misidentifying images.
    */
+  /**
+   * Auto-detects PDF from a pasted URL and syncs the docTypeSelection toggle.
+   * Called whenever the URL input changes.
+   */
+  const handleUrlInputChange = useCallback((rawUrl: string) => {
+    setUrlInputValue(rawUrl);
+    // Auto-flip toggle if pasted URL clearly has a .pdf extension
+    const trimmed = rawUrl.trim();
+    if (trimmed) {
+      const urlLower = trimmed.toLowerCase();
+      const cleanPath = urlLower.split('?')[0].split('#')[0];
+      const looksLikePdf =
+        cleanPath.endsWith('.pdf') ||
+        urlLower.includes('format=pdf') ||
+        urlLower.includes('mimetype=application%2fpdf') ||
+        urlLower.includes('.pdf');
+      if (looksLikePdf) {
+        setDocTypeSelection('pdf');
+      } else if (isRasterImage(trimmed)) {
+        setDocTypeSelection('image');
+      }
+    }
+  }, []);
+
   const handleAddUrlLink = useCallback(
     (customUrl?: string) => {
       const urlToProcess = (customUrl || urlInputValue).trim();
       if (!urlToProcess) return;
 
       const isDrive = isGoogleDriveUrl(urlToProcess);
+
+      // The user's explicit toggle is the source of truth.
+      // Auto-detection is only a fallback when docTypeSelection hasn't been set.
+      const urlLower = urlToProcess.toLowerCase();
+      const cleanPath = urlLower.split('?')[0].split('#')[0];
+      const autoDetectPdf =
+        cleanPath.endsWith('.pdf') ||
+        urlLower.includes('format=pdf') ||
+        urlLower.includes('application%2fpdf');
+      const autoDetectImage = isRasterImage(urlToProcess);
+
+      // Resolve whether this is a PDF — explicit toggle wins
       const isPdf =
-        isPdfUrl(urlToProcess) ||
-        isDrive ||
-        urlToProcess.toLowerCase().includes('.pdf') ||
-        urlToProcess.toLowerCase().includes('document') ||
-        urlToProcess.toLowerCase().includes('invoice') ||
-        urlToProcess.toLowerCase().includes('report');
+        docTypeSelection === 'pdf' ||
+        (!autoDetectImage && autoDetectPdf);
+
+      // Build display name
+      let defaultName: string;
+      if (isDrive) {
+        defaultName = isPdf ? 'Google Drive PDF Document' : 'Google Drive Image';
+      } else if (isPdf) {
+        defaultName = 'Web PDF Document';
+      } else {
+        defaultName = 'External Bill Image';
+      }
 
       const newAttachment: GRNImageItem = {
         url: urlToProcess,
-        name: isDrive
-          ? 'Google Drive Document'
-          : isPdf
-          ? 'Web PDF Document'
-          : 'External Bill Image',
+        name: defaultName,
         source: isDrive ? 'gdrive' : 'url',
         fileType: isPdf ? 'pdf' : 'image',
         isPdf: isPdf,
-        mimeType: isPdf ? 'application/pdf' : undefined,
+        mimeType: isPdf ? 'application/pdf' : 'image/jpeg',
       };
 
       onChange([...images, newAttachment]);
       setUrlInputValue('');
+      setDocTypeSelection('image');
       setShowUrlDialog(false);
-      toast.success(isDrive ? t('attachments.gdriveLinked', 'Google Drive document linked to record!') : t('attachments.linkAttached', 'Link attached successfully!'));
+      toast.success(
+        isDrive
+          ? t('attachments.gdriveLinked', 'Google Drive link added to record!')
+          : t('attachments.linkAttached', 'Link attached successfully!')
+      );
     },
-    [images, onChange, urlInputValue, t]
+    [images, onChange, urlInputValue, docTypeSelection, t]
   );
 
   // ── Clipboard Paste (Ctrl+V) Global & Local Listener ──
@@ -346,7 +394,7 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
 
         {/* ── Inline Thumbnails ── */}
         {visibleInlineImages.map((img, idx) => {
-          const isPdf = img.isPdf === true || img.mimeType === 'application/pdf' || img.fileType === 'pdf' || isPdfUrl(img);
+          const isPdf = !isRasterImage(img) && (img.isPdf === true || img.mimeType === 'application/pdf' || isPdfDocument(img));
           const resolvedUrl = resolveAttachmentViewUrl(img.url, isPdf);
           const isDrive = img.source === 'gdrive' || isGoogleDriveUrl(img.url);
 
@@ -467,7 +515,7 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
           <div className="p-5">
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
               {images.map((img, idx) => {
-                const isPdf = img.isPdf === true || img.mimeType === 'application/pdf' || img.fileType === 'pdf' || isPdfUrl(img);
+                const isPdf = !isRasterImage(img) && (img.isPdf === true || img.mimeType === 'application/pdf' || isPdfDocument(img));
                 const resolvedUrl = resolveAttachmentViewUrl(img.url, isPdf);
 
                 return (
@@ -536,7 +584,16 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
       </Dialog>
 
       {/* ── GOOGLE DRIVE / URL INPUT DIALOG ── */}
-      <Dialog open={showUrlDialog} onOpenChange={setShowUrlDialog}>
+      <Dialog
+        open={showUrlDialog}
+        onOpenChange={(open) => {
+          setShowUrlDialog(open);
+          if (!open) {
+            setUrlInputValue('');
+            setDocTypeSelection('image');
+          }
+        }}
+      >
         <DialogContent
           className={cn(
             'sm:max-w-md p-0 gap-0 rounded-2xl border shadow-2xl',
@@ -564,17 +621,68 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
             </div>
           </DialogHeader>
 
-          <div className="p-5 space-y-3">
+          <div className="p-5 space-y-4">
+            {/* ── Document Type Toggle ── */}
+            <div>
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-2">
+                {t('grn.documentType', 'DOCUMENT TYPE')}
+              </label>
+              <div
+                className={cn(
+                  'flex items-center rounded-xl p-1 gap-1 border',
+                  isDark ? 'bg-slate-950 border-slate-700' : 'bg-slate-100 border-slate-200'
+                )}
+              >
+                <button
+                  type="button"
+                  onClick={() => setDocTypeSelection('image')}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-150',
+                    docTypeSelection === 'image'
+                      ? 'bg-orange-500 text-white shadow-md shadow-orange-500/30'
+                      : isDark
+                      ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                      : 'text-slate-500 hover:text-slate-700 hover:bg-white'
+                  )}
+                >
+                  <ImageIcon className="w-3.5 h-3.5" />
+                  {t('grn.imageType', 'Image')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDocTypeSelection('pdf')}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all duration-150',
+                    docTypeSelection === 'pdf'
+                      ? 'bg-rose-500 text-white shadow-md shadow-rose-500/30'
+                      : isDark
+                      ? 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                      : 'text-slate-500 hover:text-slate-700 hover:bg-white'
+                  )}
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  {t('grn.pdfDocumentType', 'PDF Document')}
+                </button>
+              </div>
+              {/* Context hint under toggle */}
+              <p className={cn('text-[10px] mt-1.5 font-medium', docTypeSelection === 'pdf' ? 'text-rose-400' : 'text-slate-500')}>
+                {docTypeSelection === 'pdf'
+                  ? t('grn.pdfViewerNotice', 'Will be opened as an interactive multi-page PDF viewer')
+                  : t('grn.imageViewerNotice', 'Will be opened as a zoomable image')}
+              </p>
+            </div>
+
+            {/* ── URL Input ── */}
             <div>
               <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-1">
-                {t('attachments.addLinkTitle', 'Document / Image URL')}
+                {t('grn.documentOrImageUrl', 'DOCUMENT / IMAGE URL')}
               </label>
               <input
                 type="url"
                 autoFocus
                 placeholder={t('attachments.urlPlaceholder', 'Paste Google Drive, Dropbox, or public file URL...')}
                 value={urlInputValue}
-                onChange={(e) => setUrlInputValue(e.target.value)}
+                onChange={(e) => handleUrlInputChange(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     e.preventDefault();
@@ -584,13 +692,13 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
                 className={cn(
                   'w-full h-9 px-3 rounded-xl border text-xs font-medium focus:outline-none focus:ring-1 transition-all',
                   isDark
-                    ? 'border-slate-700 bg-slate-950 text-white focus:border-orange-500'
-                    : 'border-slate-300 bg-white text-slate-900 focus:border-orange-500'
+                    ? 'border-slate-700 bg-slate-950 text-white focus:border-orange-500 focus:ring-orange-500/30'
+                    : 'border-slate-300 bg-white text-slate-900 focus:border-orange-500 focus:ring-orange-500/20'
                 )}
               />
             </div>
 
-            <div className="flex items-center justify-end gap-2 pt-2">
+            <div className="flex items-center justify-end gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => setShowUrlDialog(false)}
@@ -605,9 +713,16 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
                 type="button"
                 onClick={() => handleAddUrlLink()}
                 disabled={!urlInputValue.trim()}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-gradient-to-r from-orange-500 to-rose-500 text-white hover:from-orange-600 hover:to-rose-600 disabled:opacity-50 transition-all shadow-md"
+                className={cn(
+                  'px-4 py-2 rounded-xl text-xs font-bold disabled:opacity-50 transition-all shadow-md text-white',
+                  docTypeSelection === 'pdf'
+                    ? 'bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700'
+                    : 'bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600'
+                )}
               >
-                {t('attachments.attachLink', 'Attach Link')}
+                {docTypeSelection === 'pdf'
+                  ? t('grn.attachPdf', 'Attach PDF')
+                  : t('grn.attachImage', 'Attach Image')}
               </button>
             </div>
           </div>
@@ -617,7 +732,21 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
       {/* ── FULL-SCREEN HOVER-ZOOM LIGHTBOX MODAL ── */}
       {lightboxIndex !== null && (
         <LightboxModal
-          items={images}
+          items={images.map((img) => {
+            // Honor explicit isPdf flag and mimeType first; fall back to URL heuristics
+            const isPdf = !isRasterImage(img) && (img.isPdf === true || img.mimeType === 'application/pdf' || isPdfDocument(img));
+            // Strip any accidental "(PDF)" text from image item names
+            const cleanName = !isPdf && img.name
+              ? img.name.replace(/\s*\(PDF\)\s*/gi, '').trim()
+              : img.name;
+            return {
+              ...img,
+              name: cleanName,
+              mimeType: isPdf ? 'application/pdf' : (img.mimeType || 'image/jpeg'),
+              fileType: isPdf ? 'pdf' : (img.fileType || 'image'),
+              isPdf: isPdf,
+            };
+          })}
           initialIndex={lightboxIndex}
           onClose={() => setLightboxIndex(null)}
         />
