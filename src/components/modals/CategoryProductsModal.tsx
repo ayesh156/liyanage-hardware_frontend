@@ -2,12 +2,13 @@ import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useTranslation } from 'react-i18next';
-import { X, Search, Package, Trash2, ArrowRightLeft, Loader2 } from 'lucide-react';
+import { X, Search, Package, Trash2, ArrowRightLeft, Loader2, ArrowUpDown, ArrowDownAZ, Ruler, DollarSign, ArrowUp, ArrowDown } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '../../lib/api';
 import { useCatalog } from '../../contexts/CatalogContext';
 import { InventoryProduct, Category } from '../../types';
 import ProductNameTooltip from '../ProductNameTooltip';
+import { naturalDimensionComparator, extractDimensionFromText } from '../../lib/dimensionParser';
 
 interface CategoryProductsModalProps {
   isOpen: boolean;
@@ -21,6 +22,8 @@ interface ComboboxOption {
   value: string;
   label: string;
 }
+
+export type CategorySortOption = 'dim_asc' | 'dim_desc' | 'price_asc' | 'price_desc' | 'alpha_asc' | 'alpha_desc';
 
 const stockBadgeClass = (stock: number) => {
   if (stock === 0) return 'bg-red-500/10 text-red-500 border-red-500/20';
@@ -278,11 +281,13 @@ export const CategoryProductsModal: React.FC<CategoryProductsModalProps> = ({ is
   const { inventoryItems, categories, updateInventoryItem, syncCategoriesFromServer } = useCatalog();
 
   const [filterQuery, setFilterQuery] = useState('');
+  const [sortMode, setSortMode] = useState<CategorySortOption>('dim_asc');
   const [pendingMoveIds, setPendingMoveIds] = useState<Set<string>>(new Set());
   const [pendingReassignIds, setPendingReassignIds] = useState<Set<string>>(new Set());
 
   const handleClose = useCallback(() => {
     setFilterQuery('');
+    setSortMode('dim_asc');
     setPendingMoveIds(new Set());
     setPendingReassignIds(new Set());
     onClose();
@@ -299,19 +304,85 @@ export const CategoryProductsModal: React.FC<CategoryProductsModalProps> = ({ is
     });
   }, [inventoryItems, category]);
 
+  /**
+   * Filters and sorts category products dynamically based on the active sortMode:
+   * - `dim_asc`: Mathematical ascending dimension sorting (1/2" -> 6") via naturalDimensionComparator.
+   * - `dim_desc`: Mathematical descending dimension sorting (6" -> 1/2").
+   * - `price_asc`: Ascending salesPrice floating-point comparison (lowest price first).
+   * - `price_desc`: Descending salesPrice floating-point comparison (highest price first).
+   * - `alpha_asc`: Standard alphabetical collation with numeric support (A -> Z).
+   * - `alpha_desc`: Reverse alphabetical collation with numeric support (Z -> A).
+   */
   const filteredProducts = useMemo(() => {
-    if (!filterQuery.trim()) return categoryProducts;
-    const q = filterQuery.toLowerCase().trim();
-    return categoryProducts.filter(item => {
-      return (
-        item.name?.toLowerCase().includes(q) ||
-        item.nameSinhala?.toLowerCase().includes(q) ||
-        item.nameSi?.toLowerCase().includes(q) ||
-        item.searchKey?.toLowerCase().includes(q) ||
-        item.barcode?.toLowerCase().includes(q)
-      );
+    let result = categoryProducts;
+    if (filterQuery.trim()) {
+      const q = filterQuery.toLowerCase().trim();
+      result = categoryProducts.filter(item => {
+        return (
+          item.name?.toLowerCase().includes(q) ||
+          item.nameSinhala?.toLowerCase().includes(q) ||
+          item.nameSi?.toLowerCase().includes(q) ||
+          item.searchKey?.toLowerCase().includes(q) ||
+          item.barcode?.toLowerCase().includes(q)
+        );
+      });
+    }
+
+    const sorted = [...result];
+    if (sortMode === 'dim_asc') {
+      sorted.sort((a, b) => naturalDimensionComparator(a, b, (item) => item.name));
+    } else if (sortMode === 'dim_desc') {
+      sorted.sort((a, b) => -naturalDimensionComparator(a, b, (item) => item.name));
+    } else if (sortMode === 'price_asc') {
+      sorted.sort((a, b) => {
+        const priceA = Number(a.salesPrice || 0);
+        const priceB = Number(b.salesPrice || 0);
+        return priceA - priceB;
+      });
+    } else if (sortMode === 'price_desc') {
+      sorted.sort((a, b) => {
+        const priceA = Number(a.salesPrice || 0);
+        const priceB = Number(b.salesPrice || 0);
+        return priceB - priceA;
+      });
+    } else if (sortMode === 'alpha_asc') {
+      sorted.sort((a, b) => {
+        const nameA = a.name || '';
+        const nameB = b.name || '';
+        return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+      });
+    } else if (sortMode === 'alpha_desc') {
+      sorted.sort((a, b) => {
+        const nameA = a.name || '';
+        const nameB = b.name || '';
+        return nameB.localeCompare(nameA, undefined, { numeric: true, sensitivity: 'base' });
+      });
+    }
+
+    return sorted;
+  }, [categoryProducts, filterQuery, sortMode]);
+
+  /**
+   * Toggles product sorting criteria bidirectionally (Click-to-Flip):
+   * - If criterion is NOT active: Activates the primary direction (asc).
+   * - If criterion is ALREADY active: Flips the direction between asc <-> desc.
+   *
+   * @param criterion - 'dim' (Measurement size), 'price' (Sales price), or 'alpha' (A-Z name)
+   */
+  const handleSortToggle = useCallback((criterion: 'dim' | 'price' | 'alpha') => {
+    setSortMode(prev => {
+      if (criterion === 'dim') {
+        return prev === 'dim_asc' ? 'dim_desc' : 'dim_asc';
+      }
+      if (criterion === 'price') {
+        return prev === 'price_asc' ? 'price_desc' : 'price_asc';
+      }
+      if (criterion === 'alpha') {
+        return prev === 'alpha_asc' ? 'alpha_desc' : 'alpha_asc';
+      }
+      return 'dim_asc';
     });
-  }, [categoryProducts, filterQuery]);
+  }, []);
 
   const resolveCategoryIdByName = useCallback((categoryName: string): string | undefined => {
     const found = categories.find(c => c.name.toLowerCase() === categoryName.toLowerCase());
@@ -443,8 +514,8 @@ export const CategoryProductsModal: React.FC<CategoryProductsModalProps> = ({ is
         isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
       }`}>
         {/* HEADER */}
-        <div className={`flex items-center justify-between px-4 py-3 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-          <div className="flex items-center gap-2.5 min-w-0">
+        <div className={`flex items-center justify-between gap-2 px-4 py-2.5 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
+          <div className="flex items-center gap-2.5 min-w-0 flex-shrink-0">
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-orange-500/20">
               <Package className="w-3.5 h-3.5 text-white" />
             </div>
@@ -457,13 +528,89 @@ export const CategoryProductsModal: React.FC<CategoryProductsModalProps> = ({ is
               </p>
             </div>
           </div>
-          <button onClick={handleClose} className={`p-1.5 rounded transition-colors ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`} title="Close">
+
+          {/* Compact Bidirectional Sort Toggle Chips in Header Bar */}
+          <div className="flex items-center gap-1.5 flex-wrap justify-end flex-1 ml-2">
+            {/* 1. Dimension Toggle (1/2"→6" <-> 6"→1/2") */}
+            <button
+              type="button"
+              onClick={() => handleSortToggle('dim')}
+              className={`flex items-center gap-1.5 h-7 px-2 text-xs font-semibold rounded-md border transition-all cursor-pointer ${
+                sortMode.startsWith('dim')
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.25)]'
+                  : isDark
+                    ? 'bg-slate-800/80 border-slate-700/60 text-slate-300 hover:border-amber-500/50 hover:text-white'
+                    : 'bg-slate-100 border-slate-300 text-slate-700 hover:border-amber-500/50 hover:bg-slate-200'
+              }`}
+              title={sortMode === 'dim_asc' ? 'ප්‍රමාණය: 1/2"→6" (ක්ලික් කර පෙරළන්න / Click to Flip)' : 'ප්‍රමාණය: 6"→1/2" (ක්ලික් කර පෙරළන්න / Click to Flip)'}
+            >
+              <Ruler className={`w-3.5 h-3.5 text-amber-400 transition-transform ${sortMode === 'dim_desc' ? 'rotate-180' : ''}`} />
+              <span>ප්‍රමාණය</span>
+              {sortMode.startsWith('dim') && (
+                sortMode === 'dim_asc' ? (
+                  <ArrowUp className="w-3 h-3 text-amber-400 animate-in fade-in" />
+                ) : (
+                  <ArrowDown className="w-3 h-3 text-amber-400 animate-in fade-in" />
+                )
+              )}
+            </button>
+
+            {/* 2. Price Toggle (Low->High <-> High->Low) */}
+            <button
+              type="button"
+              onClick={() => handleSortToggle('price')}
+              className={`flex items-center gap-1.5 h-7 px-2 text-xs font-semibold rounded-md border transition-all cursor-pointer ${
+                sortMode.startsWith('price')
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.25)]'
+                  : isDark
+                    ? 'bg-slate-800/80 border-slate-700/60 text-slate-300 hover:border-amber-500/50 hover:text-white'
+                    : 'bg-slate-100 border-slate-300 text-slate-700 hover:border-amber-500/50 hover:bg-slate-200'
+              }`}
+              title={sortMode === 'price_asc' ? 'මිල: අඩු→වැඩි (ක්ලික් කර පෙරළන්න / Click to Flip)' : 'මිල: වැඩි→අඩු (ක්ලික් කර පෙරළන්න / Click to Flip)'}
+            >
+              <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+              <span>මිල</span>
+              {sortMode.startsWith('price') && (
+                sortMode === 'price_asc' ? (
+                  <ArrowUp className="w-3 h-3 text-emerald-400 animate-in fade-in" />
+                ) : (
+                  <ArrowDown className="w-3 h-3 text-emerald-400 animate-in fade-in" />
+                )
+              )}
+            </button>
+
+            {/* 3. Name Toggle (A->Z <-> Z->A) */}
+            <button
+              type="button"
+              onClick={() => handleSortToggle('alpha')}
+              className={`flex items-center gap-1.5 h-7 px-2 text-xs font-semibold rounded-md border transition-all cursor-pointer ${
+                sortMode.startsWith('alpha')
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.25)]'
+                  : isDark
+                    ? 'bg-slate-800/80 border-slate-700/60 text-slate-300 hover:border-amber-500/50 hover:text-white'
+                    : 'bg-slate-100 border-slate-300 text-slate-700 hover:border-amber-500/50 hover:bg-slate-200'
+              }`}
+              title={sortMode === 'alpha_asc' ? 'නම: A→Z (ක්ලික් කර පෙරළන්න / Click to Flip)' : 'නම: Z→A (ක්ලික් කර පෙරළන්න / Click to Flip)'}
+            >
+              <ArrowDownAZ className="w-3.5 h-3.5 text-blue-400" />
+              <span>නම</span>
+              {sortMode.startsWith('alpha') && (
+                sortMode === 'alpha_asc' ? (
+                  <ArrowUp className="w-3 h-3 text-blue-400 animate-in fade-in" />
+                ) : (
+                  <ArrowDown className="w-3 h-3 text-blue-400 animate-in fade-in" />
+                )
+              )}
+            </button>
+          </div>
+
+          <button onClick={handleClose} className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${isDark ? 'hover:bg-slate-800 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-500'}`} title="Close">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* SEARCH */}
-        <div className={`px-4 pt-2.5 pb-3 border-b ${isDark ? 'border-slate-800/50' : 'border-slate-100'}`}>
+        {/* SEARCH BAR (No redundant secondary sort bar) */}
+        <div className={`px-4 py-2 border-b ${isDark ? 'border-slate-800/50' : 'border-slate-100'}`}>
           <div className="relative">
             <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
             <input

@@ -26,11 +26,34 @@ import {
   ChevronUp, ChevronDown, RotateCcw, CreditCard, Banknote, Percent,
   ArrowRight, ArrowUp, ArrowDown, ArrowLeftIcon, CheckCircle,
   Minus, ScanLine, ChevronRight, Receipt, Sparkles, User, Building2, GripVertical,
-  MoreVertical
+  MoreVertical, AlertTriangle, Ruler, ArrowDownAZ, DollarSign
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { Wifi, WifiOff } from 'lucide-react';
 import { useCheckoutLiveSync, CartStatePayload, InvoiceSavedPayload } from '../hooks/useCheckoutLiveSync';
+import { calculateRelevanceScore, rankSearchResults } from '../lib/searchScoring';
+import { naturalDimensionComparator, extractDimensionFromText } from '../lib/dimensionParser';
+
+export type CategorySortOption = 'dim_asc' | 'dim_desc' | 'price_asc' | 'price_desc' | 'alpha_asc' | 'alpha_desc';
+
+/**
+ * 🌟 Helper: Detects whether a customer object or id corresponds to the Walk-in customer.
+ */
+export const isWalkInCustomer = (c?: { id?: string; name?: string; phone?: string } | null): boolean => {
+  if (!c) return true;
+  const id = (c.id || '').trim();
+  const name = (c.name || '').trim().toLowerCase();
+  const phone = (c.phone || '').trim();
+  return (
+    id === 'walk-in' ||
+    id === 'default-customer' ||
+    name === 'සාමාන්‍ය පාරිභෝගිකයා' ||
+    name === 'සාමාන්ය පාරිභෝගිකයා' ||
+    name === 'walk-in customer' ||
+    name === 'walk-in' ||
+    phone === '0000000000'
+  );
+};
 
 interface QuickInvoiceItem extends InvoiceItem {
   originalPrice: number;
@@ -303,6 +326,11 @@ const [liveSyncEnabled, setLiveSyncEnabled] = useState<boolean>(false);
   const [searchByName, setSearchByName] = useState<boolean>(false);
   const [searchByNo, setSearchByNo] = useState<boolean>(true);
 
+  // ── Search & Category Sorting State ──
+  const [searchSortMode, setSearchSortMode] = useState<'relevance' | 'dimension' | 'price' | 'alphabetical'>('relevance');
+  const [searchSortOrder, setSearchSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [categorySortMode, setCategorySortMode] = useState<CategorySortOption>('dim_asc');
+
   // Stepped navigation state
   const [currentStep, setCurrentStep] = useState<QuickCheckoutStep>('products');
   const [currentMode, setCurrentMode] = useState<CheckoutMode>('search');
@@ -556,7 +584,7 @@ const [liveSyncEnabled, setLiveSyncEnabled] = useState<boolean>(false);
   const [customers, setCustomers] = useState<any[]>([]);
   const [customersLoading, setCustomersLoading] = useState(false);
 
-  // Load customer directory from backend on mount (Auto-select walk-in)
+  // Load customer directory from backend on mount (Auto-select database-persisted walk-in)
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -566,6 +594,15 @@ const [liveSyncEnabled, setLiveSyncEnabled] = useState<boolean>(false);
         if (!cancelled) {
           const list = Array.isArray(data) ? data : ((data as any)?.data ?? []);
           setCustomers(list);
+          const dbWalkIn = list.find((c: any) => isWalkInCustomer(c));
+          if (dbWalkIn) {
+            setSelectedCustomerId((prev) => {
+              if (!prev || isWalkInCustomer({ id: prev })) {
+                return dbWalkIn.id;
+              }
+              return prev;
+            });
+          }
         }
       } catch {
         // silently fall back to empty directory
@@ -578,10 +615,14 @@ const [liveSyncEnabled, setLiveSyncEnabled] = useState<boolean>(false);
 
   const findCustomerById = useCallback((id: string) => customers.find((c: any) => c.id === id) ?? null, [customers]);
 
-  // Customer selection state — walk-in is default on mount
+  // Customer selection state — database walk-in is default on mount
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerOpen, setCustomerOpen] = useState(false);
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('walk-in');
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('default-customer');
+  
+  const selectedCustomerObj = useMemo(() => findCustomerById(selectedCustomerId), [findCustomerById, selectedCustomerId]);
+  const isCurrentCustomerWalkIn = useMemo(() => isWalkInCustomer(selectedCustomerObj || { id: selectedCustomerId }), [selectedCustomerObj, selectedCustomerId]);
+
   const filteredCustomers = useMemo(
     () => customerSearch.trim()
       ? customers.filter((c: any) => c.name.toLowerCase().includes(customerSearch.toLowerCase()))
@@ -772,10 +813,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
       }
     }
 
-    // ── Priority 3: scope-aware tiered text search ──
-    const strippedQuery = normalizedQuery.replace(/\s+/g, '');
-    const queryTokens = normalizedQuery.split(/\s+/).filter(Boolean);
-
+    // ── Priority 3: Relevance Weighted Scoring with Multi-Tier Natural Dimension Ordering ──
     const toFlat = (item: typeof inventoryItems[0]) => {
       const sinhalaName = item.nameSinhala || item.nameSi || item.name;
       return {
@@ -797,49 +835,64 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
       };
     };
 
-    const scoreField = (fieldRaw: string, isBarcode: boolean = false): 0 | 1 | 2 => {
-      if (!fieldRaw) return 0;
-      const field = fieldRaw.toLowerCase();
-      const strippedField = field.replace(/\s+/g, '');
-      const fieldTokens = field.split(/\s+/).filter(Boolean);
+    const hasAnyCheckbox = searchByName || searchByKey || searchBarcode || searchByNo;
 
-      if (strippedField === strippedQuery) return 2;
-      if (
-        queryTokens.length === fieldTokens.length &&
-        queryTokens.every((tok, i) => tok === fieldTokens[i])
-      ) return 2;
-      // 🚨 BARCODE STRICT PREFIX RULE: Barcodes MUST match from the 1st character onwards.
-      // NEVER use substring `includes()` for barcodes — typing "18" or "186" must NOT
-      // match a longer barcode like "991860" mid-sequence.
-      if (strippedQuery.length > 0) {
-        if (isBarcode) {
-          if (strippedField.startsWith(strippedQuery)) return 1;
-        } else {
-          if (strippedField.includes(strippedQuery)) return 1;
-        }
+    const ranked = rankSearchResults(
+      inventoryItems,
+      raw,
+      (item) => {
+        const candidate = {
+          name: searchByName ? item.name : null,
+          nameAlt: searchByName ? (item.nameSinhala || item.nameSi) : null,
+          searchKey: searchByKey ? item.searchKey : null,
+          barcode: searchBarcode ? item.barcode : null,
+          size: (item as any).size || null,
+          no: searchByNo ? item.no : null,
+          price: item.salesPrice,
+          category: item.productCategory,
+        };
+
+        return hasAnyCheckbox ? candidate : {
+          name: item.name,
+          nameAlt: item.nameSinhala || item.nameSi,
+          searchKey: item.searchKey,
+          barcode: item.barcode,
+          size: (item as any).size || null,
+          no: item.no,
+          price: item.salesPrice,
+          category: item.productCategory,
+        };
       }
-      return 0;
-    };
+    );
 
-    const scored: Array<{ item: typeof inventoryItems[0]; score: number }> = [];
-    for (const item of inventoryItems) {
-      let score = 0;
-      // Conditionally score each field based on which checkboxes are active (OR logic)
-      if (searchByKey) score = Math.max(score, scoreField(item.searchKey || ''));
-      if (searchBarcode) score = Math.max(score, scoreField(item.barcode || '', true));
-      if (searchByName) score = Math.max(score, scoreField(item.name || ''));
-      if (searchByNo) score = Math.max(score, scoreField(item.no || ''));
-      if (score > 0) scored.push({ item, score });
+    if (searchSortMode === 'dimension') {
+      const sorted = [...ranked];
+      sorted.sort((a, b) => {
+        const cmp = naturalDimensionComparator(a, b, (item) => item.name);
+        return searchSortOrder === 'asc' ? cmp : -cmp;
+      });
+      return sorted.map(toFlat);
+    } else if (searchSortMode === 'price') {
+      const sorted = [...ranked];
+      sorted.sort((a, b) => {
+        const priceA = Number(a.salesPrice || 0);
+        const priceB = Number(b.salesPrice || 0);
+        return searchSortOrder === 'asc' ? priceA - priceB : priceB - priceA;
+      });
+      return sorted.map(toFlat);
+    } else if (searchSortMode === 'alphabetical') {
+      const sorted = [...ranked];
+      sorted.sort((a, b) => {
+        const nameA = a.name || '';
+        const nameB = b.name || '';
+        const cmp = nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+        return searchSortOrder === 'asc' ? cmp : -cmp;
+      });
+      return sorted.map(toFlat);
     }
 
-    const hasExact = scored.some(s => s.score === 2);
-    const filtered = hasExact
-      ? scored.filter(s => s.score === 2)
-      : scored;
-
-    filtered.sort((a, b) => b.score - a.score);
-    return filtered.map(s => toFlat(s.item));
-  }, [inventoryItems, productSearch, searchByKey, searchBarcode, searchByName, searchByNo]);
+    return ranked.map(toFlat);
+  }, [inventoryItems, productSearch, searchByKey, searchBarcode, searchByName, searchByNo, searchSortMode, searchSortOrder]);
 
   // ── Direct add to cart helper with qty 1 ──
   const addOneToCart = useCallback((flatProduct: FlattenedProduct) => {
@@ -1341,9 +1394,20 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
 
   const [receivedAmount, setReceivedAmount] = useState<number>(0);
   const receivedAmountInputRef = useRef<HTMLInputElement>(null);
+  const isReceivedAmountManuallyEdited = useRef<boolean>(false);
+
+  // ── POS Credit / Pending Safeguard: Auto-synchronize paidAmount = totalAmount for Walk-in Cash sales ──
+  useEffect(() => {
+    if (isCurrentCustomerWalkIn && paymentMethod === 'cash' && !isReceivedAmountManuallyEdited.current) {
+      setReceivedAmount(computedFinalTotal);
+    }
+  }, [computedFinalTotal, isCurrentCustomerWalkIn, paymentMethod]);
+
   // Signed balance: positive = change (surplus), negative = deficit (amount still due)
   const changeAmount = receivedAmount > 0 ? Number((receivedAmount - computedFinalTotal).toFixed(2)) : 0;
   const isDeficit = receivedAmount > 0 && receivedAmount < computedFinalTotal;
+  const walkInDueBalance = paymentMethod === 'credit' ? computedFinalTotal : Math.max(0, computedFinalTotal - receivedAmount);
+  const hasWalkInCreditRisk = isCurrentCustomerWalkIn && walkInDueBalance > 0 && items.length > 0;
 
   // ═══════════════════════════════════════════════════════════════════════
   // LIVE SYNC — real-time bidirectional cart mirroring between terminals
@@ -1419,6 +1483,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
   }, []);
 
   const clearCart = useCallback(() => {
+    isReceivedAmountManuallyEdited.current = false;
     setItems([]);
     setProductSearch('');
     setDiscount(0);
@@ -1443,6 +1508,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
       });
     }
 
+    isReceivedAmountManuallyEdited.current = false;
     setItems([]);
     setDiscount(0);
     setReceivedAmount(0);
@@ -1505,17 +1571,19 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
 
         playBeep('success');
 
-        // Fire standard hardware template print logic right after
-        const walkInCustomer: Customer = {
-          id: 'walk-in',
-          name: t('invoice.walkInCustomer'),
+        const dbWalkIn = customers.find(c => isWalkInCustomer(c));
+        const selectedCust = selectedCustomerId && !isWalkInCustomer({ id: selectedCustomerId })
+          ? findCustomerById(selectedCustomerId)
+          : dbWalkIn;
+        const resolvedPrintCust = selectedCust || dbWalkIn || {
+          id: 'default-customer',
+          name: isSinhala ? 'සාමාන්‍ය පාරිභෝගිකයා' : 'Walk-in Customer',
           email: '',
-          phone: '',
+          phone: '0000000000',
           address: '',
           customerType: 'regular',
           loanBalance: 0,
         };
-        const selectedCust = selectedCustomerId !== 'walk-in' ? findCustomerById(selectedCustomerId) : null;
 
         try {
           const savedInvoiceNumber = resolvedInvoice?.invoiceNumber || 'N/A';
@@ -1527,7 +1595,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
               items: items as any,
               tax: 0,
             } as Invoice,
-            selectedCust ?? walkInCustomer,
+            resolvedPrintCust,
             isSinhala ? 'si' : 'en',
             currentUser?.name || 'Admin User',
           );
@@ -1562,18 +1630,30 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
       total: Number(item.salesPrice || item.ourPrice || item.unitPrice) * item.quantity,
     }));
 
-    const selectedCust = selectedCustomerId !== 'walk-in' ? findCustomerById(selectedCustomerId) : null;
-    const customerName = selectedCust?.name ?? t('invoice.walkInCustomer');
+    const dbWalkIn = customers.find(c => isWalkInCustomer(c));
+    const selectedCust = selectedCustomerId && !isWalkInCustomer({ id: selectedCustomerId })
+      ? findCustomerById(selectedCustomerId)
+      : dbWalkIn;
+    const resolvedCustomerId = selectedCust?.id || (isCurrentCustomerWalkIn ? (dbWalkIn?.id || 'default-customer') : selectedCustomerId);
+    const customerName = selectedCust?.name || (isSinhala ? 'සාමාන්‍ය පාරිභෝගිකයා' : 'Walk-in Customer');
+
+    // POS Cash Protection: If walk-in and cash payment with no receivedAmount entered, auto-fill total
+    const effectiveReceivedAmount = isCurrentCustomerWalkIn && paymentMethod === 'cash' && (receivedAmount <= 0)
+      ? computedFinalTotal
+      : receivedAmount;
+    const effectiveChangeAmount = effectiveReceivedAmount > 0
+      ? Number((effectiveReceivedAmount - computedFinalTotal).toFixed(2))
+      : changeAmount;
 
     // Build payload matching backend InvoiceService.create input schema
     const payload = {
-      customerId: selectedCustomerId || '',
+      customerId: resolvedCustomerId || '',
       customerName,
       subtotal: Math.round(computedSubtotal * 100) / 100,
       discount: invoiceDiscount,
       total: Math.round(computedFinalTotal * 100) / 100,
-      receivedAmount: receivedAmount > 0 ? Math.round(receivedAmount * 100) / 100 : undefined,
-      changeAmount: changeAmount !== 0 ? Math.round(changeAmount * 100) / 100 : undefined,
+      receivedAmount: effectiveReceivedAmount > 0 ? Math.round(effectiveReceivedAmount * 100) / 100 : undefined,
+      changeAmount: effectiveChangeAmount !== 0 ? Math.round(effectiveChangeAmount * 100) / 100 : undefined,
       issueDate: new Date().toISOString(),
       dueDate: new Date().toISOString(),
       paymentMethod,
@@ -1590,12 +1670,12 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
       applyInstantStockSync(items);
       playBeep('success');
 
-      // 2. Print receipt only after successful database write
-      const walkInCustomer: Customer = {
-        id: 'walk-in',
-        name: t('invoice.walkInCustomer'),
+      // 2. Print receipt with resolved database customer
+      const resolvedPrintCust: Customer = selectedCust || dbWalkIn || {
+        id: 'default-customer',
+        name: isSinhala ? 'සාමාන්‍ය පාරිභෝගිකයා' : 'Walk-in Customer',
         email: '',
-        phone: '',
+        phone: '0000000000',
         address: '',
         customerType: 'regular',
         loanBalance: 0,
@@ -1610,7 +1690,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
             items: items as any,
             tax: 0,
           } as Invoice,
-          selectedCust ?? walkInCustomer,
+          resolvedPrintCust,
           isSinhala ? 'si' : 'en',
           currentUser?.name || 'Admin User',
         );
@@ -1719,20 +1799,32 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
       total: Number(item.salesPrice || item.ourPrice || item.unitPrice) * item.quantity,
     }));
 
-    const selectedCust = selectedCustomerId !== 'walk-in' ? findCustomerById(selectedCustomerId) : null;
-    const customerName = selectedCust?.name ?? t('invoice.walkInCustomer');
+    const dbWalkIn = customers.find(c => isWalkInCustomer(c));
+    const selectedCust = selectedCustomerId && !isWalkInCustomer({ id: selectedCustomerId })
+      ? findCustomerById(selectedCustomerId)
+      : dbWalkIn;
+    const resolvedCustomerId = selectedCust?.id || (isCurrentCustomerWalkIn ? (dbWalkIn?.id || 'default-customer') : selectedCustomerId);
+    const customerName = selectedCust?.name || (isSinhala ? 'සාමාන්‍ය පාරිභෝගිකයා' : 'Walk-in Customer');
+
+    // POS Cash Protection: If walk-in and cash payment with no receivedAmount entered, auto-fill total
+    const effectiveReceivedAmount = isCurrentCustomerWalkIn && paymentMethod === 'cash' && (receivedAmount <= 0)
+      ? computedFinalTotal
+      : receivedAmount;
+    const effectiveChangeAmount = effectiveReceivedAmount > 0
+      ? Number((effectiveReceivedAmount - computedFinalTotal).toFixed(2))
+      : changeAmount;
 
     // 🌟 Standard ISO-8601 DateTime string (Ensures backend Prisma accepts payload without 400/500 errors)
     const nowIso = new Date().toISOString();
 
     const payload = {
-      customerId: selectedCustomerId || '',
+      customerId: resolvedCustomerId || '',
       customerName,
       subtotal: Math.round(computedSubtotal * 100) / 100,
       discount: invoiceDiscount,
       total: Math.round(computedFinalTotal * 100) / 100,
-      receivedAmount: receivedAmount > 0 ? Math.round(receivedAmount * 100) / 100 : undefined,
-      changeAmount: changeAmount !== 0 ? Math.round(changeAmount * 100) / 100 : undefined,
+      receivedAmount: effectiveReceivedAmount > 0 ? Math.round(effectiveReceivedAmount * 100) / 100 : undefined,
+      changeAmount: effectiveChangeAmount !== 0 ? Math.round(effectiveChangeAmount * 100) / 100 : undefined,
       issueDate: nowIso,
       dueDate: nowIso,
       paymentMethod,
@@ -2338,6 +2430,104 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
         {(filteredProducts.length > 0 || (productSearch && filteredProducts.length === 0)) && (
           <div className="px-3 mb-2">
             <div className={`rounded-xl border overflow-hidden ${isDark ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-white shadow-sm'}`}>
+              {/* Header Bar with Result Count and Quick Sort Toggles */}
+              <div className={`px-2.5 py-1.5 border-b flex items-center justify-between gap-1 text-[10px] flex-shrink-0 ${
+                isDark ? 'bg-slate-900 border-slate-700 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'
+              }`}>
+                <div className="flex items-center gap-1 font-semibold">
+                  <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                    isDark ? 'bg-slate-800 text-amber-400 border border-slate-700' : 'bg-white text-amber-600 border border-slate-200 shadow-xs'
+                  }`}>
+                    {filteredProducts.length}
+                  </span>
+                  <span>{filteredProducts.length === 1 ? 'item' : 'items'}</span>
+                </div>
+
+                {/* Quick Sort Controls [ Dimension | Price | Name ] */}
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (searchSortMode === 'dimension') {
+                        setSearchSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+                      } else {
+                        setSearchSortMode('dimension');
+                        setSearchSortOrder('asc');
+                      }
+                    }}
+                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold transition-all border cursor-pointer ${
+                      searchSortMode === 'dimension'
+                        ? 'bg-amber-500/20 border-amber-500/50 text-amber-400 shadow-xs'
+                        : isDark
+                          ? 'bg-slate-800/80 border-slate-700 text-slate-400'
+                          : 'bg-white border-slate-200 text-slate-600'
+                    }`}
+                  >
+                    <Ruler className="w-2.5 h-2.5 text-amber-400" />
+                    <span>Dimension</span>
+                    {searchSortMode === 'dimension' && (
+                      <span className="text-[8px]">{searchSortOrder === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (searchSortMode === 'price') {
+                        setSearchSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+                      } else {
+                        setSearchSortMode('price');
+                        setSearchSortOrder('asc');
+                      }
+                    }}
+                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold transition-all border cursor-pointer ${
+                      searchSortMode === 'price'
+                        ? 'bg-amber-500/20 border-amber-500/50 text-amber-400 shadow-xs'
+                        : isDark
+                          ? 'bg-slate-800/80 border-slate-700 text-slate-400'
+                          : 'bg-white border-slate-200 text-slate-600'
+                    }`}
+                  >
+                    <Banknote className="w-2.5 h-2.5 text-emerald-400" />
+                    <span>Price</span>
+                    {searchSortMode === 'price' && (
+                      <span className="text-[8px]">{searchSortOrder === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (searchSortMode === 'alphabetical') {
+                        setSearchSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+                      } else {
+                        setSearchSortMode('alphabetical');
+                        setSearchSortOrder('asc');
+                      }
+                    }}
+                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold transition-all border cursor-pointer ${
+                      searchSortMode === 'alphabetical'
+                        ? 'bg-amber-500/20 border-amber-500/50 text-amber-400 shadow-xs'
+                        : isDark
+                          ? 'bg-slate-800/80 border-slate-700 text-slate-400'
+                          : 'bg-white border-slate-200 text-slate-600'
+                    }`}
+                  >
+                    <ArrowDownAZ className="w-2.5 h-2.5 text-blue-400" />
+                    <span>Name</span>
+                    {searchSortMode === 'alphabetical' && (
+                      <span className="text-[8px]">{searchSortOrder === 'asc' ? '↑' : '↓'}</span>
+                    )}
+                  </button>
+                </div>
+              </div>
+
               {filteredProducts.length > 0 ? (
                 <div className="max-h-[40vh] overflow-y-auto">
                   {filteredProducts.map((flatProduct, index) => (
@@ -2580,7 +2770,34 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
             <div className={`w-8 h-0.5 rounded-full ${isDark ? 'bg-slate-600' : 'bg-slate-300'}`} />
           </div>
 
-          <div className="px-3 pb-2">
+          <div className="px-3 pb-2 space-y-1.5">
+            {/* ── Mobile Walk-in Due Safeguard ── */}
+            {hasWalkInCreditRisk && (
+              <div className={`p-2 rounded-lg border flex items-center justify-between gap-1.5 ${
+                isDark ? 'bg-amber-500/10 border-amber-500/40 text-amber-300' : 'bg-amber-50 border-amber-300 text-amber-900'
+              }`}>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                  <span className="text-[10px] font-bold truncate">
+                    {isSinhala ? `Walk-in හිඟ: Rs. ${walkInDueBalance.toFixed(2)}` : `Walk-in Due: Rs. ${walkInDueBalance.toFixed(2)}`}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPaymentMethod('cash');
+                    setReceivedAmount(computedFinalTotal);
+                    isReceivedAmountManuallyEdited.current = false;
+                    playBeep('add');
+                    toast.success(isSinhala ? 'සම්පූර්ණ මුදල සටහන් විය' : 'Total auto-filled');
+                  }}
+                  className="px-2 py-1 rounded text-[9px] font-extrabold bg-amber-500 hover:bg-amber-600 text-slate-950 flex-shrink-0 shadow-sm transition-all active:scale-95"
+                >
+                  {isSinhala ? 'Auto-fill Total' : 'Auto-fill Total'}
+                </button>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-1.5">
               <div className={`flex rounded-lg overflow-hidden border ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
                 <button
@@ -2976,10 +3193,119 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                     </button>
 
                     {(filteredProducts.length > 0 || (productSearch && filteredProducts.length === 0)) && (
-                      <div className={`absolute left-0 right-0 top-full z-50 mt-1 backdrop-blur-md border rounded-xl shadow-2xl overflow-y-auto max-h-[65vh] custom-scrollbar ${isDark ? 'bg-slate-900/95 border-slate-800' : 'bg-white/95 border-slate-200 shadow-lg'
+                      <div className={`absolute left-0 right-0 top-full z-50 mt-1 backdrop-blur-md border rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[65vh] ${isDark ? 'bg-slate-900/95 border-slate-800' : 'bg-white/95 border-slate-200 shadow-lg'
                         }`}>
+                        {/* Header Bar with Result Count and Quick Sort Toggles */}
+                        <div className={`px-3 py-1.5 border-b flex items-center justify-between gap-2 text-[10px] flex-shrink-0 ${
+                          isDark ? 'bg-slate-900 border-slate-800 text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'
+                        }`}>
+                          <div className="flex items-center gap-1.5 font-semibold">
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                              isDark ? 'bg-slate-800 text-amber-400 border border-slate-700' : 'bg-white text-amber-600 border border-slate-200 shadow-xs'
+                            }`}>
+                              {filteredProducts.length}
+                            </span>
+                            <span>{filteredProducts.length === 1 ? 'item' : 'items'} found</span>
+                          </div>
+
+                          {/* Quick Sort Controls [ Dimension | Price | Name ] */}
+                          <div className="flex items-center gap-1">
+                            <span className="text-[9px] uppercase tracking-wider opacity-60 mr-0.5">Sort:</span>
+
+                            {/* Dimension Sort Toggle */}
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (searchSortMode === 'dimension') {
+                                  setSearchSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+                                } else {
+                                  setSearchSortMode('dimension');
+                                  setSearchSortOrder('asc');
+                                }
+                                searchInputRef.current?.focus();
+                              }}
+                              className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold transition-all border cursor-pointer ${
+                                searchSortMode === 'dimension'
+                                  ? 'bg-amber-500/20 border-amber-500/50 text-amber-400 shadow-xs'
+                                  : isDark
+                                    ? 'bg-slate-800/80 border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-slate-300'
+                                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                              }`}
+                              title="Sort naturally by Hardware Dimension"
+                            >
+                              <Ruler className="w-3 h-3 text-amber-400" />
+                              <span>Dimension</span>
+                              {searchSortMode === 'dimension' && (
+                                <span className="text-[8px] font-mono ml-0.5">{searchSortOrder === 'asc' ? '↑' : '↓'}</span>
+                              )}
+                            </button>
+
+                            {/* Price Sort Toggle */}
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (searchSortMode === 'price') {
+                                  setSearchSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+                                } else {
+                                  setSearchSortMode('price');
+                                  setSearchSortOrder('asc');
+                                }
+                                searchInputRef.current?.focus();
+                              }}
+                              className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold transition-all border cursor-pointer ${
+                                searchSortMode === 'price'
+                                  ? 'bg-amber-500/20 border-amber-500/50 text-amber-400 shadow-xs'
+                                  : isDark
+                                    ? 'bg-slate-800/80 border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-slate-300'
+                                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                              }`}
+                              title="Sort by Price"
+                            >
+                              <Banknote className="w-3 h-3 text-emerald-400" />
+                              <span>Price</span>
+                              {searchSortMode === 'price' && (
+                                <span className="text-[8px] font-mono ml-0.5">{searchSortOrder === 'asc' ? '↑' : '↓'}</span>
+                              )}
+                            </button>
+
+                            {/* Name Sort Toggle */}
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (searchSortMode === 'alphabetical') {
+                                  setSearchSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+                                } else {
+                                  setSearchSortMode('alphabetical');
+                                  setSearchSortOrder('asc');
+                                }
+                                searchInputRef.current?.focus();
+                              }}
+                              className={`flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold transition-all border cursor-pointer ${
+                                searchSortMode === 'alphabetical'
+                                  ? 'bg-amber-500/20 border-amber-500/50 text-amber-400 shadow-xs'
+                                  : isDark
+                                    ? 'bg-slate-800/80 border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-slate-300'
+                                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                              }`}
+                              title="Sort Alphabetically"
+                            >
+                              <ArrowDownAZ className="w-3 h-3 text-blue-400" />
+                              <span>Name</span>
+                              {searchSortMode === 'alphabetical' && (
+                                <span className="text-[8px] font-mono ml-0.5">{searchSortOrder === 'asc' ? '↑' : '↓'}</span>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+
                         {filteredProducts.length > 0 ? (
-                          <div className="p-1">
+                          <div className="p-1 overflow-y-auto max-h-[calc(65vh-36px)] custom-scrollbar">
                             {filteredProducts.map((flatProduct, index) => (
                               <div
                                 key={flatProduct.flatId}
@@ -3394,17 +3720,48 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
 
                             return matchesBarcode || matchesSearchKey || matchesName || matchesNo;
                           });
-                        const filteredCategoryProducts = catProducts;
+
+                        const sortedCategoryProducts = [...catProducts];
+                        if (categorySortMode === 'dim_asc') {
+                          sortedCategoryProducts.sort((a, b) => naturalDimensionComparator(a, b, (item) => item.name));
+                        } else if (categorySortMode === 'dim_desc') {
+                          sortedCategoryProducts.sort((a, b) => -naturalDimensionComparator(a, b, (item) => item.name));
+                        } else if (categorySortMode === 'price_asc') {
+                          sortedCategoryProducts.sort((a, b) => {
+                            const priceA = Number(a.salesPrice || 0);
+                            const priceB = Number(b.salesPrice || 0);
+                            return priceA - priceB;
+                          });
+                        } else if (categorySortMode === 'price_desc') {
+                          sortedCategoryProducts.sort((a, b) => {
+                            const priceA = Number(a.salesPrice || 0);
+                            const priceB = Number(b.salesPrice || 0);
+                            return priceB - priceA;
+                          });
+                        } else if (categorySortMode === 'alpha_asc') {
+                          sortedCategoryProducts.sort((a, b) => {
+                            const nameA = a.name || '';
+                            const nameB = b.name || '';
+                            return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+                          });
+                        } else if (categorySortMode === 'alpha_desc') {
+                          sortedCategoryProducts.sort((a, b) => {
+                            const nameA = a.name || '';
+                            const nameB = b.name || '';
+                            return nameB.localeCompare(nameA, undefined, { numeric: true, sensitivity: 'base' });
+                          });
+                        }
+                        const filteredCategoryProducts = sortedCategoryProducts;
 
                         return (
                           <div className={`${isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'} border relative flex flex-col min-w-0 w-full max-w-full overflow-x-hidden min-h-0`}>
                             <>
                               <div
                                 onMouseDown={handlePopoverDragStart}
-                                className={`flex items-center justify-between px-3 py-2 border-b select-none touch-none ${isDraggingPopover ? 'cursor-grabbing' : 'cursor-grab'} ${isDark ? 'border-slate-800' : 'border-slate-200'}`}
+                                className={`flex items-center justify-between gap-1.5 px-3 py-2 border-b select-none touch-none ${isDraggingPopover ? 'cursor-grabbing' : 'cursor-grab'} ${isDark ? 'border-slate-800' : 'border-slate-200'}`}
                                 title="Drag to move"
                               >
-                                <div className="flex items-center gap-2 min-w-0">
+                                <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
                                   <GripVertical className={`w-3.5 h-3.5 flex-shrink-0 ${isDark ? 'text-slate-600' : 'text-slate-400'}`} />
                                   <div className={`w-6 h-6 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center flex-shrink-0`}>
                                     <Package className="w-3 h-3 text-white" />
@@ -3413,19 +3770,96 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                                     {getCategoryDisplayName(activeCategoryEntity, activeCategoryPopover || '')}
                                   </span>
                                   <span className={`text-[9px] font-mono flex-shrink-0 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                                    {filteredCategoryProducts.length} items
+                                    {filteredCategoryProducts.length}
                                   </span>
                                 </div>
+
+                                {/* Compact Bidirectional Sort Toggle Controls in Header */}
+                                <div className="flex items-center gap-1 flex-wrap justify-end flex-1 ml-1" onMouseDown={(e) => e.stopPropagation()}>
+                                  {/* 1. Dimension Toggle (1/2"→6" <-> 6"→1/2") */}
+                                  <button
+                                    type="button"
+                                    onClick={() => setCategorySortMode((prev) => (prev === 'dim_asc' ? 'dim_desc' : 'dim_asc'))}
+                                    className={`flex items-center gap-1 h-6 px-1.5 rounded-md text-[10px] font-bold transition-all border cursor-pointer ${
+                                      categorySortMode.startsWith('dim')
+                                        ? 'bg-amber-500/20 text-amber-300 border-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                                        : isDark
+                                          ? 'bg-slate-800/80 border-slate-700/60 text-slate-300 hover:border-amber-500/50 hover:text-white'
+                                          : 'bg-slate-100 border-slate-300 text-slate-700 hover:border-amber-500/50 hover:bg-slate-200'
+                                    }`}
+                                    title={categorySortMode === 'dim_asc' ? 'ප්‍රමාණය: 1/2"→6" (ක්ලික් කර පෙරළන්න / Click to Flip)' : 'ප්‍රමාණය: 6"→1/2" (ක්ලික් කර පෙරළන්න / Click to Flip)'}
+                                  >
+                                    <Ruler className={`w-3.5 h-3.5 text-amber-400 transition-transform ${categorySortMode === 'dim_desc' ? 'rotate-180' : ''}`} />
+                                    <span>ප්‍රමාණය</span>
+                                    {categorySortMode.startsWith('dim') && (
+                                      categorySortMode === 'dim_asc' ? (
+                                        <ArrowUp className="w-2.5 h-2.5 text-amber-400 animate-in fade-in" />
+                                      ) : (
+                                        <ArrowDown className="w-2.5 h-2.5 text-amber-400 animate-in fade-in" />
+                                      )
+                                    )}
+                                  </button>
+
+                                  {/* 2. Price Toggle (Low->High <-> High->Low) */}
+                                  <button
+                                    type="button"
+                                    onClick={() => setCategorySortMode((prev) => (prev === 'price_asc' ? 'price_desc' : 'price_asc'))}
+                                    className={`flex items-center gap-1 h-6 px-1.5 rounded-md text-[10px] font-bold transition-all border cursor-pointer ${
+                                      categorySortMode.startsWith('price')
+                                        ? 'bg-amber-500/20 text-amber-300 border-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                                        : isDark
+                                          ? 'bg-slate-800/80 border-slate-700/60 text-slate-300 hover:border-amber-500/50 hover:text-white'
+                                          : 'bg-slate-100 border-slate-300 text-slate-700 hover:border-amber-500/50 hover:bg-slate-200'
+                                    }`}
+                                    title={categorySortMode === 'price_asc' ? 'මිල: අඩු→වැඩි (ක්ලික් කර පෙරළන්න / Click to Flip)' : 'මිල: වැඩි→අඩු (ක්ලික් කර පෙරළන්න / Click to Flip)'}
+                                  >
+                                    <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span>මිල</span>
+                                    {categorySortMode.startsWith('price') && (
+                                      categorySortMode === 'price_asc' ? (
+                                        <ArrowUp className="w-2.5 h-2.5 text-emerald-400 animate-in fade-in" />
+                                      ) : (
+                                        <ArrowDown className="w-2.5 h-2.5 text-emerald-400 animate-in fade-in" />
+                                      )
+                                    )}
+                                  </button>
+
+                                  {/* 3. Alphabetical Name Toggle (A->Z <-> Z->A) */}
+                                  <button
+                                    type="button"
+                                    onClick={() => setCategorySortMode((prev) => (prev === 'alpha_asc' ? 'alpha_desc' : 'alpha_asc'))}
+                                    className={`flex items-center gap-1 h-6 px-1.5 rounded-md text-[10px] font-bold transition-all border cursor-pointer ${
+                                      categorySortMode.startsWith('alpha')
+                                        ? 'bg-amber-500/20 text-amber-300 border-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.25)]'
+                                        : isDark
+                                          ? 'bg-slate-800/80 border-slate-700/60 text-slate-300 hover:border-amber-500/50 hover:text-white'
+                                          : 'bg-slate-100 border-slate-300 text-slate-700 hover:border-amber-500/50 hover:bg-slate-200'
+                                    }`}
+                                    title={categorySortMode === 'alpha_asc' ? 'නම: A→Z (ක්ලික් කර පෙරළන්න / Click to Flip)' : 'නම: Z→A (ක්ලික් කර පෙරළන්න / Click to Flip)'}
+                                  >
+                                    <ArrowDownAZ className="w-3.5 h-3.5 text-blue-400" />
+                                    <span>නම</span>
+                                    {categorySortMode.startsWith('alpha') && (
+                                      categorySortMode === 'alpha_asc' ? (
+                                        <ArrowUp className="w-2.5 h-2.5 text-blue-400 animate-in fade-in" />
+                                      ) : (
+                                        <ArrowDown className="w-2.5 h-2.5 text-blue-400 animate-in fade-in" />
+                                      )
+                                    )}
+                                  </button>
+                                </div>
+
                                 <button
                                   onMouseDown={(e) => e.stopPropagation()}
                                   onClick={() => { setActiveCategoryPopover(null); setActiveCategoryItemIndex(0); }}
-                                  className={`p-0.5 rounded transition-colors flex-shrink-0 ${isDark ? 'hover:bg-slate-800 text-slate-500' : 'hover:bg-slate-100 text-slate-400'}`}
+                                  className={`p-1 rounded transition-colors flex-shrink-0 ${isDark ? 'hover:bg-slate-800 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-500'}`}
                                 >
                                   <X className="w-3.5 h-3.5" />
                                 </button>
                               </div>
 
-                              <div className={`px-3 pt-1.5 pb-2.5 border-b ${isDark ? 'border-slate-800/50' : 'border-slate-100'}`}>
+                              {/* Search bar (clean and full width, no secondary sort bar) */}
+                              <div className={`px-3 py-2 border-b ${isDark ? 'border-slate-800/50' : 'border-slate-100'}`}>
                                 <div className="relative">
                                   <Search className={`absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
                                   <input
@@ -3451,7 +3885,6 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                                         e.preventDefault();
                                         setActiveCategoryItemIndex((prev) => (prev > 0 ? prev - 1 : 0));
                                       } else if (e.key === 'ArrowRight') {
-                                        // ── Category Popup ArrowRight — step up quantity and instant cart sync ──
                                         e.preventDefault();
                                         const targetedItem = filteredCategoryProducts[activeCategoryItemIndex];
                                         if (targetedItem) {
@@ -3467,7 +3900,6 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                                             const roundedNewQty = parseFloat(newQty.toFixed(1));
                                             updateItemQuantity(cartItem.id, roundedNewQty);
                                           } else {
-                                            // Not in cart — add with qty 1
                                             const sinhalaName = targetedItem.nameSinhala || targetedItem.nameSi || targetedItem.name;
                                             const fp: FlattenedProduct = {
                                               flatId: targetedItem.id,
@@ -3485,7 +3917,6 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                                         }
                                         setTimeout(() => categoryPopoverInputRef.current?.focus(), 10);
                                       } else if (e.key === 'ArrowLeft') {
-                                        // ── Category Popup ArrowLeft — step down quantity ──
                                         e.preventDefault();
                                         const targetedItem = filteredCategoryProducts[activeCategoryItemIndex];
                                         if (targetedItem) {
@@ -3507,7 +3938,6 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                                         e.preventDefault();
                                         const targetedProduct = filteredCategoryProducts[activeCategoryItemIndex];
                                         if (targetedProduct) {
-                                          // ── DIRECT add to cart with qty 1 ──
                                           const sinhalaName = targetedProduct.nameSinhala || targetedProduct.nameSi || targetedProduct.name;
                                           const fp: FlattenedProduct = {
                                             flatId: targetedProduct.id,
@@ -3522,7 +3952,6 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                                           } as FlattenedProduct;
 
                                           if (targetedProduct.storeQty > 0) {
-                                            // NOTE: Menu stays open after Enter add for consecutive adds.
                                             addOneToCart(fp);
                                             playBeep('add');
                                             const enterQtyName = isSinhala
@@ -3542,7 +3971,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                                         searchInputRef.current?.focus();
                                       }
                                     }}
-                                    className={`w-full border focus:border-amber-500/50 rounded-xl p-3 pl-10 text-xs font-bold focus:outline-none mb-0 ${isDark
+                                    className={`w-full border focus:border-amber-500/50 rounded-xl p-2.5 pl-9 text-xs font-bold focus:outline-none mb-0 ${isDark
                                         ? 'bg-slate-800 border-slate-700 text-white placeholder-slate-500'
                                         : 'bg-white border-slate-200 text-slate-900 placeholder-slate-400'
                                       }`}
@@ -3760,6 +4189,41 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                       </div>
                     </div>
                   )}
+
+                  {/* ── POS Credit / Pending Safeguard for Walk-in Customer ── */}
+                  {hasWalkInCreditRisk && (
+                    <div className={`mt-2 p-2.5 rounded-xl border flex flex-col gap-2 ${
+                      isDark ? 'bg-amber-500/10 border-amber-500/40 text-amber-300' : 'bg-amber-50 border-amber-300 text-amber-900'
+                    }`}>
+                      <div className="flex items-start gap-1.5">
+                        <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[11px] font-bold">
+                            {isSinhala ? 'Walk-in පාරිභෝගික ණය/හිඟ මුදල් අවවාදයයි' : 'Walk-in Due / Credit Warning'}
+                          </p>
+                          <p className="text-[10px] leading-tight opacity-90">
+                            {isSinhala
+                              ? `හිඟ මුදල Rs. ${walkInDueBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}. Walk-in සඳහා හිඟ බිල්පත් තැබිය නොහැක.`
+                              : `Due Balance: Rs. ${walkInDueBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}. Walk-in bills must be paid in full.`}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPaymentMethod('cash');
+                          setReceivedAmount(computedFinalTotal);
+                          isReceivedAmountManuallyEdited.current = false;
+                          playBeep('add');
+                          toast.success(isSinhala ? 'සම්පූර්ණ මුදල ස්වයංක්‍රීයව සටහන් විය' : 'Total amount auto-filled');
+                        }}
+                        className="w-full py-1.5 px-2 rounded-lg text-[10px] font-extrabold bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow shadow-amber-500/20 flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                      >
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        <span>{isSinhala ? 'සම්පූර්ණ මුදල ගෙවීම් කරන්න (Auto-fill Total)' : 'Auto-fill Total (Full Payment)'}</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Summary */}
@@ -3896,8 +4360,13 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
         placeholder={t('quickCheckout.searchCustomerPlaceholder')}
         className={`flex-1 bg-transparent text-xs font-medium focus:outline-none w-full ${isDark ? 'text-white placeholder-slate-500' : 'text-slate-900 placeholder-slate-400'}`}
       />
-      {selectedCustomerId !== 'walk-in' && (
-        <button onClick={() => { setSelectedCustomerId('walk-in'); setCustomerSearch(''); setCustomerOpen(false); }}
+      {!isCurrentCustomerWalkIn && (
+        <button onClick={() => { 
+          const dbWalkIn = customers.find(c => isWalkInCustomer(c));
+          setSelectedCustomerId(dbWalkIn?.id || 'default-customer'); 
+          setCustomerSearch(''); 
+          setCustomerOpen(false); 
+        }}
           className={`p-0.5 rounded flex-shrink-0 ${isDark ? 'hover:bg-slate-600 text-slate-400' : 'hover:bg-slate-200 text-slate-500'}`}>
           <X className="w-3 h-3" />
         </button>
@@ -3906,14 +4375,19 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                     {customerOpen && (
                       <div className={`absolute left-0 bottom-full mb-1 w-full rounded-lg border shadow-2xl z-50 overflow-hidden backdrop-blur-md ${isDark ? 'bg-slate-800/95 border-slate-700/50' : 'bg-white/95 border-slate-200'}`}>
                         <div className="max-h-32 overflow-y-auto">
-                          <button onClick={() => { setSelectedCustomerId('walk-in'); setCustomerSearch(''); setCustomerOpen(false); }}
-                            className={`w-full text-left px-3 py-1.5 text-xs font-medium transition-colors ${selectedCustomerId === 'walk-in' ? 'bg-orange-500/20 text-orange-400' : isDark ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'}`}>
+                          <button onClick={() => { 
+                            const dbWalkIn = customers.find(c => isWalkInCustomer(c));
+                            setSelectedCustomerId(dbWalkIn?.id || 'default-customer'); 
+                            setCustomerSearch(''); 
+                            setCustomerOpen(false); 
+                          }}
+                            className={`w-full text-left px-3 py-1.5 text-xs font-medium transition-colors ${isCurrentCustomerWalkIn ? 'bg-orange-500/20 text-orange-400' : isDark ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'}`}>
                             <span className="flex items-center gap-2"><User className="w-3 h-3" />{isSinhala ? 'සාමාන්‍ය පාරිභෝගිකයා' : 'Walk-in Customer'}</span>
                           </button>
                           {customersLoading ? (
                             <div className="px-3 py-2 text-xs text-center text-slate-400">Loading customers...</div>
                           ) : (
-                            filteredCustomers.map((c: any) => (
+                            filteredCustomers.filter((c: any) => !isWalkInCustomer(c)).map((c: any) => (
                               <button key={c.id} onClick={() => { setSelectedCustomerId(c.id); setCustomerSearch(c.name); setCustomerOpen(false); }}
                                 className={`w-full text-left px-3 py-1.5 text-xs font-medium transition-colors ${selectedCustomerId === c.id ? 'bg-orange-500/20 text-orange-400' : isDark ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'}`}>
                                 <span className="flex items-center gap-2"><Building2 className="w-3 h-3" />{isSinhala && c.nameSi ? c.nameSi : c.name}</span>
@@ -3944,7 +4418,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
     {t('quickCheckout.newCustomer')}
   </button>
                   {/* Show phone number of selected customer */}
-                  {selectedCustomerId !== 'walk-in' && selectedCustomerId && (() => {
+                  {!isCurrentCustomerWalkIn && selectedCustomerId && (() => {
                     const c = findCustomerById(selectedCustomerId);
                     return c ? (
                       <div className={`mt-1.5 p-1.5 rounded-lg ${isDark ? 'bg-slate-700/30' : 'bg-slate-50'}`}>

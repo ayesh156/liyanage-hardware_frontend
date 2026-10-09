@@ -64,9 +64,9 @@ export default function SuppliersPage() {
   const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
 
   // ── Fetch Suppliers from Live Backend ──
-  const fetchSuppliers = useCallback(async (isInitial = true) => {
+  const fetchSuppliers = useCallback(async (isInitial = false) => {
     if (isInitial) {
-      startLoading('Loading supplier catalog & ledgers...');
+      startLoading('Loading supplier directory & ledgers...');
     }
     setIsLoadingSuppliers(true);
     try {
@@ -93,9 +93,49 @@ export default function SuppliersPage() {
     }
   }, [supplierSearch, startLoading, finishLoading]);
 
+  // Initial Route Load synchronization
   useEffect(() => {
-    fetchSuppliers(true);
-  }, [fetchSuppliers]);
+    let mounted = true;
+    const loadInitialData = async () => {
+      startLoading('Loading supplier directory & ledgers...');
+      setIsLoadingSuppliers(true);
+      try {
+        const res = await api.get<{
+          data: Supplier[];
+          meta: any;
+          summary: { totalOutstanding: number; totalStartingBalance: number };
+        }>('/suppliers', undefined, true);
+
+        if (mounted && res && res.data) {
+          setSuppliers(res.data);
+          if (res.summary) {
+            setSupplierSummary(res.summary);
+          }
+        }
+      } catch (err: any) {
+        console.error('Failed to fetch initial suppliers:', err);
+      } finally {
+        if (mounted) {
+          setIsLoadingSuppliers(false);
+          finishLoading();
+        }
+      }
+    };
+
+    loadInitialData();
+
+    return () => {
+      mounted = false;
+    };
+  }, [startLoading, finishLoading]);
+
+  // Debounced search effect for non-initial searches
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchSuppliers(false);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [supplierSearch]);
 
   // ── Live Optimistic State Refresh on Settlement / Updates ──
   useEffect(() => {

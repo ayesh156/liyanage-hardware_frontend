@@ -12,6 +12,7 @@ import {
   ChevronsLeft, ChevronsRight, ChevronDown, X,
   // 🌟 Action Menu සහ Responsive Filters සඳහා අයිකන
   MoreVertical, CreditCard, Calendar as CalendarIcon, SlidersHorizontal,
+  SortAsc, SortDesc, DollarSign, AlertCircle, ArrowUp, ArrowDown,
 } from 'lucide-react';
 import { PayDueBalanceModal } from '../components/modals/PayDueBalanceModal';
 
@@ -141,6 +142,8 @@ const SearchableSelect: React.FC<SearchableSelectProps> = ({ options, value, onC
   );
 };
 
+export type InvoiceSortField = 'invoiceNumber' | 'customerName' | 'issueDate' | 'dueDate' | 'total' | 'status';
+
 export const Invoices: React.FC = () => {
   const { t } = useTranslation();
   const { theme } = useTheme();
@@ -151,22 +154,61 @@ export const Invoices: React.FC = () => {
   const isDark = theme === 'dark';
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(25);
+  const [sortField, setSortField] = useState<InvoiceSortField>('issueDate');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  type InvoiceQuickSort = 'latest' | 'amount_desc' | 'due_first' | null;
+  const [invoiceQuickSort, setInvoiceQuickSort] = useState<InvoiceQuickSort>('latest');
   const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [previewInvoice, setPreviewInvoice] = useState<Invoice | null>(null);
   const [duePayInvoice, setDuePayInvoice] = useState<Invoice | null>(null);
+
+  const handleSort = (field: InvoiceSortField) => {
+    setInvoiceQuickSort(null);
+    if (sortField === field) {
+      setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortOrder(field === 'issueDate' || field === 'dueDate' || field === 'total' ? 'desc' : 'asc');
+    }
+  };
+
+  /**
+   * Toggles invoice quick-sort criteria bidirectionally (Click-to-Flip):
+   * - If criterion is NOT active: Activates the primary direction.
+   * - If criterion is ALREADY active: Flips the direction between asc <-> desc.
+   *
+   * @param mode - 'latest' (Date), 'amount_desc' (Total amount), or 'due_first' (Due status)
+   */
+  const handleInvoiceQuickSortToggle = useCallback((mode: 'latest' | 'amount_desc' | 'due_first') => {
+    if (invoiceQuickSort === mode) {
+      setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setInvoiceQuickSort(mode);
+      if (mode === 'latest') {
+        setSortField('issueDate');
+        setSortOrder('desc');
+      } else if (mode === 'amount_desc') {
+        setSortField('total');
+        setSortOrder('desc');
+      } else if (mode === 'due_first') {
+        setSortField('status');
+        setSortOrder('asc');
+      }
+    }
+  }, [invoiceQuickSort]);
 
   // 🌟 LBD Date Filtering States
   const [dateFilterType, setDateFilterType] = useState<'all' | 'today' | 'yesterday' | 'month' | 'custom'>('all');
   const [selectedMonth, setSelectedMonth] = useState<string>('');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
-  const [isFilterExpanded, setIsFilterExpanded] = useState<boolean>(false);
+  const [isFilterExpanded, setIsFilterExpanded] = useState<boolean>(true);
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
 
@@ -249,11 +291,46 @@ export const Invoices: React.FC = () => {
 
       return matchesSearch && matchesStatus && matchesDate;
     }).sort((a, b) => {
-      const dateA = new Date(a.issueDate).getTime();
-      const dateB = new Date(b.issueDate).getTime();
-      return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+      // 🌟 Quick Sort Mode: Due First (Unpaid & Overdue prioritized)
+      if (invoiceQuickSort === 'due_first') {
+        const statusRank: Record<string, number> = { overdue: 0, pending: 1, paid: 2, cancelled: 3 };
+        const rankA = statusRank[a.status] ?? 4;
+        const rankB = statusRank[b.status] ?? 4;
+        if (rankA !== rankB) {
+          return sortOrder === 'asc' ? rankA - rankB : rankB - rankA;
+        }
+        if (rankA <= 1) {
+          const dateA = new Date(getDueDateFromIssueDate(a.issueDate, a.dueDate)).getTime() || 0;
+          const dateB = new Date(getDueDateFromIssueDate(b.issueDate, b.dueDate)).getTime() || 0;
+          if (dateA !== dateB) return sortOrder === 'asc' ? dateA - dateB : dateB - dateA;
+          return sortOrder === 'asc' ? (b.total || 0) - (a.total || 0) : (a.total || 0) - (b.total || 0);
+        }
+        const dateA = new Date(a.issueDate).getTime() || 0;
+        const dateB = new Date(b.issueDate).getTime() || 0;
+        return sortOrder === 'asc' ? dateB - dateA : dateA - dateB;
+      }
+
+      let comparison = 0;
+      if (sortField === 'invoiceNumber') {
+        comparison = (a.invoiceNumber || '').localeCompare(b.invoiceNumber || '', undefined, { numeric: true, sensitivity: 'base' });
+      } else if (sortField === 'customerName') {
+        comparison = (a.customerName || '').localeCompare(b.customerName || '', undefined, { sensitivity: 'base' });
+      } else if (sortField === 'issueDate') {
+        const dateA = new Date(a.issueDate).getTime() || 0;
+        const dateB = new Date(b.issueDate).getTime() || 0;
+        comparison = dateA - dateB;
+      } else if (sortField === 'dueDate') {
+        const dateA = new Date(getDueDateFromIssueDate(a.issueDate, a.dueDate)).getTime() || 0;
+        const dateB = new Date(getDueDateFromIssueDate(b.issueDate, b.dueDate)).getTime() || 0;
+        comparison = dateA - dateB;
+      } else if (sortField === 'total') {
+        comparison = (a.total || 0) - (b.total || 0);
+      } else if (sortField === 'status') {
+        comparison = (a.status || '').localeCompare(b.status || '');
+      }
+      return sortOrder === 'asc' ? comparison : -comparison;
     });
-  }, [invoices, searchQuery, statusFilter, dateFilterType, selectedMonth, startDate, endDate, sortOrder]);
+  }, [invoices, searchQuery, statusFilter, dateFilterType, selectedMonth, startDate, endDate, sortField, sortOrder, invoiceQuickSort]);
 
   const totalPages = Math.ceil(filteredInvoices.length / rowsPerPage);
   const paginatedInvoices = useMemo(() => {
@@ -280,6 +357,9 @@ export const Invoices: React.FC = () => {
     setStartDate('');
     setEndDate('');
     setDateRange(undefined);
+    setInvoiceQuickSort('latest');
+    setSortField('issueDate');
+    setSortOrder('desc');
   };
   const hasActiveFilters = searchQuery || statusFilter !== 'all' || dateFilterType !== 'all';
   const startItem = (currentPage - 1) * rowsPerPage + 1;
@@ -522,6 +602,89 @@ export const Invoices: React.FC = () => {
                 )}
               </div>
 
+              {/* ── Quick Sort Chips ── */}
+              <div className="flex items-center gap-1.5 flex-wrap border-l pl-2 border-slate-700/40">
+                <span className="text-[11px] font-semibold text-slate-400 mr-0.5">Sort:</span>
+
+                {/* Button 1: Issue Date Toggle (Latest <-> Oldest) */}
+                <button
+                  type="button"
+                  onClick={() => handleInvoiceQuickSortToggle('latest')}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                    invoiceQuickSort === 'latest' || sortField === 'issueDate'
+                      ? 'bg-orange-500 text-white shadow-sm'
+                      : isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                  }`}
+                  title={
+                    invoiceQuickSort === 'latest' || sortField === 'issueDate'
+                      ? (sortOrder === 'desc' ? 'නිකුත් කළ දිනය: අලුත්ම මුලින් (ක්ලික් කර පෙරළන්න / Click to Flip)' : 'නිකුත් කළ දිනය: පැරණිම මුලින් (ක්ලික් කර පෙරළන්න / Click to Flip)')
+                      : 'නිකුත් කළ දිනය (අලුත්ම <-> පැරණිම)'
+                  }
+                >
+                  <Clock className="w-3.5 h-3.5" />
+                  <span>නිකුත් කළ දිනය</span>
+                  {(invoiceQuickSort === 'latest' || sortField === 'issueDate') && (
+                    sortOrder === 'desc' ? (
+                      <ArrowDown className="w-3 h-3 text-white animate-in fade-in" />
+                    ) : (
+                      <ArrowUp className="w-3 h-3 text-white animate-in fade-in" />
+                    )
+                  )}
+                </button>
+
+                {/* Button 2: Total Amount Toggle (Highest <-> Lowest) */}
+                <button
+                  type="button"
+                  onClick={() => handleInvoiceQuickSortToggle('amount_desc')}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                    invoiceQuickSort === 'amount_desc' || sortField === 'total'
+                      ? 'bg-orange-500 text-white shadow-sm'
+                      : isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                  }`}
+                  title={
+                    invoiceQuickSort === 'amount_desc' || sortField === 'total'
+                      ? (sortOrder === 'desc' ? 'මුදල: වැඩි→අඩු (ක්ලික් කර පෙරළන්න / Click to Flip)' : 'මුදල: අඩු→වැඩි (ක්ලික් කර පෙරළන්න / Click to Flip)')
+                      : 'මුදල (වැඩි <-> අඩු)'
+                  }
+                >
+                  <DollarSign className="w-3.5 h-3.5" />
+                  <span>මුදල</span>
+                  {(invoiceQuickSort === 'amount_desc' || sortField === 'total') && (
+                    sortOrder === 'desc' ? (
+                      <ArrowDown className="w-3 h-3 text-white animate-in fade-in" />
+                    ) : (
+                      <ArrowUp className="w-3 h-3 text-white animate-in fade-in" />
+                    )
+                  )}
+                </button>
+
+                {/* Button 3: Due Status Toggle */}
+                <button
+                  type="button"
+                  onClick={() => handleInvoiceQuickSortToggle('due_first')}
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer ${
+                    invoiceQuickSort === 'due_first'
+                      ? 'bg-orange-500 text-white shadow-sm'
+                      : isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                  }`}
+                  title={
+                    invoiceQuickSort === 'due_first'
+                      ? (sortOrder === 'asc' ? 'ගෙවිය යුතු: හිඟ මුදල් මුලින් (ක්ලික් කර පෙරළන්න / Click to Flip)' : 'ගෙවිය යුතු: ගෙවූ බිල්පත් මුලින් (ක්ලික් කර පෙරළන්න / Click to Flip)')
+                      : 'ගෙවීම් තත්ත්වය / Due Status'
+                  }
+                >
+                  <AlertCircle className={`w-3.5 h-3.5 ${invoiceQuickSort === 'due_first' ? 'text-white' : 'text-amber-500'}`} />
+                  <span>ගෙවීම් තත්ත්වය</span>
+                  {invoiceQuickSort === 'due_first' && (
+                    sortOrder === 'asc' ? (
+                      <ArrowUp className="w-3 h-3 text-white animate-in fade-in" />
+                    ) : (
+                      <ArrowDown className="w-3 h-3 text-white animate-in fade-in" />
+                    )
+                  )}
+                </button>
+              </div>
+
               {/* Total Invoices Count & Reset Button */}
               <div className="ml-auto flex items-center gap-2">
                 {hasActiveFilters && (
@@ -548,12 +711,72 @@ export const Invoices: React.FC = () => {
           <table className="w-full min-w-[900px]">
             <thead className={isDark ? 'bg-slate-800/80' : 'bg-slate-50'}>
               <tr>
-                <th className={`px-2 py-2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap text-left ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{t('invoices.invoiceHash')}</th>
-                <th className={`px-2 py-2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap text-left ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{t('invoices.customer')}</th>
-                <th className={`px-2 py-2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap text-left ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{t('invoices.issueDate')}</th>
-                <th className={`px-2 py-2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap text-left ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{t('invoices.dueDate')}</th>
-                <th className={`px-2 py-2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap text-right ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{t('invoices.totalLabel')}</th>
-                <th className={`px-2 py-2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap text-center ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{t('invoices.status')}</th>
+                <th
+                  onClick={() => handleSort('invoiceNumber')}
+                  className={`px-2 py-2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap text-left cursor-pointer select-none hover:text-orange-400 transition-colors ${isDark ? 'text-slate-400' : 'text-slate-500'}`}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>{t('invoices.invoiceHash')}</span>
+                    {sortField === 'invoiceNumber' && (
+                      sortOrder === 'asc' ? <SortAsc className="w-3 h-3 flex-shrink-0" /> : <SortDesc className="w-3 h-3 flex-shrink-0" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('customerName')}
+                  className={`px-2 py-2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap text-left cursor-pointer select-none hover:text-orange-400 transition-colors ${isDark ? 'text-slate-400' : 'text-slate-500'}`}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>{t('invoices.customer')}</span>
+                    {sortField === 'customerName' && (
+                      sortOrder === 'asc' ? <SortAsc className="w-3 h-3 flex-shrink-0" /> : <SortDesc className="w-3 h-3 flex-shrink-0" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('issueDate')}
+                  className={`px-2 py-2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap text-left cursor-pointer select-none hover:text-orange-400 transition-colors ${isDark ? 'text-slate-400' : 'text-slate-500'}`}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>{t('invoices.issueDate')}</span>
+                    {sortField === 'issueDate' && (
+                      sortOrder === 'asc' ? <SortAsc className="w-3 h-3 flex-shrink-0" /> : <SortDesc className="w-3 h-3 flex-shrink-0" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('dueDate')}
+                  className={`px-2 py-2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap text-left cursor-pointer select-none hover:text-orange-400 transition-colors ${isDark ? 'text-slate-400' : 'text-slate-500'}`}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>{t('invoices.dueDate')}</span>
+                    {sortField === 'dueDate' && (
+                      sortOrder === 'asc' ? <SortAsc className="w-3 h-3 flex-shrink-0" /> : <SortDesc className="w-3 h-3 flex-shrink-0" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('total')}
+                  className={`px-2 py-2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap text-right cursor-pointer select-none hover:text-orange-400 transition-colors ${isDark ? 'text-slate-400' : 'text-slate-500'}`}
+                >
+                  <div className="flex items-center justify-end gap-1">
+                    <span>{t('invoices.totalLabel')}</span>
+                    {sortField === 'total' && (
+                      sortOrder === 'asc' ? <SortAsc className="w-3 h-3 flex-shrink-0" /> : <SortDesc className="w-3 h-3 flex-shrink-0" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort('status')}
+                  className={`px-2 py-2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap text-center cursor-pointer select-none hover:text-orange-400 transition-colors ${isDark ? 'text-slate-400' : 'text-slate-500'}`}
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    <span>{t('invoices.status')}</span>
+                    {sortField === 'status' && (
+                      sortOrder === 'asc' ? <SortAsc className="w-3 h-3 flex-shrink-0" /> : <SortDesc className="w-3 h-3 flex-shrink-0" />
+                    )}
+                  </div>
+                </th>
                 <th className={`px-2 py-2 text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap text-center ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{t('tableHeaders.actions')}</th>
               </tr>
             </thead>

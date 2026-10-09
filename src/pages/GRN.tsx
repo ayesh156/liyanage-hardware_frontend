@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
 import { useIsMobile } from '../hooks/use-mobile';
+import { useLoading } from '../contexts/LoadingContext';
 import { Supplier, GRN, GRNImageItem } from '../types';
 import api from '../lib/api';
 import { normalizeImageUrl, isPdfUrl } from '../utils/imageUtils';
@@ -34,6 +35,7 @@ import { cn } from '../lib/utils';
 export default function GRNPage() {
   const { t } = useTranslation();
   const { theme } = useTheme();
+  const { startLoading, finishLoading } = useLoading();
   const isDark = theme === 'dark';
   const isMobile = useIsMobile();
 
@@ -118,10 +120,53 @@ export default function GRNPage() {
     }
   }, [grnSearch, grnStatusFilter, grnSupplierFilter]);
 
+  // Initial Route Load Synchronization
   useEffect(() => {
-    fetchSuppliers();
-  }, [fetchSuppliers]);
+    let mounted = true;
+    const loadInitialData = async () => {
+      startLoading('Loading GRN records & supplier ledgers...');
+      setIsLoadingGrns(true);
+      setIsLoadingSuppliers(true);
+      try {
+        const [grnRes, supRes] = await Promise.all([
+          api.get<{
+            data: GRN[];
+            meta: any;
+            summary: { totalGrnValue: number; totalPaidValue: number; totalDueValue: number };
+          }>('/grns', undefined, true),
+          api.get<{ data: Supplier[] }>('/suppliers', { perPage: 200 }, true),
+        ]);
 
+        if (mounted) {
+          if (grnRes && grnRes.data) {
+            setGrns(grnRes.data);
+            if (grnRes.summary) {
+              setGrnSummary(grnRes.summary);
+            }
+          }
+          if (supRes && supRes.data) {
+            setSuppliers(supRes.data);
+          }
+        }
+      } catch (err: any) {
+        console.error('Failed to fetch initial GRN data:', err);
+      } finally {
+        if (mounted) {
+          setIsLoadingGrns(false);
+          setIsLoadingSuppliers(false);
+          finishLoading();
+        }
+      }
+    };
+
+    loadInitialData();
+
+    return () => {
+      mounted = false;
+    };
+  }, [startLoading, finishLoading]);
+
+  // Subsequent Filter Updates (Non-blocking)
   useEffect(() => {
     fetchGrns();
   }, [fetchGrns]);

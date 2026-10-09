@@ -6,6 +6,7 @@ import {
   Filter, RefreshCw, SortAsc, SortDesc, DollarSign, Hash,
   Edit3, Trash2, Pencil, ChevronLeft, ChevronRight,
   ChevronsLeft, ChevronsRight, ChevronDown, X,
+  Ruler, ArrowDownAZ, ArrowUp, ArrowDown,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api, { isNetworkError, getNetworkErrorMessage } from '../lib/api';
@@ -18,6 +19,7 @@ import { ProductFormModal } from './ProductFormModal';
 import { DeleteConfirmationModal } from './modals/DeleteConfirmationModal';
 import ProductNameTooltip from './ProductNameTooltip';
 import { formatShortProductId } from '../lib/utils';
+import { naturalDimensionComparator } from '../lib/dimensionParser';
 // 🔐 Secret Cost Cipher helper import කිරීම
 import { encodeCostToSecretCode } from '../lib/secretCostCode';
 // 🌟 Actions Dropdown Menu සඳහා අයිකන සහ Components
@@ -262,6 +264,8 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [sortField, setSortField] = useState<keyof InventoryProduct>('createdAt');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  type ProductQuickSort = 'dimension' | 'price' | 'stock' | 'alpha' | null;
+  const [quickSort, setQuickSort] = useState<ProductQuickSort>(null);
 
   // ── CHECKBOX FILTER TOGGLES ──
   // Search Key defaults to true (ticked) on mount; Barcode, Product Name, Category, Product No default false
@@ -383,13 +387,36 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
     }
     if (categoryFilter !== 'all') result = result.filter((i) => i.productCategory === categoryFilter);
     if (statusFilter !== 'all') result = result.filter((i) => i.status === statusFilter);
+    /**
+     * Sorter for inventory products supporting bidirectional quick-sort & table header sorts:
+     * - QuickSort alpha: pure alphabetical A-Z collation (asc/desc)
+     * - QuickSort dimension or Name field: natural mathematical hardware dimension sorting (1/2" -> 6" or 6" -> 1/2")
+     * - QuickSort price: salesPrice float comparison (asc/desc)
+     * - QuickSort stock: storeQty float comparison (asc/desc)
+     * - Numeric fields (salesPrice, storeQty, etc.): numeric float comparison
+     * - String fields: localized natural string comparison
+     */
     result.sort((a, b) => {
+      if (quickSort === 'alpha') {
+        const nameA = a.name || '';
+        const nameB = b.name || '';
+        const cmp = nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+        return sortDir === 'asc' ? cmp : -cmp;
+      }
+      if (quickSort === 'dimension' || sortField === 'name') {
+        const cmp = naturalDimensionComparator(a, b, (item) => item.name);
+        return sortDir === 'asc' ? cmp : -cmp;
+      }
       const aVal = a[sortField], bVal = b[sortField];
-      if (typeof aVal === 'number' && typeof bVal === 'number') return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
-      return sortDir === 'asc' ? String(aVal).toLowerCase().localeCompare(String(bVal).toLowerCase()) : String(bVal).toLowerCase().localeCompare(String(aVal).toLowerCase());
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+      }
+      return sortDir === 'asc'
+        ? String(aVal || '').localeCompare(String(bVal || ''), undefined, { numeric: true, sensitivity: 'base' })
+        : String(bVal || '').localeCompare(String(aVal || ''), undefined, { numeric: true, sensitivity: 'base' });
     });
     return result;
-  }, [items, searchQuery, categoryFilter, statusFilter, sortField, sortDir, searchByKey, searchBarcode, searchByName, searchByCategory, searchByNo]);
+  }, [items, searchQuery, categoryFilter, statusFilter, sortField, sortDir, quickSort, searchByKey, searchBarcode, searchByName, searchByCategory, searchByNo]);
 
   const totalPages = Math.ceil(filteredItems.length / rowsPerPage);
   const paginatedItems = useMemo(() => {
@@ -400,13 +427,39 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
   useEffect(() => { setCurrentPage(1); }, [searchQuery, categoryFilter, statusFilter, rowsPerPage]);
 
   const hasActiveFilters = searchQuery || categoryFilter !== 'all' || statusFilter !== 'all';
-  const clearFilters = () => { setSearchQuery(''); setCategoryFilter('all'); setStatusFilter('all'); };
+  const clearFilters = () => { setSearchQuery(''); setCategoryFilter('all'); setStatusFilter('all'); setQuickSort(null); };
   const SortIcon = sortDir === 'asc' ? SortAsc : SortDesc;
 
   const handleSort = (field: keyof InventoryProduct) => {
+    setQuickSort(null);
     if (sortField === field) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else { setSortField(field); setSortDir('asc'); }
   };
+
+  /**
+   * Toggles product quick-sort criteria bidirectionally (Click-to-Flip):
+   * - If criterion is NOT active: Activates the primary direction (asc).
+   * - If criterion is ALREADY active: Flips the direction between asc <-> desc.
+   *
+   * @param mode - 'dimension' (Size), 'price' (Sales price), 'stock' (Store qty), or 'alpha' (A-Z name)
+   */
+  const handleQuickSortToggle = useCallback((mode: 'dimension' | 'price' | 'stock' | 'alpha') => {
+    if (quickSort === mode) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setQuickSort(mode);
+      if (mode === 'dimension') {
+        setSortField('name');
+      } else if (mode === 'price') {
+        setSortField('salesPrice');
+      } else if (mode === 'stock') {
+        setSortField('storeQty');
+      } else if (mode === 'alpha') {
+        setSortField('name');
+      }
+      setSortDir('asc');
+    }
+  }, [quickSort]);
 
   const [deleteTarget, setDeleteTarget] = useState<InventoryProduct | null>(null);
 
@@ -645,8 +698,8 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
 
       {/* ── BALANCED HORIZONTAL TOOLBAR with permanently visible filters ── */}
       <div className={`p-4 rounded-lg border ${isDark ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}>
-        <div className="flex items-center gap-4">
-          <div className="relative flex-1 max-w-xl">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[180px] max-w-sm">
             <Search className={`absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`} />
             <input type="text" placeholder={t('products.searchPlaceholder')} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
               className={`w-full pl-8 pr-9 py-2 text-xs border rounded-lg focus:outline-none focus:ring-1 focus:ring-orange-500/50 focus:border-orange-500/50 transition-all ${isDark ? 'bg-slate-900/50 border-slate-700 text-white placeholder:text-slate-500' : 'bg-slate-50 border-slate-200'}`} />
@@ -657,7 +710,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
               </button>
             )}
           </div>
-          <div className="relative min-w-[200px] w-64">
+          <div className="relative min-w-[160px] w-52">
             <SearchableSelect options={categories} value={categoryFilter} onChange={(v) => setCategoryFilter(v)} placeholder="Search category..." isDark={isDark} allLabel={t('filters.allCategories')} getOptionLabel={(value) => categoryLabelByName.get(value) || value} />
             {categoryFilter !== 'all' && (
               <button onClick={() => setCategoryFilter('all')}
@@ -667,7 +720,7 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
               </button>
             )}
           </div>
-          <div className="relative min-w-[180px] w-52">
+          <div className="relative min-w-[140px] w-44">
             <SearchableSelect options={['Available', 'Low Stock', 'Out of Stock']} value={statusFilter} onChange={(v) => setStatusFilter(v)} placeholder="Search status..." isDark={isDark} allLabel={t('filters.allStatus')} />
             {statusFilter !== 'all' && (
               <button onClick={() => setStatusFilter('all')}
@@ -677,6 +730,122 @@ export const ProductTable: React.FC<ProductTableProps> = ({ items, setItems, onD
               </button>
             )}
           </div>
+
+          {/* Quick Sort Button Group */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {/* Button 1: Natural Dimension Toggle (1/2"→6" <-> 6"→1/2") */}
+            <button
+              type="button"
+              onClick={() => handleQuickSortToggle('dimension')}
+              className={`h-8 px-2.5 text-xs rounded-lg font-medium flex items-center gap-1.5 border transition-all cursor-pointer ${
+                quickSort === 'dimension' || (sortField === 'name' && quickSort !== 'alpha')
+                  ? 'border-amber-500/70 bg-amber-500/10 text-amber-400 shadow-sm'
+                  : isDark
+                    ? 'border-slate-700/60 bg-slate-800/80 text-slate-300 hover:border-amber-500/50 hover:text-white'
+                    : 'border-slate-300 bg-slate-100 text-slate-700 hover:border-amber-500/50 hover:bg-slate-200'
+              }`}
+              title={
+                quickSort === 'dimension' || (sortField === 'name' && quickSort !== 'alpha')
+                  ? (sortDir === 'asc' ? 'ප්‍රමාණය: 1/2"→6" (ක්ලික් කර පෙරළන්න / Click to Flip)' : 'ප්‍රමාණය: 6"→1/2" (ක්ලික් කර පෙරළන්න / Click to Flip)')
+                  : 'ප්‍රමාණය (1/2"→6")'
+              }
+            >
+              <Ruler className={`w-3.5 h-3.5 transition-transform ${quickSort === 'dimension' && sortDir === 'desc' ? 'rotate-180' : ''}`} />
+              <span>ප්‍රමාණය</span>
+              {(quickSort === 'dimension' || (sortField === 'name' && quickSort !== 'alpha')) && (
+                sortDir === 'asc' ? (
+                  <ArrowUp className="w-3 h-3 text-amber-400 animate-in fade-in" />
+                ) : (
+                  <ArrowDown className="w-3 h-3 text-amber-400 animate-in fade-in" />
+                )
+              )}
+            </button>
+
+            {/* Button 2: Price Low<->High Toggle */}
+            <button
+              type="button"
+              onClick={() => handleQuickSortToggle('price')}
+              className={`h-8 px-2.5 text-xs rounded-lg font-medium flex items-center gap-1.5 border transition-all cursor-pointer ${
+                quickSort === 'price' || sortField === 'salesPrice'
+                  ? 'border-amber-500/70 bg-amber-500/10 text-amber-400 shadow-sm'
+                  : isDark
+                    ? 'border-slate-700/60 bg-slate-800/80 text-slate-300 hover:border-amber-500/50 hover:text-white'
+                    : 'border-slate-300 bg-slate-100 text-slate-700 hover:border-amber-500/50 hover:bg-slate-200'
+              }`}
+              title={
+                quickSort === 'price' || sortField === 'salesPrice'
+                  ? (sortDir === 'asc' ? 'මිල: අඩු→වැඩි (ක්ලික් කර පෙරළන්න / Click to Flip)' : 'මිල: වැඩි→අඩු (ක්ලික් කර පෙරළන්න / Click to Flip)')
+                  : 'මිල (අඩු→වැඩි)'
+              }
+            >
+              <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+              <span>මිල</span>
+              {(quickSort === 'price' || sortField === 'salesPrice') && (
+                sortDir === 'asc' ? (
+                  <ArrowUp className="w-3 h-3 text-amber-400 animate-in fade-in" />
+                ) : (
+                  <ArrowDown className="w-3 h-3 text-amber-400 animate-in fade-in" />
+                )
+              )}
+            </button>
+
+            {/* Button 3: Stock Urgency Low<->High Toggle */}
+            <button
+              type="button"
+              onClick={() => handleQuickSortToggle('stock')}
+              className={`h-8 px-2.5 text-xs rounded-lg font-medium flex items-center gap-1.5 border transition-all cursor-pointer ${
+                quickSort === 'stock' || sortField === 'storeQty'
+                  ? 'border-amber-500/70 bg-amber-500/10 text-amber-400 shadow-sm'
+                  : isDark
+                    ? 'border-slate-700/60 bg-slate-800/80 text-slate-300 hover:border-amber-500/50 hover:text-white'
+                    : 'border-slate-300 bg-slate-100 text-slate-700 hover:border-amber-500/50 hover:bg-slate-200'
+              }`}
+              title={
+                quickSort === 'stock' || sortField === 'storeQty'
+                  ? (sortDir === 'asc' ? 'තොග: අඩු→වැඩි (ක්ලික් කර පෙරළන්න / Click to Flip)' : 'තොග: වැඩි→අඩු (ක්ලික් කර පෙරළන්න / Click to Flip)')
+                  : 'තොග (අඩු→වැඩි)'
+              }
+            >
+              <Package className="w-3.5 h-3.5 text-amber-400" />
+              <span>තොග</span>
+              {(quickSort === 'stock' || sortField === 'storeQty') && (
+                sortDir === 'asc' ? (
+                  <ArrowUp className="w-3 h-3 text-amber-400 animate-in fade-in" />
+                ) : (
+                  <ArrowDown className="w-3 h-3 text-amber-400 animate-in fade-in" />
+                )
+              )}
+            </button>
+
+            {/* Button 4: Alphabetical A<->Z Toggle */}
+            <button
+              type="button"
+              onClick={() => handleQuickSortToggle('alpha')}
+              className={`h-8 px-2.5 text-xs rounded-lg font-medium flex items-center gap-1.5 border transition-all cursor-pointer ${
+                quickSort === 'alpha'
+                  ? 'border-amber-500/70 bg-amber-500/10 text-amber-400 shadow-sm'
+                  : isDark
+                    ? 'border-slate-700/60 bg-slate-800/80 text-slate-300 hover:border-amber-500/50 hover:text-white'
+                    : 'border-slate-300 bg-slate-100 text-slate-700 hover:border-amber-500/50 hover:bg-slate-200'
+              }`}
+              title={
+                quickSort === 'alpha'
+                  ? (sortDir === 'asc' ? 'නම: A→Z (ක්ලික් කර පෙරළන්න / Click to Flip)' : 'නම: Z→A (ක්ලික් කර පෙරළන්න / Click to Flip)')
+                  : 'A→Z'
+              }
+            >
+              <ArrowDownAZ className="w-3.5 h-3.5 text-blue-400" />
+              <span>නම</span>
+              {quickSort === 'alpha' && (
+                sortDir === 'asc' ? (
+                  <ArrowUp className="w-3 h-3 text-amber-400 animate-in fade-in" />
+                ) : (
+                  <ArrowDown className="w-3 h-3 text-amber-400 animate-in fade-in" />
+                )
+              )}
+            </button>
+          </div>
+
           <div className="flex items-center gap-2 ml-auto">
             <SortButton currentSortOrder={sortDir} onSortToggle={() => handleSort(sortField)} />
             {hasActiveFilters && <button onClick={clearFilters} className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${isDark ? 'text-slate-400 hover:text-white hover:bg-slate-700' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'}`}><RefreshCw className="w-3 h-3" /></button>}
