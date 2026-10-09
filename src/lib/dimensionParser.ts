@@ -209,12 +209,78 @@ export function extractDimensionFromText(text: string): ParsedDimension {
   return { numericValue: Number.MAX_VALUE, dimensions: [], rawMatched: '', hasDimension: false };
 }
 
+export interface ParsedSwitchSpecs {
+  gang: number;
+  way: number;
+}
+
 /**
- * Comparator function to sort hardware products naturally by dimension size first (multi-tier),
- * then by alphabetical name as secondary criteria.
+ * Robust regex-based parser for electrical switch specifications (Gang & Way).
+ * Safely extracts Gang and Way configurations across Sinhala and English product names
+ * (e.g. "1 ගෑන් 1වේ ORANGE", "1GAN 1W", "1 GANG 2 WAY", "3G 1W", "4G 2W").
  * 
- * Mathematical ascending ordering strictly yields:
- * 1/2" (0.5) < 3/4" (0.75) < 1" (1.0) < 1 1/4" (1.25) < 1 1/2" (1.5) < 2" (2.0) < 3" (3.0) < 4" (4.0) < 6" (6.0)
+ * Safe boundary handling ensures zero false positives on unrelated items like:
+ * - 40W / 100W light bulbs
+ * - 13A / 16A sockets
+ * - General plumbing or hardware sizes
+ * 
+ * @param productName - Raw product title, search key, or name
+ * @returns Object with { gang, way } or null if not a matching switch specification
+ */
+export function parseSwitchSpecs(productName: string): ParsedSwitchSpecs | null {
+  if (!productName || typeof productName !== 'string') return null;
+  const name = productName.trim();
+
+  // Match Gang: 1-8 followed by Gang / Gan / G / Sinhala gang terms (e.g. 1GAN, 1 GANG, 1G, 1 ගෑන්, 1ගෑන්, 1 ගැන්, 1 ගෑං, 1 ගෑන්ග්)
+  // or Gang / Sinhala terms followed by 1-8 (e.g. GANG 1, ගෑන් 1)
+  const gangRegex = /(?:^|[^\p{L}\d])([1-8])\s*(?:gangs?|gan\b|g\b|ගෑන්ග්|ගෑන්|ගැන්|ගෑං)|(?:gangs?|gan\b|ගෑන්ග්|ගෑන්|ගැන්|ගෑං)\s*([1-8])/iu;
+
+  // Match Way: 1-4 followed by Way / W / Sinhala way terms (e.g. 1W, 1 WAY, 1 W, 1වේ, 1 වේ, 2W, 2 WAY, 2වේ)
+  // or Way / Sinhala terms followed by 1-4 (e.g. WAY 1, වේ 1)
+  const wayRegex = /(?:^|[^\p{L}\d])([1-4])\s*(?:ways?|way\b|w\b|වේ|වෙ)|(?:ways?|way\b|වේ|වෙ)\s*([1-4])/iu;
+
+  const gangMatch = name.match(gangRegex);
+  const wayMatch = name.match(wayRegex);
+
+  if (!gangMatch && !wayMatch) return null;
+
+  // Context check to prevent false positives on wattages (e.g. 40W bulb or 100W lamp)
+  const isSwitchContext = /switch|ස්විච්/i.test(name) || (gangMatch !== null);
+
+  let gang: number | null = null;
+  if (gangMatch) {
+    gang = parseInt(gangMatch[1] || gangMatch[2], 10);
+  }
+
+  let way: number | null = null;
+  if (wayMatch) {
+    way = parseInt(wayMatch[1] || wayMatch[2], 10);
+  }
+
+  if (gang !== null && way !== null) {
+    return { gang, way };
+  }
+
+  if (gang !== null && way === null) {
+    return { gang, way: 1 };
+  }
+
+  if (gang === null && way !== null && isSwitchContext) {
+    return { gang: 1, way };
+  }
+
+  return null;
+}
+
+/**
+ * Comparator function to sort hardware products naturally:
+ * 1. Electrical Switch Hierarchy (if items match switch patterns):
+ *    - Primary Sort: Way ascending (1W strictly grouped first before 2W)
+ *    - Secondary Sort: Gang ascending (1GAN -> 2GAN -> 3GAN -> 4GAN -> 5GAN within same Way)
+ *    - Tertiary Sort: Alphabetical locale compare
+ * 2. Natural Dimension / Fractional Sizing (multi-tier dimension comparisons):
+ *    - 1/2" (0.5) < 3/4" (0.75) < 1" (1.0) < 1 1/4" (1.25) < 1 1/2" (1.5) < 2" (2.0) < 6" (6.0)
+ * 3. Fallback: Natural alphabetical locale compare with numeric collation
  * 
  * @param a - First product item
  * @param b - Second product item
@@ -229,6 +295,28 @@ export function naturalDimensionComparator<T>(
   const nameA = nameGetter(a) || '';
   const nameB = nameGetter(b) || '';
 
+  // 1. Hierarchical Electrical Switch Sorting (Way-first, Gang-second)
+  const switchA = parseSwitchSpecs(nameA);
+  const switchB = parseSwitchSpecs(nameB);
+
+  if (switchA && switchB) {
+    // Primary Sort: Way ascending (1W strictly precedes 2W)
+    if (switchA.way !== switchB.way) {
+      return switchA.way - switchB.way;
+    }
+    // Secondary Sort: Gang ascending (1 Gang -> 2 Gang -> 3 Gang, etc.)
+    if (switchA.gang !== switchB.gang) {
+      return switchA.gang - switchB.gang;
+    }
+    // Tertiary Sort: Alphabetical locale compare
+    return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
+  }
+
+  // Prioritize switch items when mixed within electrical categories
+  if (switchA && !switchB) return -1;
+  if (!switchA && switchB) return 1;
+
+  // 2. Multi-tier Natural Dimension / Measurement Comparison
   const dimA = extractDimensionFromText(nameA);
   const dimB = extractDimensionFromText(nameB);
 
@@ -255,6 +343,6 @@ export function naturalDimensionComparator<T>(
   if (dimA.hasDimension && !dimB.hasDimension) return -1;
   if (!dimA.hasDimension && dimB.hasDimension) return 1;
 
-  // Secondary sort: alphabetical locale compare with numeric collation
+  // 3. Fallback: alphabetical locale compare with numeric collation
   return nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: 'base' });
 }

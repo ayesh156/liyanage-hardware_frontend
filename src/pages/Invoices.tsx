@@ -861,87 +861,90 @@ export const Invoices: React.FC = () => {
                         {st.icon}<span>{invoice.status}</span>
                       </span>
                     </td>
-                    {/* 🌟 Clean Shadcn Dropdown Action Menu */}
+                    {/* 🌟 Direct View Button + Shadcn Dropdown Action Menu */}
                     <td className="px-2 py-1.5 text-center">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            className={`p-1.5 rounded-lg transition-all active:scale-90 outline-none ${
-                              isDark
-                                ? 'text-slate-400 hover:text-white hover:bg-slate-800 data-[state=open]:bg-amber-500/20 data-[state=open]:text-amber-400'
-                                : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 data-[state=open]:bg-amber-100 data-[state=open]:text-amber-700'
-                            }`}
-                            title="Actions"
-                          >
-                            <MoreVertical className="w-4 h-4" />
-                          </button>
-                        </DropdownMenuTrigger>
-
-                        <DropdownMenuContent
-                          align="end"
-                          className={`w-44 rounded-xl border shadow-2xl backdrop-blur-xl p-1 text-left ${
-                            isDark
-                              ? 'bg-slate-900/98 border-slate-700/80 text-slate-200'
-                              : 'bg-white/98 border-slate-200 text-slate-700'
-                          }`}
+                      <div className="flex items-center justify-center gap-1">
+                        {/* Direct View Icon Button */}
+                        <button
+                          type="button"
+                          onClick={() => setPreviewInvoice(invoice)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition-colors"
+                          title="බිල්පත බලන්න (View Invoice)"
                         >
-                          {/* Preview Action */}
-                          <DropdownMenuItem
-                            onClick={() => setPreviewInvoice(invoice)}
-                            className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg hover:text-indigo-400 focus:text-indigo-400 focus:bg-indigo-500/10"
-                          >
-                            <Eye className="w-3.5 h-3.5 text-indigo-400" />
-                            <span>{t('common.actionsList.view')}</span>
-                          </DropdownMenuItem>
+                          <Eye className="w-4 h-4" />
+                        </button>
 
-                          {/* Print Action */}
-                          <DropdownMenuItem
-                            onClick={() => handlePrintClick(invoice)}
-                            className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg hover:text-cyan-400 focus:text-cyan-400 focus:bg-cyan-500/10"
-                          >
-                            <Printer className="w-3.5 h-3.5 text-cyan-400" />
-                            <span>{t('common.actionsList.print')}</span>
-                          </DropdownMenuItem>
-
-                          {/* Edit Action */}
-                          <DropdownMenuItem
-                            onClick={() => navigate(`/invoices/quick-invoice?edit=${invoice.id}`)}
-                            className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg hover:text-orange-400 focus:text-orange-400 focus:bg-orange-500/10"
-                          >
-                            <Edit2 className="w-3.5 h-3.5 text-orange-400" />
-                            <span>{t('common.actionsList.edit')}</span>
-                          </DropdownMenuItem>
-
-                          {/* 💳 Due Balance Payment: Open in-place Modal without redirect */}
-                          {invoice.status === 'pending' && (
-                            <DropdownMenuItem
-                              onClick={() => setDuePayInvoice(invoice)}
-                              className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg hover:text-emerald-400 focus:text-emerald-400 focus:bg-emerald-500/10"
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              className={`p-1.5 rounded-lg transition-all active:scale-90 outline-none ${
+                                isDark
+                                  ? 'text-slate-400 hover:text-white hover:bg-slate-800 data-[state=open]:bg-amber-500/20 data-[state=open]:text-amber-400'
+                                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 data-[state=open]:bg-amber-100 data-[state=open]:text-amber-700'
+                              }`}
+                              title="Actions"
                             >
-                              <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>{t('common.actionsList.payDue')}</span>
-                            </DropdownMenuItem>
-                          )}
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+                          </DropdownMenuTrigger>
 
-                          {/* Delete Action (Admin Only) */}
-                          {currentUser?.role === 'ADMIN' && (
-                            <>
-                              <DropdownMenuSeparator className={isDark ? 'bg-slate-800' : 'bg-slate-100'} />
+                          <DropdownMenuContent
+                            align="end"
+                            className={`w-44 rounded-xl border shadow-2xl backdrop-blur-xl p-1 text-left ${
+                              isDark
+                                ? 'bg-slate-900/98 border-slate-700/80 text-slate-200'
+                                : 'bg-white/98 border-slate-200 text-slate-700'
+                            }`}
+                          >
+                            {/* Print Action */}
+                            <DropdownMenuItem
+                              onClick={() => handlePrintClick(invoice)}
+                              className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg hover:text-cyan-400 focus:text-cyan-400 focus:bg-cyan-500/10"
+                            >
+                              <Printer className="w-3.5 h-3.5 text-cyan-400" />
+                              <span>{t('common.actionsList.print')}</span>
+                            </DropdownMenuItem>
+
+                            {/* Edit Action */}
+                            <DropdownMenuItem
+                              onClick={() => navigate(`/invoices/quick-invoice?edit=${invoice.id}`)}
+                              className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg hover:text-orange-400 focus:text-orange-400 focus:bg-orange-500/10"
+                            >
+                              <Edit2 className="w-3.5 h-3.5 text-orange-400" />
+                              <span>{t('common.actionsList.edit')}</span>
+                            </DropdownMenuItem>
+
+                            {/* 💳 Due Balance Payment: Open in-place Modal without redirect */}
+                            {invoice.status === 'pending' && (
                               <DropdownMenuItem
-                                onClick={() => {
-                                  setInvoiceToDelete(invoice);
-                                  setShowDeleteModal(true);
-                                }}
-                                className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg text-rose-500 hover:text-rose-400 focus:text-rose-400 focus:bg-rose-500/10"
+                                onClick={() => setDuePayInvoice(invoice)}
+                                className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg hover:text-emerald-400 focus:text-emerald-400 focus:bg-emerald-500/10"
                               >
-                                <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                                <span>{t('common.actionsList.delete')}</span>
+                                <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>{t('common.actionsList.payDue')}</span>
                               </DropdownMenuItem>
-                            </>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                            )}
+
+                            {/* Delete Action (Admin Only) */}
+                            {currentUser?.role === 'ADMIN' && (
+                              <>
+                                <DropdownMenuSeparator className={isDark ? 'bg-slate-800' : 'bg-slate-100'} />
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setInvoiceToDelete(invoice);
+                                    setShowDeleteModal(true);
+                                  }}
+                                  className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg text-rose-500 hover:text-rose-400 focus:text-rose-400 focus:bg-rose-500/10"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                  <span>{t('common.actionsList.delete')}</span>
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </td>
                   </tr>
                 );
