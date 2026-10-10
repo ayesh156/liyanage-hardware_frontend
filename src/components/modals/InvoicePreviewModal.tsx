@@ -367,10 +367,10 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
                     * පොලිතින් බෑගයක් සඳහා රු. 5/- ක් අය කෙරේ.
                   </div>
 
-                  {/* Item count */}
+                  {/* Item count (Distinct unique line items count) */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0', fontSize: '12px', ...PB, marginTop: '2px' }}>
                     <span>භාණ්ඩ සංඛ්‍යාව</span>
-                    <span style={{ fontWeight: 800 }}>[{invoice.items.reduce((a, i) => a + i.quantity, 0)}]</span>
+                    <span style={{ fontWeight: 800 }}>[{invoice.items.length}]</span>
                   </div>
 
                   {/* Customer savings — always shown when > 0, matches receiptGenerator */}

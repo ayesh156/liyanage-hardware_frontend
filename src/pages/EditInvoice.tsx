@@ -444,9 +444,24 @@ export const EditInvoice: React.FC = () => {
                 <h3 className={`text-lg font-bold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
                   Customer
                 </h3>
-                <p className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-                  {(isSinhala && currentCustomer?.nameSi ? currentCustomer.nameSi : currentCustomer?.name) || 'Walk-in Customer'}
-                </p>
+                <div className="flex items-center gap-2">
+                  <p className={`text-sm ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
+                    {(isSinhala && currentCustomer?.nameSi ? currentCustomer.nameSi : currentCustomer?.name) || 'Walk-in Customer'}
+                  </p>
+                  {!isWalkIn && Boolean(selectedCustomer) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCustomer('');
+                        setIsWalkIn(true);
+                      }}
+                      className="p-1 rounded-md hover:bg-rose-500/10 transition-colors"
+                      title="Clear customer"
+                    >
+                      <X className="w-4 h-4 text-slate-400 hover:text-rose-400 cursor-pointer" />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 

@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Customer, Invoice } from '../../types';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
 import api from '../../lib/api';
 import { toast } from 'react-toastify';
 import { 
@@ -11,11 +12,12 @@ import {
 } from 'lucide-react';
 import { sendWhatsAppDueReminder } from '../../lib/whatsappReminder';
 
-interface CustomerDueInvoicesModalProps {
+export interface CustomerDueInvoicesModalProps {
   isOpen: boolean;
   onClose: () => void;
   customer: Customer | null;
-  onSuccess: () => void;
+  onSuccess?: () => void;
+  onSettlementSuccess?: () => void;
 }
 
 export const CustomerDueInvoicesModal: React.FC<CustomerDueInvoicesModalProps> = ({
@@ -23,9 +25,11 @@ export const CustomerDueInvoicesModal: React.FC<CustomerDueInvoicesModalProps> =
   onClose,
   customer,
   onSuccess,
+  onSettlementSuccess,
 }) => {
   const { theme } = useTheme();
   const { i18n } = useTranslation();
+  const queryClient = useQueryClient();
   const isDark = theme === 'dark';
   const isSi = (i18n.language || '').toLowerCase().startsWith('si');
 
@@ -36,12 +40,22 @@ export const CustomerDueInvoicesModal: React.FC<CustomerDueInvoicesModalProps> =
   const [sortBy, setSortBy] = useState<'date' | 'price' | 'invNo'>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [liveBalance, setLiveBalance] = useState<number>(Number(customer?.loanBalance || 0));
 
   // පාරිභෝගිකයාගේ හිඟ බිල්පත් සජීවීව Backend එකෙන් ලබා ගැනීම
   const fetchCustomerInvoices = useCallback(async () => {
     if (!customer?.id) return;
     try {
       setLoading(true);
+      // Fetch fresh customer entity to guarantee synchronized balance
+      try {
+        const custRes = await api.get<any>(`/customers/${customer.id}`);
+        const freshCust = custRes?.data || custRes;
+        if (freshCust && freshCust.loanBalance !== undefined) {
+          setLiveBalance(Number(freshCust.loanBalance));
+        }
+      } catch (_) {}
+
       const res = await api.get<any>('/invoices', { customerId: customer.id, perPage: 100 }, true);
       const data: Invoice[] = Array.isArray(res) ? res : (res?.data || []);
       // හිඟ මුදලක් පවතින ඉන්වොයිස් පමණක් තෝරා ගැනීම
@@ -61,6 +75,7 @@ export const CustomerDueInvoicesModal: React.FC<CustomerDueInvoicesModalProps> =
 
   useEffect(() => {
     if (isOpen && customer) {
+      setLiveBalance(Number(customer.loanBalance || 0));
       fetchCustomerInvoices();
       setPayingAmountStr('');
     }
@@ -92,6 +107,18 @@ export const CustomerDueInvoicesModal: React.FC<CustomerDueInvoicesModalProps> =
       .reduce((sum, i) => sum + ((i.total || 0) - (i.receivedAmount || 0)), 0);
   }, [sortedInvoices, selectedInvoiceIds]);
 
+  const allSelected = useMemo(() => {
+    return sortedInvoices.length > 0 && selectedInvoiceIds.size === sortedInvoices.length;
+  }, [sortedInvoices.length, selectedInvoiceIds.size]);
+
+  const toggleSelectAll = () => {
+    if (allSelected) {
+      setSelectedInvoiceIds(new Set());
+    } else {
+      setSelectedInvoiceIds(new Set(sortedInvoices.map(i => i.id)));
+    }
+  };
+
   const toggleSelectInvoice = (id: string) => {
     const next = new Set(selectedInvoiceIds);
     if (next.has(id)) {
@@ -120,36 +147,56 @@ export const CustomerDueInvoicesModal: React.FC<CustomerDueInvoicesModalProps> =
 
     setIsSubmitting(true);
     try {
-      let remainingToAllocate = entered;
-      const targetInvoices = sortedInvoices.filter(i => selectedInvoiceIds.has(i.id));
-
-      // 🌟 FIFO ක්‍රමයට තෝරාගත් එක් එක් ඉන්වොයිස් හි ගෙවීම් යාවත්කාලීන කිරීම
-      for (const inv of targetInvoices) {
-        if (remainingToAllocate <= 0) break;
-        const currentPaid = inv.receivedAmount || 0;
-        const invoiceDue = inv.total - currentPaid;
-        const payThis = Math.min(invoiceDue, remainingToAllocate);
-
-        await api.patch(`/invoices/${inv.id}`, {
-          receivedAmount: currentPaid + payThis,
-          changeAmount: 0,
+      try {
+        // 🌟 Atomic settlement endpoint: settles invoices and dynamically recalculates Customer due balance
+        await api.post('/invoices/settle', {
+          customerId: customer.id,
+          invoiceIds: Array.from(selectedInvoiceIds),
+          amount: entered,
         });
+      } catch (postErr) {
+        // Fallback: per-invoice patch with backend dynamic recalculation
+        let remainingToAllocate = entered;
+        const targetInvoices = sortedInvoices.filter(i => selectedInvoiceIds.has(i.id));
 
-        remainingToAllocate -= payThis;
+        for (const inv of targetInvoices) {
+          if (remainingToAllocate <= 0) break;
+          const currentPaid = inv.receivedAmount || 0;
+          const invoiceDue = inv.total - currentPaid;
+          const payThis = Math.min(invoiceDue, remainingToAllocate);
+          const newReceived = currentPaid + payThis;
+          const remainingDue = Math.max(0, inv.total - newReceived);
+
+          // When outstanding due balance is fully cleared to 0, immediately mutate and save its status to 'paid'
+          await api.patch(`/invoices/${inv.id}`, {
+            receivedAmount: newReceived,
+            changeAmount: 0,
+            status: remainingDue <= 0 ? 'paid' : 'pending',
+          });
+
+          remainingToAllocate -= payThis;
+        }
+
+        // Trigger dynamic customer due balance aggregation & sync
+        try {
+          await api.post(`/customers/${customer.id}/recalculate-due`, {});
+        } catch (_) {}
       }
 
-      // 🌟 Backend Customer Schema එකෙහි loanBalance අගයද සෘජුවම අඩු කර සමමුහුර්ත කිරීම
-      const newCustomerLoanBalance = Math.max(0, Number(customer.loanBalance || 0) - entered);
-      await api.put(`/customers/${customer.id}`, {
-        ...customer,
-        loanBalance: newCustomerLoanBalance,
-      });
+      // 🌟 Invalidate and refetch both /invoices and /customers queries
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['customers'] });
 
       // 🌟 පද්ධතියේ සියලුම පිටු (Invoices & Customers) Live Sync වීමට Global Event එකක් නිකුත් කිරීම
       window.dispatchEvent(new CustomEvent('balance-updated'));
 
       toast.success(isSi ? 'ණය පියවීම සාර්ථකව යාවත්කාලීන විය!' : 'Payments settled successfully!');
-      onSuccess();
+      if (onSettlementSuccess) {
+        onSettlementSuccess();
+      }
+      if (onSuccess) {
+        onSuccess();
+      }
       onClose();
     } catch (err: any) {
       toast.error(err?.message || 'Failed to process payment');
@@ -175,7 +222,7 @@ export const CustomerDueInvoicesModal: React.FC<CustomerDueInvoicesModalProps> =
               </h3>
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              {customer.name} {customer.phone ? `(${customer.phone})` : ''} • Total Balance: Rs. {Number(customer.loanBalance).toLocaleString()}
+              {customer.name} {customer.phone ? `(${customer.phone})` : ''} • Total Balance: Rs. {Number(liveBalance).toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </p>
           </div>
           <div className="flex items-center gap-1.5">
@@ -247,6 +294,28 @@ export const CustomerDueInvoicesModal: React.FC<CustomerDueInvoicesModalProps> =
 
         {/* Invoice List (Selectable Table) */}
         <div className="flex-1 overflow-y-auto p-4 space-y-1.5 custom-scrollbar">
+          {/* Master "Select All" Checkbox Header Row */}
+          {!loading && sortedInvoices.length > 0 && (
+            <div className={`p-2.5 mb-2 rounded-xl border flex items-center justify-between transition-all ${
+              isDark ? 'bg-slate-800/80 border-slate-700 text-white' : 'bg-slate-100 border-slate-200 text-slate-900'
+            }`}>
+              <label className="flex items-center gap-3 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleSelectAll}
+                  className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                />
+                <span className="text-xs font-bold">
+                  සියල්ල තෝරන්න (Select All Invoices)
+                </span>
+              </label>
+              <span className="text-[11px] font-mono font-bold text-amber-500">
+                {selectedInvoiceIds.size} / {sortedInvoices.length} Selected
+              </span>
+            </div>
+          )}
+
           {loading ? (
             <div className="py-8 text-center text-xs text-slate-400">Loading pending invoices...</div>
           ) : sortedInvoices.length === 0 ? (

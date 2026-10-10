@@ -1395,19 +1395,83 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
   const [receivedAmount, setReceivedAmount] = useState<number>(0);
   const receivedAmountInputRef = useRef<HTMLInputElement>(null);
   const isReceivedAmountManuallyEdited = useRef<boolean>(false);
+  const isExplicitCreditMode = useRef<boolean>(false);
 
-  // ── POS Credit / Pending Safeguard: Auto-synchronize paidAmount = totalAmount for Walk-in Cash sales ──
+  /**
+   * Explicit Credit selection handler:
+   * 1. Clears receivedAmount (set to 0).
+   * 2. Forces paymentMethod = 'credit'.
+   * 3. Sets isExplicitCreditMode.current = true.
+   * 4. Due balance immediately reflects the full invoice total.
+   */
+  const handleSelectCredit = useCallback(() => {
+    setPaymentMethod('credit');
+    setReceivedAmount(0);
+    isExplicitCreditMode.current = true;
+    isReceivedAmountManuallyEdited.current = true;
+    playBeep('add');
+  }, [playBeep]);
+
+  /**
+   * Explicit Cash selection handler:
+   * 1. Auto-fills receivedAmount = computedFinalTotal.
+   * 2. Sets paymentMethod = 'cash'.
+   * 3. Resets isExplicitCreditMode.current = false.
+   * 4. Due balance becomes 0.
+   */
+  const handleSelectCash = useCallback(() => {
+    setPaymentMethod('cash');
+    setReceivedAmount(computedFinalTotal);
+    isExplicitCreditMode.current = false;
+    isReceivedAmountManuallyEdited.current = false;
+    playBeep('add');
+  }, [computedFinalTotal, playBeep]);
+
+  /**
+   * Reactive input change handler for receivedAmount:
+   * 1. If val < totalAmount:
+   *    - Keep / switch paymentMethod to 'credit'.
+   *    - Compute dueAmount = Math.max(0, totalAmount - val).
+   * 2. If val >= totalAmount:
+   *    - Automatically toggle paymentMethod to 'cash'.
+   *    - Clear isExplicitCreditMode.
+   * 3. If operator explicitly clicked 'Credit' and enters a partial amount,
+   *    ensures mode strictly remains 'credit' without jumping back to Cash.
+   */
+  const handleReceivedAmountChange = useCallback((value: string) => {
+    isReceivedAmountManuallyEdited.current = true;
+    const numVal = parseFloat(value);
+    const sanitizedVal = isNaN(numVal) || numVal < 0 ? 0 : numVal;
+    setReceivedAmount(sanitizedVal);
+
+    if (sanitizedVal < computedFinalTotal) {
+      setPaymentMethod('credit');
+    } else {
+      setPaymentMethod('cash');
+      isExplicitCreditMode.current = false;
+    }
+  }, [computedFinalTotal]);
+
+  // ── POS Cash Auto-synchronization for unedited cash bills ──
   useEffect(() => {
-    if (isCurrentCustomerWalkIn && paymentMethod === 'cash' && !isReceivedAmountManuallyEdited.current) {
+    if (paymentMethod === 'cash' && !isReceivedAmountManuallyEdited.current) {
       setReceivedAmount(computedFinalTotal);
     }
-  }, [computedFinalTotal, isCurrentCustomerWalkIn, paymentMethod]);
+  }, [computedFinalTotal, paymentMethod]);
 
+  // Explicitly parse tender: 0 or empty string strictly equals 0 tender (not full payment)
+  const tender = (receivedAmount === null || receivedAmount === undefined || isNaN(Number(receivedAmount))) ? 0 : Number(receivedAmount);
+  // Computed due balance:
+  const dueAmount = paymentMethod === 'credit'
+    ? Math.max(0, computedFinalTotal - tender)
+    : (tender < computedFinalTotal ? Math.max(0, computedFinalTotal - tender) : 0);
   // Signed balance: positive = change (surplus), negative = deficit (amount still due)
-  const changeAmount = receivedAmount > 0 ? Number((receivedAmount - computedFinalTotal).toFixed(2)) : 0;
-  const isDeficit = receivedAmount > 0 && receivedAmount < computedFinalTotal;
-  const walkInDueBalance = paymentMethod === 'credit' ? computedFinalTotal : Math.max(0, computedFinalTotal - receivedAmount);
-  const hasWalkInCreditRisk = isCurrentCustomerWalkIn && walkInDueBalance > 0 && items.length > 0;
+  const changeAmount = paymentMethod === 'cash' && tender > computedFinalTotal
+    ? Number((tender - computedFinalTotal).toFixed(2))
+    : 0;
+  const isDeficit = tender > 0 && tender < computedFinalTotal;
+  const walkInDueBalance = isCurrentCustomerWalkIn ? dueAmount : 0;
+  const hasWalkInCreditRisk = isCurrentCustomerWalkIn && dueAmount > 0 && items.length > 0;
 
   // ═══════════════════════════════════════════════════════════════════════
   // LIVE SYNC — real-time bidirectional cart mirroring between terminals
@@ -1554,15 +1618,23 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
           };
         });
 
+        const editTender = (receivedAmount === null || (receivedAmount as any) === undefined || isNaN(Number(receivedAmount))) ? 0 : Number(receivedAmount);
+        const editDueBalance = paymentMethod === 'credit'
+          ? (editTender === 0 ? computedFinalTotal : Math.max(0, computedFinalTotal - editTender))
+          : Math.max(0, computedFinalTotal - editTender);
+        const editStatus = paymentMethod === 'credit'
+          ? (editDueBalance > 0 ? 'pending' : 'paid')
+          : (editDueBalance > 0 ? 'pending' : 'paid');
+
         const payloadData = {
           customerId: selectedCustomerId || 'walk-in',
           discount: invoiceDiscount,
           subtotal: Math.round(computedSubtotal * 100) / 100,
           total: Math.round(computedFinalTotal * 100) / 100,
-          receivedAmount: receivedAmount > 0 ? Math.round(receivedAmount * 100) / 100 : undefined,
-          changeAmount: changeAmount !== 0 ? Math.round(changeAmount * 100) / 100 : undefined,
+          receivedAmount: Math.round(editTender * 100) / 100,
+          changeAmount: changeAmount !== 0 ? Math.round(changeAmount * 100) / 100 : 0,
           paymentMethod: paymentMethod,
-          status: paymentMethod === 'credit' ? 'pending' : 'paid',
+          status: editStatus,
           items: invoiceItems,
         };
 
@@ -1637,13 +1709,22 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
     const resolvedCustomerId = selectedCust?.id || (isCurrentCustomerWalkIn ? (dbWalkIn?.id || 'default-customer') : selectedCustomerId);
     const customerName = selectedCust?.name || (isSinhala ? 'සාමාන්‍ය පාරිභෝගිකයා' : 'Walk-in Customer');
 
+    // Explicit tender calculation:
+    const parsedTender = (receivedAmount === null || (receivedAmount as any) === undefined || isNaN(Number(receivedAmount))) ? 0 : Number(receivedAmount);
     // POS Cash Protection: If walk-in and cash payment with no receivedAmount entered, auto-fill total
-    const effectiveReceivedAmount = isCurrentCustomerWalkIn && paymentMethod === 'cash' && (receivedAmount <= 0)
+    const effectiveReceivedAmount = isCurrentCustomerWalkIn && paymentMethod === 'cash' && (parsedTender <= 0)
       ? computedFinalTotal
-      : receivedAmount;
-    const effectiveChangeAmount = effectiveReceivedAmount > 0
-      ? Number((effectiveReceivedAmount - computedFinalTotal).toFixed(2))
-      : changeAmount;
+      : parsedTender;
+    const effectiveTender = (effectiveReceivedAmount === null || (effectiveReceivedAmount as any) === undefined || isNaN(Number(effectiveReceivedAmount))) ? 0 : Number(effectiveReceivedAmount);
+    const effectiveDueBalance = paymentMethod === 'credit'
+      ? (effectiveTender === 0 ? computedFinalTotal : Math.max(0, computedFinalTotal - effectiveTender))
+      : Math.max(0, computedFinalTotal - effectiveTender);
+    const effectiveStatus = paymentMethod === 'credit'
+      ? (effectiveDueBalance > 0 ? 'pending' : 'paid')
+      : (effectiveDueBalance > 0 ? 'pending' : 'paid');
+    const effectiveChangeAmount = effectiveTender > 0
+      ? Number((effectiveTender - computedFinalTotal).toFixed(2))
+      : 0;
 
     // Build payload matching backend InvoiceService.create input schema
     const payload = {
@@ -1652,12 +1733,12 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
       subtotal: Math.round(computedSubtotal * 100) / 100,
       discount: invoiceDiscount,
       total: Math.round(computedFinalTotal * 100) / 100,
-      receivedAmount: effectiveReceivedAmount > 0 ? Math.round(effectiveReceivedAmount * 100) / 100 : undefined,
-      changeAmount: effectiveChangeAmount !== 0 ? Math.round(effectiveChangeAmount * 100) / 100 : undefined,
+      receivedAmount: Math.round(effectiveTender * 100) / 100,
+      changeAmount: effectiveChangeAmount !== 0 ? Math.round(effectiveChangeAmount * 100) / 100 : 0,
       issueDate: new Date().toISOString(),
       dueDate: new Date().toISOString(),
       paymentMethod,
-      status: paymentMethod === 'credit' ? 'pending' : 'paid',
+      status: effectiveStatus,
       items: invoiceItems,
     };
 
@@ -1748,15 +1829,23 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
         };
       });
 
+      const updateTender = (receivedAmount === null || (receivedAmount as any) === undefined || isNaN(Number(receivedAmount))) ? 0 : Number(receivedAmount);
+      const updateDueBalance = paymentMethod === 'credit'
+        ? (updateTender === 0 ? computedFinalTotal : Math.max(0, computedFinalTotal - updateTender))
+        : Math.max(0, computedFinalTotal - updateTender);
+      const updateStatus = paymentMethod === 'credit'
+        ? (updateDueBalance > 0 ? 'pending' : 'paid')
+        : (updateDueBalance > 0 ? 'pending' : 'paid');
+
       const payloadData = {
         customerId: selectedCustomerId || 'walk-in',
         discount: invoiceDiscount,
         subtotal: Math.round(computedSubtotal * 100) / 100,
         total: Math.round(computedFinalTotal * 100) / 100,
-        receivedAmount: receivedAmount > 0 ? Math.round(receivedAmount * 100) / 100 : undefined,
-        changeAmount: changeAmount !== 0 ? Math.round(changeAmount * 100) / 100 : undefined,
+        receivedAmount: Math.round(updateTender * 100) / 100,
+        changeAmount: changeAmount !== 0 ? Math.round(changeAmount * 100) / 100 : 0,
         paymentMethod: paymentMethod,
-        status: paymentMethod === 'credit' ? 'pending' : 'paid',
+        status: updateStatus,
         items: invoiceItems,
       };
 
@@ -1806,13 +1895,22 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
     const resolvedCustomerId = selectedCust?.id || (isCurrentCustomerWalkIn ? (dbWalkIn?.id || 'default-customer') : selectedCustomerId);
     const customerName = selectedCust?.name || (isSinhala ? 'සාමාන්‍ය පාරිභෝගිකයා' : 'Walk-in Customer');
 
+    // Explicit tender calculation:
+    const parsedTender = (receivedAmount === null || (receivedAmount as any) === undefined || isNaN(Number(receivedAmount))) ? 0 : Number(receivedAmount);
     // POS Cash Protection: If walk-in and cash payment with no receivedAmount entered, auto-fill total
-    const effectiveReceivedAmount = isCurrentCustomerWalkIn && paymentMethod === 'cash' && (receivedAmount <= 0)
+    const effectiveReceivedAmount = isCurrentCustomerWalkIn && paymentMethod === 'cash' && (parsedTender <= 0)
       ? computedFinalTotal
-      : receivedAmount;
-    const effectiveChangeAmount = effectiveReceivedAmount > 0
-      ? Number((effectiveReceivedAmount - computedFinalTotal).toFixed(2))
-      : changeAmount;
+      : parsedTender;
+    const effectiveTender = (effectiveReceivedAmount === null || (effectiveReceivedAmount as any) === undefined || isNaN(Number(effectiveReceivedAmount))) ? 0 : Number(effectiveReceivedAmount);
+    const effectiveDueBalance = paymentMethod === 'credit'
+      ? (effectiveTender === 0 ? computedFinalTotal : Math.max(0, computedFinalTotal - effectiveTender))
+      : Math.max(0, computedFinalTotal - effectiveTender);
+    const effectiveStatus = paymentMethod === 'credit'
+      ? (effectiveDueBalance > 0 ? 'pending' : 'paid')
+      : (effectiveDueBalance > 0 ? 'pending' : 'paid');
+    const effectiveChangeAmount = effectiveTender > 0
+      ? Number((effectiveTender - computedFinalTotal).toFixed(2))
+      : 0;
 
     // 🌟 Standard ISO-8601 DateTime string (Ensures backend Prisma accepts payload without 400/500 errors)
     const nowIso = new Date().toISOString();
@@ -1823,12 +1921,12 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
       subtotal: Math.round(computedSubtotal * 100) / 100,
       discount: invoiceDiscount,
       total: Math.round(computedFinalTotal * 100) / 100,
-      receivedAmount: effectiveReceivedAmount > 0 ? Math.round(effectiveReceivedAmount * 100) / 100 : undefined,
-      changeAmount: effectiveChangeAmount !== 0 ? Math.round(effectiveChangeAmount * 100) / 100 : undefined,
+      receivedAmount: Math.round(effectiveTender * 100) / 100,
+      changeAmount: effectiveChangeAmount !== 0 ? Math.round(effectiveChangeAmount * 100) / 100 : 0,
       issueDate: nowIso,
       dueDate: nowIso,
       paymentMethod,
-      status: paymentMethod === 'credit' ? 'pending' : 'paid',
+      status: effectiveStatus,
       items: invoiceItems,
     };
 
@@ -2098,8 +2196,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
               updateItemQuantity(item.id, decrementQuantity(item.quantity, 0.01));
             }
           } else if (isPaymentFocused) {
-            setPaymentMethod('cash');
-            playBeep('add');
+            handleSelectCash();
           }
           break;
 
@@ -2111,8 +2208,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
               updateItemQuantity(item.id, incrementQuantity(item.quantity));
             }
           } else if (isPaymentFocused) {
-            setPaymentMethod('credit');
-            playBeep('add');
+            handleSelectCredit();
           }
           break;
 
@@ -2784,13 +2880,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                 </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    setPaymentMethod('cash');
-                    setReceivedAmount(computedFinalTotal);
-                    isReceivedAmountManuallyEdited.current = false;
-                    playBeep('add');
-                    toast.success(isSinhala ? 'සම්පූර්ණ මුදල සටහන් විය' : 'Total auto-filled');
-                  }}
+                  onClick={handleSelectCash}
                   className="px-2 py-1 rounded text-[9px] font-extrabold bg-amber-500 hover:bg-amber-600 text-slate-950 flex-shrink-0 shadow-sm transition-all active:scale-95"
                 >
                   {isSinhala ? 'Auto-fill Total' : 'Auto-fill Total'}
@@ -2801,7 +2891,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
             <div className="grid grid-cols-2 gap-1.5">
               <div className={`flex rounded-lg overflow-hidden border ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
                 <button
-                  onClick={() => { setPaymentMethod('cash'); playBeep('add'); }}
+                  onClick={handleSelectCash}
                   className={`flex-1 flex items-center justify-center gap-1 py-2 text-xs font-medium transition-all ${paymentMethod === 'cash'
                       ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white'
                       : isDark ? 'bg-slate-700/50 text-slate-400' : 'bg-slate-50 text-slate-600'
@@ -2811,7 +2901,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                   {t('invoice.cash')}
                 </button>
                 <button
-                  onClick={() => { setPaymentMethod('credit'); playBeep('add'); }}
+                  onClick={handleSelectCredit}
                   className={`flex-1 flex items-center justify-center gap-1 py-2 text-xs font-medium transition-all ${paymentMethod === 'credit'
                       ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white'
                       : isDark ? 'bg-slate-700/50 text-slate-400' : 'bg-slate-50 text-slate-600'
@@ -2845,13 +2935,13 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                   inputMode="decimal"
                   min="0"
                   value={receivedAmount || ''}
-                  onChange={(e) => setReceivedAmount(Math.max(0, parseFloat(e.target.value) || 0))}
+                  onChange={(e) => handleReceivedAmountChange(e.target.value)}
                   placeholder={t('invoice.receivedAmount')}
                   className={`flex-1 py-2 text-xs font-medium bg-transparent focus:outline-none ${isDark ? 'text-white placeholder-slate-500' : 'text-slate-900 placeholder-slate-400'}`}
                 />
-                {receivedAmount > 0 && (
-                  <span className={`text-xs font-bold ${changeAmount >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                    Δ {changeAmount.toLocaleString()}
+                {(receivedAmount > 0 || paymentMethod === 'credit') && (
+                  <span className={`text-xs font-bold ${paymentMethod === 'cash' && changeAmount >= 0 && dueAmount === 0 ? 'text-green-500' : 'text-amber-400'}`}>
+                    {paymentMethod === 'cash' && changeAmount >= 0 && dueAmount === 0 ? `Δ ${changeAmount.toLocaleString()}` : `Due: ${dueAmount.toLocaleString()}`}
                   </span>
                 )}
               </div>
@@ -4174,18 +4264,18 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                   </div>
                   <div className="relative">
                     <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Rs.</span>
-                    <input ref={receivedAmountInputRef} type="number" min="0" value={receivedAmount || ''} onChange={(e) => setReceivedAmount(Math.max(0, parseFloat(e.target.value) || 0))} onFocus={() => { setIsCartFocused(false); setSelectedCartIndex(-1); setIsPaymentFocused(false); setCurrentMode('payment'); }} onBlur={() => setCurrentMode('search')} placeholder="0" className={`w-full pl-9 pr-3 py-2 text-sm text-right font-bold border-2 rounded-lg focus:outline-none transition-all ${isDark ? 'border-slate-600 bg-slate-700/50 text-white placeholder-slate-500 focus:border-emerald-500' : 'border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:border-emerald-500'}`} />
+                    <input ref={receivedAmountInputRef} type="number" min="0" value={receivedAmount || ''} onChange={(e) => handleReceivedAmountChange(e.target.value)} onFocus={() => { setIsCartFocused(false); setSelectedCartIndex(-1); setIsPaymentFocused(false); setCurrentMode('payment'); }} onBlur={() => setCurrentMode('search')} placeholder="0" className={`w-full pl-9 pr-3 py-2 text-sm text-right font-bold border-2 rounded-lg focus:outline-none transition-all ${isDark ? 'border-slate-600 bg-slate-700/50 text-white placeholder-slate-500 focus:border-emerald-500' : 'border-slate-200 bg-slate-50 text-slate-900 placeholder-slate-400 focus:border-emerald-500'}`} />
                   </div>
                   <div className="mt-1.5 grid grid-cols-4 gap-1">
                     {[{ label: 'Exact', value: computedFinalTotal, isExact: true }, { label: '+100', value: Math.ceil(computedFinalTotal / 100) * 100 }, { label: '+500', value: Math.ceil(computedFinalTotal / 500) * 500 }, { label: '+1K', value: Math.ceil(computedFinalTotal / 1000) * 1000 }].map((btn) => (
-                      <button key={btn.label} onClick={() => { setReceivedAmount(btn.value); playBeep('add'); }} className={`px-1 py-1 rounded text-[9px] font-medium transition-all ${btn.isExact ? isDark ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30' : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700 border border-emerald-200' : isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}>{btn.isExact ? '= ' + btn.value.toLocaleString() : btn.label}</button>
+                      <button key={btn.label} onClick={() => { handleReceivedAmountChange(String(btn.value)); playBeep('add'); }} className={`px-1 py-1 rounded text-[9px] font-medium transition-all ${btn.isExact ? isDark ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30' : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700 border border-emerald-200' : isDark ? 'bg-slate-700 hover:bg-slate-600 text-slate-300' : 'bg-slate-100 hover:bg-slate-200 text-slate-600'}`}>{btn.isExact ? '= ' + btn.value.toLocaleString() : btn.label}</button>
                     ))}
                   </div>
-                  {receivedAmount > 0 && (
-                    <div className={`mt-1.5 p-2 rounded-lg ${changeAmount >= 0 ? isDark ? 'bg-emerald-500/20 border border-emerald-500/30' : 'bg-emerald-50 border border-emerald-200' : isDark ? 'bg-red-500/20 border border-red-500/30' : 'bg-red-50 border border-red-200'}`}>
+                  {(receivedAmount > 0 || paymentMethod === 'credit') && (
+                    <div className={`mt-1.5 p-2 rounded-lg ${paymentMethod === 'credit' || changeAmount < 0 ? isDark ? 'bg-amber-500/20 border border-amber-500/30' : 'bg-amber-50 border border-amber-200' : isDark ? 'bg-emerald-500/20 border border-emerald-500/30' : 'bg-emerald-50 border border-emerald-200'}`}>
                       <div className="flex justify-between items-center">
-                        <span className={`text-[10px] font-medium ${changeAmount >= 0 ? isDark ? 'text-emerald-400' : 'text-emerald-700' : isDark ? 'text-red-400' : 'text-red-700'}`}>{changeAmount >= 0 ? t('invoice.changeAmount') : t('invoice.balanceDue')}</span>
-                        <span className={`text-sm font-bold font-mono ${changeAmount >= 0 ? isDark ? 'text-emerald-400' : 'text-emerald-600' : isDark ? 'text-red-400' : 'text-red-600'}`}>Rs. {Math.abs(changeAmount).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                        <span className={`text-[10px] font-medium ${paymentMethod === 'credit' || changeAmount < 0 ? isDark ? 'text-amber-400' : 'text-amber-700' : isDark ? 'text-emerald-400' : 'text-emerald-700'}`}>{paymentMethod === 'credit' || changeAmount < 0 ? t('invoice.balanceDue', 'Due Balance') : t('invoice.changeAmount', 'Change')}</span>
+                        <span className={`text-sm font-bold font-mono ${paymentMethod === 'credit' || changeAmount < 0 ? isDark ? 'text-amber-400' : 'text-amber-600' : isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>Rs. {(paymentMethod === 'credit' ? dueAmount : Math.abs(changeAmount)).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
                       </div>
                     </div>
                   )}
@@ -4211,9 +4301,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                       <button
                         type="button"
                         onClick={() => {
-                          setPaymentMethod('cash');
-                          setReceivedAmount(computedFinalTotal);
-                          isReceivedAmountManuallyEdited.current = false;
+                          handleSelectCash();
                           playBeep('add');
                           toast.success(isSinhala ? 'සම්පූර්ණ මුදල ස්වයංක්‍රීයව සටහන් විය' : 'Total amount auto-filled');
                         }}
@@ -4235,9 +4323,9 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
 
                   <div className="space-y-2 text-[11px]">
                     <div className={`flex justify-between ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
-                      <span>{t('quickCheckout.itemCount')}</span>
+                      <span>{t('quickCheckout.totalItems', 'Total Items')}</span>
                       <span className="font-medium tabular-nums">
-                        {items.reduce((sum, i) => sum + i.quantity, 0)} {t('invoice.units')}
+                        {items.length} items
                       </span>
                     </div>
 
@@ -4360,15 +4448,19 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
         placeholder={t('quickCheckout.searchCustomerPlaceholder')}
         className={`flex-1 bg-transparent text-xs font-medium focus:outline-none w-full ${isDark ? 'text-white placeholder-slate-500' : 'text-slate-900 placeholder-slate-400'}`}
       />
-      {!isCurrentCustomerWalkIn && (
-        <button onClick={() => { 
-          const dbWalkIn = customers.find(c => isWalkInCustomer(c));
-          setSelectedCustomerId(dbWalkIn?.id || 'default-customer'); 
-          setCustomerSearch(''); 
-          setCustomerOpen(false); 
-        }}
-          className={`p-0.5 rounded flex-shrink-0 ${isDark ? 'hover:bg-slate-600 text-slate-400' : 'hover:bg-slate-200 text-slate-500'}`}>
-          <X className="w-3 h-3" />
+      {(!isCurrentCustomerWalkIn || customerSearch || Boolean(editInvoiceId)) && (
+        <button
+          type="button"
+          onClick={() => { 
+            const dbWalkIn = customers.find(c => isWalkInCustomer(c));
+            setSelectedCustomerId(dbWalkIn?.id || 'default-customer'); 
+            setCustomerSearch(''); 
+            setCustomerOpen(false); 
+          }}
+          className={`p-1 rounded flex-shrink-0 transition-colors ${isDark ? 'hover:bg-slate-600' : 'hover:bg-slate-200'}`}
+          title="Clear Customer"
+        >
+          <X className="w-4 h-4 text-slate-400 hover:text-rose-400 cursor-pointer" />
         </button>
       )}
     </div>
@@ -4417,12 +4509,33 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
     <Plus className="w-4 h-4" />
     {t('quickCheckout.newCustomer')}
   </button>
-                  {/* Show phone number of selected customer */}
+                  {/* Selected Customer Chip / Badge with clear button */}
                   {!isCurrentCustomerWalkIn && selectedCustomerId && (() => {
                     const c = findCustomerById(selectedCustomerId);
                     return c ? (
-                      <div className={`mt-1.5 p-1.5 rounded-lg ${isDark ? 'bg-slate-700/30' : 'bg-slate-50'}`}>
-                        <p className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{c.phone || 'No phone'}</p>
+                      <div className={`mt-2 p-2 rounded-lg border flex items-center justify-between text-xs transition-all ${
+                        isDark ? 'bg-slate-700/40 border-slate-600/60' : 'bg-slate-100/90 border-slate-200'
+                      }`}>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <User className="w-3.5 h-3.5 flex-shrink-0 text-amber-500" />
+                          <div className="min-w-0">
+                            <span className="font-bold truncate block">{c.name}</span>
+                            {c.phone && <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{c.phone}</span>}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const dbWalkIn = customers.find(cust => isWalkInCustomer(cust));
+                            setSelectedCustomerId(dbWalkIn?.id || 'default-customer');
+                            setCustomerSearch('');
+                            setCustomerOpen(false);
+                          }}
+                          className="p-1 rounded-md hover:bg-rose-500/10 transition-colors ml-2"
+                          title="Clear Customer"
+                        >
+                          <X className="w-4 h-4 text-slate-400 hover:text-rose-400 cursor-pointer" />
+                        </button>
                       </div>
                     ) : null;
                   })()}
@@ -4532,11 +4645,11 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                     <kbd className={`px-1 py-0.5 rounded text-[9px] font-mono ${isDark ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-600'}`}>F5</kbd>
                   </div>
                   <div className="grid grid-cols-2 gap-1.5">
-                    <button onClick={() => { setPaymentMethod('cash'); playBeep('add'); }} className={`flex items-center justify-center gap-1.5 p-2 rounded-lg text-xs font-medium transition-all ${paymentMethod === 'cash' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow shadow-emerald-500/30' : isDark ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
+                    <button onClick={() => { handleSelectCash(); playBeep('add'); }} className={`flex items-center justify-center gap-1.5 p-2 rounded-lg text-xs font-medium transition-all ${paymentMethod === 'cash' ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow shadow-emerald-500/30' : isDark ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
                       <Banknote className="w-3.5 h-3.5" />
                       {t('invoice.cash')}
                     </button>
-                    <button onClick={() => { setPaymentMethod('credit'); playBeep('add'); }} className={`flex items-center justify-center gap-1.5 p-2 rounded-lg text-xs font-medium transition-all ${paymentMethod === 'credit' ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow shadow-blue-500/30' : isDark ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
+                    <button onClick={() => { handleSelectCredit(); playBeep('add'); }} className={`flex items-center justify-center gap-1.5 p-2 rounded-lg text-xs font-medium transition-all ${paymentMethod === 'credit' ? 'bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow shadow-blue-500/30' : isDark ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}>
                       <CreditCard className="w-3.5 h-3.5" />
                       {t('quickCheckout.credit')}
                     </button>

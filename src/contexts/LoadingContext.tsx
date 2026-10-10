@@ -62,12 +62,14 @@ export const calculateTrickleProgress = (elapsedMs: number): number => {
 
 /**
  * RouteLoadingWatcher monitors React Router location changes.
- * For internal route navigation, it triggers a sleek top horizontal gradient progress bar
- * without locking the screen with the fullscreen splash modal.
+ * Top-level route switches (e.g. /invoices -> /products) trigger the branded splash transition.
+ * Sub-route / filter changes trigger the sleek top horizontal gradient progress bar.
  */
-const RouteLoadingWatcher: React.FC<{ triggerTopNavProgress: () => void }> = ({ triggerTopNavProgress }) => {
+const RouteLoadingWatcher: React.FC<{
+  triggerTopNavProgress: () => void;
+  triggerTopLevelRouteTransition: (route: string) => void;
+}> = ({ triggerTopNavProgress, triggerTopLevelRouteTransition }) => {
   const location = useLocation();
-  const { isLoading } = useLoading();
   const prevPathRef = useRef<string>(location.pathname);
   const isInitialMount = useRef<boolean>(true);
 
@@ -79,23 +81,32 @@ const RouteLoadingWatcher: React.FC<{ triggerTopNavProgress: () => void }> = ({ 
     }
 
     if (prevPathRef.current !== location.pathname) {
+      const prevTop = '/' + (prevPathRef.current.split('/')[1] || '');
+      const currTop = '/' + (location.pathname.split('/')[1] || '');
       prevPathRef.current = location.pathname;
-      // Do NOT trigger full-screen splash modal on internal route link clicks.
-      // Trigger top horizontal gradient progress bar instead if full-screen splash is inactive.
-      if (!isLoading) {
+
+      if (prevTop !== currTop) {
+        // Top-level route switch (e.g., /invoices -> /products)
+        triggerTopLevelRouteTransition(currTop);
+      } else {
+        // In-page or sub-route transition: use non-intrusive top progress bar
         triggerTopNavProgress();
       }
     }
-  }, [location.pathname, isLoading, triggerTopNavProgress]);
+  }, [location.pathname, triggerTopNavProgress, triggerTopLevelRouteTransition]);
 
   return null;
 };
 
 export const LoadingProvider: React.FC<LoadingProviderProps> = ({ children }) => {
-  const [isLoading, setIsLoading] = useState<boolean>(true); // Active on initial app mount
+  // Full-screen branded splash is strictly scoped to initial app load, hard refreshes, and top-level route switches
+  const [isFullScreenSplash, setIsFullScreenSplash] = useState<boolean>(true); // Active on initial app mount / hard refresh
   const [isFadingOut, setIsFadingOut] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(0);
   const [loadingText, setLoadingText] = useState<string>('Initializing workspace...');
+
+  // Component-level data loading state for localized spinners without screen locking
+  const [isDataLoading, setIsDataLoading] = useState<boolean>(false);
 
   // Top bar progress for internal section routing
   const [isTopLoading, setIsTopLoading] = useState<boolean>(false);
@@ -187,9 +198,9 @@ export const LoadingProvider: React.FC<LoadingProviderProps> = ({ children }) =>
           // 3. Set fade: true (opacity-0 transition-opacity duration-200)
           setIsFadingOut(true);
 
-          // 4. Set isLoading: false after the 200ms fade duration ends
+          // 4. Set full-screen splash false after the 200ms fade duration ends
           fadeTimeoutRef.current = setTimeout(() => {
-            setIsLoading(false);
+            setIsFullScreenSplash(false);
             setIsFadingOut(false);
             setProgress(0);
             isFinishingRef.current = false;
@@ -202,33 +213,12 @@ export const LoadingProvider: React.FC<LoadingProviderProps> = ({ children }) =>
   }, [clearAllTimers]);
 
   const finishLoading = useCallback(() => {
+    setIsDataLoading(false);
     if (isFinishingRef.current) return;
     executeCompletionTween();
   }, [executeCompletionTween]);
 
-  const startLoading = useCallback((customMessage?: string) => {
-    clearAllTimers();
-    isFinishingRef.current = false;
-    startTimeRef.current = Date.now();
-    currentProgressRef.current = 0;
-    customMessageRef.current = customMessage || null;
-
-    setLoadingText(customMessage || 'Initializing workspace...');
-    setProgress(0);
-    setIsFadingOut(false);
-    setIsLoading(true);
-
-    runPhysicsLoop();
-
-    // Safety fallback timeout (15s) to recover if caller omits finishLoading()
-    failSafeTimeoutRef.current = setTimeout(() => {
-      if (!isFinishingRef.current) {
-        finishLoading();
-      }
-    }, 15000);
-  }, [clearAllTimers, runPhysicsLoop, finishLoading]);
-
-  // Fast top bar loader sweep for internal route changes
+  // Fast top bar loader sweep for internal route changes and component fetches
   const triggerTopNavProgress = useCallback(() => {
     if (topNavAnimRef.current !== null) cancelAnimationFrame(topNavAnimRef.current);
     if (topNavTimerRef.current !== null) clearTimeout(topNavTimerRef.current);
@@ -266,9 +256,42 @@ export const LoadingProvider: React.FC<LoadingProviderProps> = ({ children }) =>
     topNavAnimRef.current = requestAnimationFrame(tick);
   }, []);
 
+  // Branded full-screen loader strictly for top-level route switches
+  const triggerTopLevelRouteTransition = useCallback((targetRoute: string) => {
+    clearAllTimers();
+    isFinishingRef.current = false;
+    startTimeRef.current = Date.now();
+    currentProgressRef.current = 0;
+    const cleanRouteName = targetRoute.replace('/', '').toUpperCase() || 'WORKSPACE';
+    customMessageRef.current = `Loading ${cleanRouteName}...`;
+
+    setLoadingText(`Loading ${cleanRouteName}...`);
+    setProgress(0);
+    setIsFadingOut(false);
+    setIsFullScreenSplash(true);
+
+    runPhysicsLoop();
+
+    // Smooth snappy transition (250ms)
+    setTimeout(() => {
+      finishLoading();
+    }, 250);
+  }, [clearAllTimers, runPhysicsLoop, finishLoading]);
+
+  // startLoading: For standard fetches and mutations, runs non-intrusive top progress bar without blocking screen
+  const startLoading = useCallback((customMessage?: string) => {
+    setIsDataLoading(true);
+    if (customMessage) setLoadingText(customMessage);
+    triggerTopNavProgress();
+  }, [triggerTopNavProgress]);
+
   // Initial page refresh trigger: fill quickly 0->60% in 200ms, then finish loading
   useEffect(() => {
-    startLoading('Initializing workspace...');
+    setIsFullScreenSplash(true);
+    startTimeRef.current = Date.now();
+    currentProgressRef.current = 0;
+    setLoadingText('Initializing workspace...');
+    runPhysicsLoop();
 
     const initialTimer = setTimeout(() => {
       finishLoading();
@@ -278,12 +301,12 @@ export const LoadingProvider: React.FC<LoadingProviderProps> = ({ children }) =>
       clearTimeout(initialTimer);
       clearAllTimers();
     };
-  }, [startLoading, finishLoading, clearAllTimers]);
+  }, [runPhysicsLoop, finishLoading, clearAllTimers]);
 
   return (
     <LoadingContext.Provider
       value={{
-        isLoading,
+        isLoading: isFullScreenSplash || isDataLoading,
         isFadingOut,
         progress,
         loadingText,
@@ -291,9 +314,12 @@ export const LoadingProvider: React.FC<LoadingProviderProps> = ({ children }) =>
         finishLoading,
       }}
     >
-      <RouteLoadingWatcher triggerTopNavProgress={triggerTopNavProgress} />
+      <RouteLoadingWatcher
+        triggerTopNavProgress={triggerTopNavProgress}
+        triggerTopLevelRouteTransition={triggerTopLevelRouteTransition}
+      />
       {children}
-      {/* Sleek Top Horizontal Gradient Progress Bar for internal tab switches */}
+      {/* Sleek Top Horizontal Gradient Progress Bar for internal tab switches and data operations */}
       {isTopLoading && (
         <div
           className={`fixed top-0 left-0 right-0 z-[999999] h-1 pointer-events-none transition-opacity duration-150 ${
@@ -306,8 +332,8 @@ export const LoadingProvider: React.FC<LoadingProviderProps> = ({ children }) =>
           />
         </div>
       )}
-      {/* Fullscreen Branded Splash Loader for initial boot, refresh & login entry */}
-      {(isLoading || isFadingOut) && <BrandFullLoader />}
+      {/* Fullscreen Branded Splash Loader: Strictly scoped to initial boot, hard refreshes, and top-level route switches */}
+      {(isFullScreenSplash || isFadingOut) && <BrandFullLoader />}
     </LoadingContext.Provider>
   );
 };

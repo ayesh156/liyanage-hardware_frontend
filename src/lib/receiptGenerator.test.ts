@@ -75,4 +75,13 @@ describe('generateReceiptHTML', () => {
       'GI GALVANIZED STEEL WATER PIPE 2 INCH CLASS C 6 METER LENGTH (G.I PIPE - HEAVY DUTY INDUSTRIAL GRADE)'
     );
   });
+
+  it('renders distinct count of unique line items instead of quantity sum', () => {
+    // baseInvoice has 1 unique line item with quantity 2
+    const html = generateReceiptHTML(baseInvoice, null, 'si', 'Cashier Name');
+
+    expect(html).toContain('භාණ්ඩ සංඛ්‍යාව');
+    expect(html).toContain('[1]');
+    expect(html).not.toContain('[2]');
+  });
 });

@@ -10,10 +10,11 @@ import {
 import { toast } from 'react-toastify';
 import api from '../lib/api';
 import { Customer } from '../types';
+import { useQueryClient } from '@tanstack/react-query';
 import { CustomerTable } from '../components/CustomerTable';
 import { CustomerFormModal } from '../components/modals/CustomerFormModal';
 import { DeleteConfirmationModal } from '../components/modals/DeleteConfirmationModal';
-import { CustomerDueInvoicesModal } from '../components/modals/CustomerDueInvoicesModal';
+import { CustomerDueSettlementsModal } from '../components/customers/CustomerDueSettlementsModal';
 import { sendWhatsAppDueReminder } from '../lib/whatsappReminder';
 
 // ── Server response type ──
@@ -39,6 +40,7 @@ export const Customers: React.FC = () => {
   const isMobile = useIsMobile();
   const isDark = theme === 'dark';
   const { startLoading, finishLoading } = useLoading();
+  const queryClient = useQueryClient();
 
   // ── State ──
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -174,6 +176,18 @@ export const Customers: React.FC = () => {
     }
   };
 
+  /**
+   * On settlement completion:
+   * Invalidate and refetch both '/invoices' and '/customers' queries so the Customers
+   * table due badge and header cards instantly reflect the true outstanding sum.
+   */
+  const handleSettlementSuccess = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['invoices'] });
+    queryClient.invalidateQueries({ queryKey: ['customers'] });
+    fetchCustomers(searchQuery || undefined, currentPage, pageSize, false);
+    window.dispatchEvent(new CustomEvent('balance-updated'));
+  }, [queryClient, fetchCustomers, searchQuery, currentPage, pageSize]);
+
   // ── Localized display name for delete confirmation ──
   const isSinhala = i18nInstance.language === 'si';
   const displayDeleteName = customerToDelete
@@ -299,29 +313,13 @@ export const Customers: React.FC = () => {
         onCancel={() => setShowDeleteModal(false)}
       />
 
-      {/* 🌟 Customer Due Invoices Settlement Modal */}
-      <CustomerDueInvoicesModal
+      {/* 🌟 Customer Due Settlements Modal */}
+      <CustomerDueSettlementsModal
         isOpen={!!dueModalCustomer}
         customer={dueModalCustomer}
         onClose={() => setDueModalCustomer(null)}
-        onSuccess={() => handleRefresh()}
-      />
-
-      {/* ── Modals ── */}
-      <CustomerFormModal
-        isOpen={showFormModal}
-        customer={selectedCustomer || undefined}
-        onClose={() => { setShowFormModal(false); setSelectedCustomer(null); }}
-        onSave={handleSaveCustomer}
-      />
-
-      <DeleteConfirmationModal
-        isOpen={showDeleteModal}
-        title={t('customers.deleteCustomer')}
-        message={t('customers.deleteConfirmation')}
-        itemName={displayDeleteName}
-        onConfirm={handleConfirmDelete}
-        onCancel={() => setShowDeleteModal(false)}
+        onSettlementSuccess={handleSettlementSuccess}
+        onSuccess={handleRefresh}
       />
     </div>
   );

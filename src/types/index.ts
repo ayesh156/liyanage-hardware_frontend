@@ -12,6 +12,7 @@ export interface Customer {
   address: string;
   customerType: CustomerType;
   loanBalance: number;
+  dueBalance?: number;
   creditLimit?: number;
   loanDueDate?: string;
   totalSpent?: number;

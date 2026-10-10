@@ -287,10 +287,10 @@ export const generateReceiptHTML = (
       * පොලිතින් බෑගයක් සඳහා රු. 5/- ක් අය කෙරේ.
     </div>
 
-    <!-- ITEM COUNT -->
+    <!-- ITEM COUNT (Distinct unique line items count) -->
     <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:14px;font-weight:800;margin-top:2px;">
       <span>භාණ්ඩ සංඛ්‍යාව</span>
-      <span style="font-weight:900;">[${invoice.items.reduce((a, i) => a + i.quantity, 0)}]</span>
+      <span style="font-weight:900;">[${invoice.items.length}]</span>
     </div>
 
     ${totalSavings > 0 ? `

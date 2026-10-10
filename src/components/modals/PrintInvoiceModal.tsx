@@ -471,10 +471,10 @@ const generate80mmReceiptContent = (invoice: Invoice, customer?: Customer | null
               * පොලිතින් බෑගයක් සඳහා රු. 5/- ක් අය කෙරේ.
             </div>
 
-            <!-- Item count -->
+            <!-- Item count (Distinct unique line items count) -->
             <div style="display: flex; justify-content: space-between; padding: 3px 0; font-size: 12px; font-weight: 700; color: #000000; margin-top: 2px;">
               <span>භාණ්ඩ සංඛ්‍යාව</span>
-              <span style="font-weight: 800;">[${invoice.items.reduce((acc, i) => acc + i.quantity, 0)}]</span>
+              <span style="font-weight: 800;">[${invoice.items.length}]</span>
             </div>
 
             <!-- ═══ ඔබ ලැබූ ලාභය — always rendered when savings > 0 ═══ -->
