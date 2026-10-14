@@ -119,12 +119,12 @@ export const generateReceiptHTML = (
       // !important; }) so long names wrap naturally onto 2-3 compact lines.
       return `
       <div style="border-bottom:1px dashed #000;padding:5px 0;">
-        <div style="font-weight:bold;font-size:13px;color:#000;margin-bottom:2px;line-height:1.15;max-width:100%;white-space:normal !important;word-break:break-word !important;overflow-wrap:break-word !important;display:block;">${displayName}</div>
-        <div class="receipt-row" style="display:flex;justify-content:space-between;font-size:14px;font-weight:800;font-family:'Courier New',monospace;color:#000;width:100%;min-width:0;word-break:keep-all;overflow-wrap:normal;white-space:nowrap;">
-          <span style="width:12%;text-align:center;flex-shrink:0;">${displayQty}</span>
-          <span style="width:18%;text-align:right;padding-right:6px;flex-shrink:0;${showStrikethrough ? 'text-decoration:line-through;' : ''}color:#000;opacity:1;">${displayPriceDisplay}</span>
-          <span style="width:18%;text-align:right;font-weight:900;color:#000;flex-shrink:0;">${formatPrice(salesPrice)}</span>
-          <span style="width:22%;text-align:right;font-weight:900;color:#000;flex-shrink:0;word-break:keep-all;overflow-wrap:normal;white-space:nowrap;">${formatPrice(lineTotal)}</span>
+        <div style="font-weight:bold;font-size:14px;color:#000;margin-bottom:2px;line-height:1.2;max-width:100%;white-space:normal !important;word-break:break-word !important;overflow-wrap:break-word !important;display:block;">${displayName}</div>
+        <div class="receipt-row" style="display:flex;gap:4px;justify-content:space-between;align-items:flex-start;font-size:15px;font-weight:800;font-family:'Courier New',monospace;color:#000;width:100%;min-width:0;box-sizing:border-box;">
+          <span style="flex:0 0 15%;width:15%;text-align:center;line-height:1.2;white-space:normal !important;word-break:break-word !important;overflow-wrap:anywhere !important;min-width:0;">${displayQty}</span>
+          <span style="flex:1 1 24%;width:24%;text-align:right;line-height:1.2;${showStrikethrough ? 'text-decoration:line-through;' : ''}color:#000;opacity:1;white-space:normal !important;word-break:break-word !important;overflow-wrap:anywhere !important;min-width:0;">${displayPriceDisplay}</span>
+          <span style="flex:1 1 24%;width:24%;text-align:right;font-weight:900;line-height:1.2;color:#000;white-space:normal !important;word-break:break-word !important;overflow-wrap:anywhere !important;min-width:0;">${formatPrice(salesPrice)}</span>
+          <span style="flex:1 1 33%;width:33%;text-align:right;font-weight:900;line-height:1.2;color:#000;white-space:normal !important;word-break:break-word !important;overflow-wrap:anywhere !important;min-width:0;">${formatPrice(lineTotal)}</span>
         </div>
       </div>`;
     })
@@ -212,10 +212,9 @@ export const generateReceiptHTML = (
   .receipt-row, .receipt-columns {
     width: 100% !important;
     min-width: 0 !important;
-    table-layout: fixed !important;
-    word-break: keep-all !important;
-    overflow-wrap: normal !important;
-    white-space: nowrap !important;
+    display: flex !important;
+    gap: 5px !important;
+    box-sizing: border-box !important;
   }
   /* ── Grand Total black box — gradient cannot be stripped ── */
   .wb {
@@ -283,13 +282,13 @@ export const generateReceiptHTML = (
   </div>` : ''}
 
   <!-- ITEMS HEADER -->
-  <div style="padding:3px 0 2px;border-bottom:2px solid #000;">
-    <div style="font-size:13px;font-weight:800;margin-bottom:3px;">භාණ්ඩය</div>
-    <div class="receipt-row" style="display:flex;justify-content:space-between;font-size:13px;font-weight:800;font-family:'Courier New',monospace;width:100%;min-width:0;word-break:keep-all;overflow-wrap:normal;white-space:nowrap;">
-      <span style="width:12%;text-align:center;flex-shrink:0;">ප්‍රමාණය</span>
-      <span style="width:18%;text-align:right;padding-right:6px;flex-shrink:0;">සඳහන් මිල</span>
-      <span style="width:18%;text-align:right;flex-shrink:0;">අපේ මිල</span>
-      <span style="width:22%;text-align:right;flex-shrink:0;">එකතුව</span>
+  <div style="padding:4px 0 3px;border-bottom:2px solid #000;">
+    <div style="font-size:14px;font-weight:900;margin-bottom:3px;color:#000;">භාණ්ඩය</div>
+    <div class="receipt-row" style="display:flex;gap:4px;justify-content:space-between;align-items:flex-end;width:100%;min-width:0;box-sizing:border-box;">
+      <span style="flex:0 0 15%;width:15%;text-align:center;font-size:14px;font-weight:900;line-height:1.2;white-space:normal !important;word-break:break-word !important;overflow-wrap:anywhere !important;min-width:0;">ප්‍රමාණය</span>
+      <span style="flex:1 1 24%;width:24%;text-align:right;font-size:14px;font-weight:900;line-height:1.2;white-space:normal !important;word-break:break-word !important;overflow-wrap:anywhere !important;min-width:0;">සඳහන් මිල</span>
+      <span style="flex:1 1 24%;width:24%;text-align:right;font-size:14px;font-weight:900;line-height:1.2;white-space:normal !important;word-break:break-word !important;overflow-wrap:anywhere !important;min-width:0;">අපේ මිල</span>
+      <span style="flex:1 1 33%;width:33%;text-align:right;font-size:14px;font-weight:900;line-height:1.2;white-space:normal !important;word-break:break-word !important;overflow-wrap:anywhere !important;min-width:0;">එකතුව</span>
     </div>
   </div>
 

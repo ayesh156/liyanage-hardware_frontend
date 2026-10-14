@@ -328,7 +328,7 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
 
       {/* Header bar */}
       <div className="flex items-center justify-between">
-        <label className={cn("text-[11px] font-semibold uppercase tracking-wider flex items-center gap-1.5", isDark ? "text-slate-400" : "text-slate-600")}>
+        <label className={cn("text-[11px] font-semibold uppercase tracking-wider flex items-center gap-1.5", isDark ? "text-slate-400" : "text-slate-700")}>
           <ImageIcon className={cn("w-3.5 h-3.5", isDark ? "text-orange-500" : "text-orange-600")} />
           {t('attachments.attachedBills', { count: images.length, defaultValue: `Attached Bills & Receipts (${images.length})` })}
         </label>
@@ -348,7 +348,7 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
 
       {/* Inline Layout: Dropzone Tile alongside Thumbnails */}
       <div className="flex flex-wrap items-center gap-2.5">
-        {/* ── Compact Square Dropzone Tile ── */}
+        {/* ── Compact Square Dropzone Tile with visible border and dark text contrast in light mode ── */}
         <div
           ref={dropzoneRef}
           onDragOver={handleDragOver}
@@ -363,7 +363,7 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
               ? 'border-orange-500 bg-orange-500/15 scale-105 shadow-lg shadow-orange-500/20'
               : isDark
               ? 'border-slate-700/80 bg-slate-950/60 hover:border-orange-500/70 hover:bg-slate-900/80'
-              : 'border-slate-300 bg-slate-50 hover:border-orange-500/70 hover:bg-orange-50/40 shadow-sm',
+              : 'border-slate-300 bg-white hover:border-orange-500/70 hover:bg-orange-50/40 shadow-sm',
             disabled && 'opacity-50 cursor-not-allowed'
           )}
           title={t('attachments.uploadFile', 'Upload File')}
@@ -377,8 +377,8 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
             <>
               <div
                 className={cn(
-                  'w-8 h-8 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 mb-1',
-                  isDark ? 'bg-slate-800 text-orange-400' : 'bg-orange-100 text-orange-600'
+                  'w-8 h-8 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 mb-1 border',
+                  isDark ? 'bg-slate-800 border-slate-700 text-orange-400' : 'bg-orange-50 border-orange-200/80 text-orange-600'
                 )}
               >
                 <Plus className="w-4 h-4" />
@@ -386,7 +386,7 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
               <span className={cn("text-[11px] font-bold leading-tight", isDark ? "text-slate-200" : "text-slate-800")}>
                 {t('attachments.uploadFile', 'Upload File')}
               </span>
-              <span className={cn("text-[9px] font-mono mt-0.5", isDark ? "text-slate-400" : "text-slate-500")}>
+              <span className={cn("text-[9px] font-mono mt-0.5", isDark ? "text-slate-400" : "text-slate-700 font-semibold")}>
                 {t('attachments.orPaste', 'or Ctrl+V')}
               </span>
             </>
@@ -474,16 +474,16 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
               'w-24 h-24 sm:w-28 sm:h-28 rounded-2xl border flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 shrink-0 group relative overflow-hidden',
               isDark
                 ? 'bg-slate-900/90 border-slate-700 hover:border-orange-500 hover:bg-slate-800'
-                : 'bg-slate-100 border-slate-300 hover:border-orange-500 hover:bg-slate-200 shadow-sm'
+                : 'bg-white border-slate-300 hover:border-orange-500 hover:bg-slate-50 shadow-sm'
             )}
           >
             <span className={cn("text-lg font-black group-hover:scale-110 transition-transform", isDark ? "text-orange-400" : "text-orange-600")}>
               +{overflowCount}
             </span>
-            <span className={cn("text-[10px] font-bold mt-0.5", isDark ? "text-slate-300" : "text-slate-700")}>
+            <span className={cn("text-[10px] font-bold mt-0.5", isDark ? "text-slate-300" : "text-slate-800")}>
               {t('attachments.moreFiles', 'More Files')}
             </span>
-            <span className={cn("text-[9px]", isDark ? "text-slate-400" : "text-slate-500")}>
+            <span className={cn("text-[9px] font-medium", isDark ? "text-slate-400" : "text-slate-600")}>
               {t('attachments.viewAll', { count: images.length, defaultValue: `View All (${images.length})` })}
             </span>
           </button>

@@ -1,4 +1,5 @@
 import React, { useCallback, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Invoice, Customer, InvoiceItem } from '../../types/index';
 import { X, Printer } from 'lucide-react';
@@ -105,56 +106,71 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
   const PBBold: React.CSSProperties = { color: '#000000', fontWeight: 800 };
   const mono: React.CSSProperties = { fontFamily: "'Courier New', monospace" };
 
-  return (
-    <>
-      {/* ── OVERLAY ── */}
+  const modalContent = (
+    /* ── OVERLAY: Edge-to-edge full viewport coverage portaled to document.body ── */
+    <div
+      className="fixed inset-0 top-0 left-0 right-0 bottom-0 min-h-screen w-screen z-50 m-0 p-0 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        width: '100vw',
+        minHeight: '100vh',
+        margin: 0,
+        padding: 0,
+        background: 'rgba(0, 0, 0, 0.65)',
+        backdropFilter: 'blur(4px)',
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      {/* ── MODAL CONTAINER — snugly wrapped to 80mm thermal receipt width ── */}
       <div
-        className="fixed inset-0 z-[100] flex items-center justify-center"
-        style={{ background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-[326px] rounded-2xl border shadow-2xl animate-fade-in mx-2"
+        style={{
+          background: isDark ? '#1e293b' : '#f8fafc',
+          borderColor: isDark ? 'rgba(51,65,85,0.5)' : '#e2e8f0',
+          maxHeight: '90vh',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
       >
-        {/* ── MODAL CONTAINER — locked to receipt width ── */}
-        <div
-          className="relative w-full max-w-[400px] rounded-2xl border shadow-2xl animate-fade-in mx-2"
-          style={{
-            background: isDark ? '#1e293b' : '#f8fafc',
-            borderColor: isDark ? 'rgba(51,65,85,0.5)' : '#e2e8f0',
-            maxHeight: '90vh',
-            display: 'flex',
-            flexDirection: 'column',
-          }}
-        >
           {/* ── Fixed Action Bar ── */}
-          <div className={`flex-shrink-0 flex items-center justify-between px-3 py-2 border-b rounded-t-2xl ${
+          <div className={`flex-shrink-0 flex items-center justify-between px-2.5 py-1.5 border-b rounded-t-2xl ${
             isDark ? 'bg-slate-900/95 border-slate-700/50' : 'bg-white/95 border-slate-200'
           }`}>
-            <div className="flex items-center gap-2">
-              <span className={`text-xs font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                Receipt Preview
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className={`text-xs font-bold truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                Receipt
               </span>
-              <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold ${
+              <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold truncate ${
                 isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500'
               }`}>
                 {invoice.invoiceNumber}
               </span>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 flex-shrink-0">
               <button
                 onClick={handlePrint}
-                className="flex items-center gap-1 px-3 py-1.5 bg-gradient-to-r from-orange-500 to-rose-500 text-white text-xs font-semibold rounded-lg hover:from-orange-600 hover:to-rose-600 transition-all shadow"
+                className="flex items-center gap-1 px-2.5 py-1 bg-gradient-to-r from-orange-500 to-rose-500 text-white text-xs font-semibold rounded-lg hover:from-orange-600 hover:to-rose-600 transition-all shadow"
               >
                 <Printer className="w-3.5 h-3.5" /> Print
               </button>
               {onEdit && (
                 <button
                   onClick={onEdit}
-                  className={`px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                  className={`px-2 py-1 text-xs font-semibold rounded-lg transition-all ${
                     isDark ? 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700' : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
                   }`}
                 >
                   Edit
                 </button>
               )}
-              <button onClick={onClose} className={`p-1.5 rounded-lg transition-colors ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}>
+              <button onClick={onClose} className={`p-1 rounded-lg transition-colors ${isDark ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-100 text-slate-500'}`}>
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -178,7 +194,7 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
                 fontWeight: 700,
                 lineHeight: 1.4,
                 width: '100%',
-                maxWidth: '302px',
+                maxWidth: '304px',
                 margin: '0 auto',
                 padding: '4px',
                 boxSizing: 'border-box',
@@ -266,13 +282,13 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
                 </div>
 
                 {/* ═══ ITEMS HEADER ═══ */}
-                <div style={{ padding: '3px 0 2px', borderBottom: '2px solid #000' }}>
-                  <div style={{ fontSize: '11px', fontWeight: 800, color: '#000', marginBottom: '3px' }}>භාණ්ඩය</div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 800, color: '#000' }}>
-                    <span style={{ width: '15%', textAlign: 'center' }}>ප්‍රමාණය</span>
-                    <span style={{ width: '25%', textAlign: 'right' }}>සදහන් මිල</span>
-                    <span style={{ width: '25%', textAlign: 'right' }}>අපේ මිල</span>
-                    <span style={{ width: '30%', textAlign: 'right' }}>එකතුව</span>
+                <div style={{ padding: '4px 0 3px', borderBottom: '2px solid #000' }}>
+                  <div style={{ fontSize: '14px', fontWeight: 900, color: '#000', marginBottom: '3px' }}>භාණ්ඩය</div>
+                  <div style={{ display: 'flex', gap: '4px', justifyContent: 'space-between', alignItems: 'flex-end', width: '100%', boxSizing: 'border-box' }}>
+                    <span style={{ flex: '0 0 15%', width: '15%', textAlign: 'center', fontSize: '14px', fontWeight: 900, lineHeight: 1.2, whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>ප්‍රමාණය</span>
+                    <span style={{ flex: '1 1 24%', width: '24%', textAlign: 'right', fontSize: '14px', fontWeight: 900, lineHeight: 1.2, whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>සඳහන් මිල</span>
+                    <span style={{ flex: '1 1 24%', width: '24%', textAlign: 'right', fontSize: '14px', fontWeight: 900, lineHeight: 1.2, whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>අපේ මිල</span>
+                    <span style={{ flex: '1 1 33%', width: '33%', textAlign: 'right', fontSize: '14px', fontWeight: 900, lineHeight: 1.2, whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>එකතුව</span>
                   </div>
                 </div>
 
@@ -286,19 +302,19 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
                     const hasPriceGap = displayPrice > ourPrice;
 
                     return (
-                      <div key={item.id} style={{ borderBottom: '1px solid #000', padding: '4px 0' }}>
-                        <div style={{ fontWeight: 800, fontSize: '12px', color: '#000', marginBottom: '2px' }}>
+                      <div key={item.id} style={{ borderBottom: '1px dashed #000', padding: '5px 0' }}>
+                        <div style={{ fontWeight: 800, fontSize: '14px', color: '#000', marginBottom: '2px', lineHeight: 1.2, whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'break-word' }}>
                           {item.productNameSi || item.productName}
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', fontWeight: 700, color: '#000', ...mono }}>
-                          <span style={{ width: '15%', textAlign: 'center' }}>{item.quantity}</span>
-                          <span style={{ width: '25%', textAlign: 'right', ...(hasPriceGap ? { textDecoration: 'line-through' } : {}) }}>
+                        <div style={{ display: 'flex', gap: '4px', justifyContent: 'space-between', alignItems: 'flex-start', fontSize: '15px', fontWeight: 800, color: '#000', ...mono, width: '100%', boxSizing: 'border-box' }}>
+                          <span style={{ flex: '0 0 15%', width: '15%', textAlign: 'center', lineHeight: 1.2, whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{item.quantity}</span>
+                          <span style={{ flex: '1 1 24%', width: '24%', textAlign: 'right', lineHeight: 1.2, ...(hasPriceGap ? { textDecoration: 'line-through' } : {}), whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                             {formatPrice(displayPrice)}
                           </span>
-                          <span style={{ width: '25%', textAlign: 'right', fontWeight: 800 }}>
+                          <span style={{ flex: '1 1 24%', width: '24%', textAlign: 'right', fontWeight: 900, lineHeight: 1.2, whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                             {formatPrice(ourPrice)}
                           </span>
-                          <span style={{ width: '30%', textAlign: 'right', fontWeight: 900 }}>
+                          <span style={{ flex: '1 1 33%', width: '33%', textAlign: 'right', fontWeight: 900, lineHeight: 1.2, whiteSpace: 'normal', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                             {formatPrice(lineTotal)}
                           </span>
                         </div>
@@ -415,9 +431,12 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
             </div>{/* end receiptRef */}
           </div>{/* end scrollable canvas */}
         </div>{/* end modal container */}
-      </div>{/* end overlay */}
-    </>
+      </div>
   );
+
+  return typeof document !== 'undefined'
+    ? createPortal(modalContent, document.body)
+    : modalContent;
 };
 
 export default InvoicePreviewModal;

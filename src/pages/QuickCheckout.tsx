@@ -4664,7 +4664,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
           {/* ORDER CONTRACT: the live `items` state array is passed straight to
               ThermalReceiptPreview / generateReceiptHTML with NO intermediate
               sort() — the preview always mirrors the exact cart sequence. */}
-          <div className="hidden xl:block w-full max-w-[440px] flex-shrink-0 sticky top-[52px] self-start max-h-[calc(100vh-68px)] overflow-y-auto min-w-0 min-h-0">
+          <div className="hidden xl:block w-[420px] xl:w-[460px] 2xl:w-[480px] flex-shrink-0 sticky top-[52px] self-start min-w-0">
             <ThermalReceiptPreview
               items={items}
               discount={computedDiscount}

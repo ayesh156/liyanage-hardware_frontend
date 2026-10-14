@@ -463,7 +463,13 @@ export const Invoices: React.FC = () => {
               }`}
             />
             {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white">
+              <button
+                onClick={() => setSearchQuery('')}
+                className={`absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded transition-colors ${
+                  isDark ? 'text-slate-400 hover:text-white' : 'text-slate-400 hover:text-slate-800'
+                }`}
+                title="Clear search"
+              >
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
@@ -864,11 +870,15 @@ export const Invoices: React.FC = () => {
                     {/* 🌟 Direct View Button + Shadcn Dropdown Action Menu */}
                     <td className="px-2 py-1.5 text-center">
                       <div className="flex items-center justify-center gap-1">
-                        {/* Direct View Icon Button */}
+                        {/* Direct View Icon Button — High contrast conditional hover */}
                         <button
                           type="button"
                           onClick={() => setPreviewInvoice(invoice)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition-colors"
+                          className={`p-1.5 rounded-lg transition-all active:scale-90 outline-none ${
+                            isDark
+                              ? 'text-slate-400 hover:text-amber-400 hover:bg-slate-800'
+                              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                          }`}
                           title="බිල්පත බලන්න (View Invoice)"
                         >
                           <Eye className="w-4 h-4" />
@@ -900,18 +910,26 @@ export const Invoices: React.FC = () => {
                             {/* Print Action */}
                             <DropdownMenuItem
                               onClick={() => handlePrintClick(invoice)}
-                              className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg hover:text-cyan-400 focus:text-cyan-400 focus:bg-cyan-500/10"
+                              className={`flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg transition-colors ${
+                                isDark
+                                  ? 'text-slate-200 hover:text-cyan-400 focus:text-cyan-400 focus:bg-cyan-500/10'
+                                  : 'text-slate-700 hover:text-cyan-800 focus:text-cyan-800 focus:bg-cyan-50'
+                              }`}
                             >
-                              <Printer className="w-3.5 h-3.5 text-cyan-400" />
+                              <Printer className={`w-3.5 h-3.5 ${isDark ? 'text-cyan-400' : 'text-cyan-600'}`} />
                               <span>{t('common.actionsList.print')}</span>
                             </DropdownMenuItem>
 
                             {/* Edit Action */}
                             <DropdownMenuItem
                               onClick={() => navigate(`/invoices/quick-invoice?edit=${invoice.id}`)}
-                              className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg hover:text-orange-400 focus:text-orange-400 focus:bg-orange-500/10"
+                              className={`flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg transition-colors ${
+                                isDark
+                                  ? 'text-slate-200 hover:text-orange-400 focus:text-orange-400 focus:bg-orange-500/10'
+                                  : 'text-slate-700 hover:text-orange-800 focus:text-orange-800 focus:bg-orange-50'
+                              }`}
                             >
-                              <Edit2 className="w-3.5 h-3.5 text-orange-400" />
+                              <Edit2 className={`w-3.5 h-3.5 ${isDark ? 'text-orange-400' : 'text-orange-600'}`} />
                               <span>{t('common.actionsList.edit')}</span>
                             </DropdownMenuItem>
 
@@ -919,9 +937,13 @@ export const Invoices: React.FC = () => {
                             {invoice.status === 'pending' && (
                               <DropdownMenuItem
                                 onClick={() => setDuePayInvoice(invoice)}
-                                className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg hover:text-emerald-400 focus:text-emerald-400 focus:bg-emerald-500/10"
+                                className={`flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg transition-colors ${
+                                  isDark
+                                    ? 'text-slate-200 hover:text-emerald-400 focus:text-emerald-400 focus:bg-emerald-500/10'
+                                    : 'text-slate-700 hover:text-emerald-800 focus:text-emerald-800 focus:bg-emerald-50'
+                                }`}
                               >
-                                <CreditCard className="w-3.5 h-3.5 text-emerald-400" />
+                                <CreditCard className={`w-3.5 h-3.5 ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`} />
                                 <span>{t('common.actionsList.payDue')}</span>
                               </DropdownMenuItem>
                             )}
@@ -935,7 +957,11 @@ export const Invoices: React.FC = () => {
                                     setInvoiceToDelete(invoice);
                                     setShowDeleteModal(true);
                                   }}
-                                  className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg text-rose-500 hover:text-rose-400 focus:text-rose-400 focus:bg-rose-500/10"
+                                  className={`flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg transition-colors ${
+                                    isDark
+                                      ? 'text-rose-500 hover:text-rose-400 focus:text-rose-400 focus:bg-rose-500/10'
+                                      : 'text-rose-600 hover:text-rose-700 focus:text-rose-700 focus:bg-rose-50'
+                                  }`}
                                 >
                                   <Trash2 className="w-3.5 h-3.5 text-rose-500" />
                                   <span>{t('common.actionsList.delete')}</span>

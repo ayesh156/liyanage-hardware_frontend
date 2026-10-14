@@ -103,6 +103,10 @@ export const ThemedDatePicker: React.FC<DatePickerProps> = ({
     }
   }, [value]);
 
+  const isTodayActive = selectedDate ? isSameDay(selectedDate, new Date()) : false;
+  const isYesterdayActive = selectedDate ? isSameDay(selectedDate, addDays(new Date(), -1)) : false;
+  const isCheque30Active = selectedDate ? isSameDay(selectedDate, addDays(new Date(), 30)) : false;
+
   const handleSelectDate = (day: Date) => {
     const base = selectedDate || new Date();
     const updated = new Date(day);
@@ -144,10 +148,11 @@ export const ThemedDatePicker: React.FC<DatePickerProps> = ({
           disabled={disabled}
           className={cn(
             'w-[170px] min-w-[170px] h-9 px-2.5 rounded-xl border text-xs font-medium transition-all flex items-center justify-between text-left focus:outline-none focus:ring-1 shrink-0',
+            /* Light theme border-slate-200 and dark text contrast */
             isDark
               ? 'border-slate-700/60 bg-slate-900/60 text-white placeholder-slate-500 hover:border-slate-600 focus:border-orange-500/80 focus:ring-orange-500/30'
-              : 'border-slate-300 bg-white text-slate-900 hover:bg-slate-50 focus:border-orange-500/80 focus:ring-orange-500/30 shadow-sm',
-            !value && 'text-slate-400',
+              : 'border-slate-200 bg-white text-slate-900 hover:bg-slate-50 focus:border-orange-500/80 focus:ring-orange-500/30 shadow-sm',
+            !value && (isDark ? 'text-slate-400' : 'text-slate-500'),
             disabled && 'opacity-50 cursor-not-allowed',
             className
           )}
@@ -159,7 +164,14 @@ export const ThemedDatePicker: React.FC<DatePickerProps> = ({
             </span>
           </div>
           {selectedDate && (
-            <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-800/80 px-1.5 py-0.5 rounded border border-slate-700/60 shrink-0 ml-1">
+            <span
+              className={cn(
+                'text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border shrink-0 ml-1',
+                isDark
+                  ? 'text-slate-400 bg-slate-800/80 border-slate-700/60'
+                  : 'text-slate-700 bg-slate-100 border-slate-200'
+              )}
+            >
               {format(selectedDate, 'EEE')}
             </span>
           )}
@@ -173,21 +185,31 @@ export const ThemedDatePicker: React.FC<DatePickerProps> = ({
         avoidCollisions={true}
         className={cn(
           'w-[290px] p-3 rounded-2xl border shadow-2xl z-[9999] animate-in fade-in zoom-in-95 duration-150 select-none',
+          /* Well-defined container border in light theme with crisp background */
           isDark
             ? 'bg-slate-900 border-slate-700/80 text-white shadow-black/60'
-            : 'bg-white border-slate-200 text-slate-900 shadow-slate-200'
+            : 'bg-white border-slate-200 text-slate-900 shadow-xl shadow-slate-200/80'
         )}
       >
-        {/* Quick Date Presets */}
-        <div className="flex items-center gap-1.5 pb-2.5 mb-2.5 border-b border-slate-700/40">
+        {/* Quick Date Presets with subtle borders and active states */}
+        <div
+          className={cn(
+            'flex items-center gap-1.5 pb-2.5 mb-2.5 border-b',
+            isDark ? 'border-slate-700/60' : 'border-slate-200'
+          )}
+        >
           <button
             type="button"
             onClick={() => handleQuickSelect('today')}
             className={cn(
-              'px-2 py-1 rounded-lg text-[10px] font-semibold transition-colors flex-1 text-center',
-              isDark
-                ? 'bg-slate-800 text-orange-400 hover:bg-slate-700'
-                : 'bg-slate-100 text-orange-600 hover:bg-slate-200'
+              'px-2 py-1 rounded-lg text-[10px] font-semibold transition-all flex-1 text-center border',
+              isTodayActive
+                ? isDark
+                  ? 'bg-orange-500/20 text-orange-400 border-orange-500/40 ring-1 ring-orange-500/30 font-bold'
+                  : 'bg-orange-100 text-orange-700 border-orange-300 ring-1 ring-orange-400/30 font-bold'
+                : isDark
+                ? 'bg-slate-800 text-orange-400 hover:bg-slate-700 border-slate-700/60'
+                : 'bg-white text-slate-700 hover:bg-slate-100 border-slate-200'
             )}
           >
             Today
@@ -196,10 +218,14 @@ export const ThemedDatePicker: React.FC<DatePickerProps> = ({
             type="button"
             onClick={() => handleQuickSelect('yesterday')}
             className={cn(
-              'px-2 py-1 rounded-lg text-[10px] font-semibold transition-colors flex-1 text-center',
-              isDark
-                ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              'px-2 py-1 rounded-lg text-[10px] font-semibold transition-all flex-1 text-center border',
+              isYesterdayActive
+                ? isDark
+                  ? 'bg-orange-500/20 text-orange-400 border-orange-500/40 ring-1 ring-orange-500/30 font-bold'
+                  : 'bg-orange-100 text-orange-700 border-orange-300 ring-1 ring-orange-400/30 font-bold'
+                : isDark
+                ? 'bg-slate-800 text-slate-300 hover:bg-slate-700 border-slate-700/60'
+                : 'bg-white text-slate-700 hover:bg-slate-100 border-slate-200'
             )}
           >
             Yesterday
@@ -208,10 +234,14 @@ export const ThemedDatePicker: React.FC<DatePickerProps> = ({
             type="button"
             onClick={() => handleQuickSelect('cheque30')}
             className={cn(
-              'px-2 py-1 rounded-lg text-[10px] font-semibold transition-colors flex-1 text-center',
-              isDark
-                ? 'bg-purple-950/60 text-purple-300 hover:bg-purple-900/60 border border-purple-500/20'
-                : 'bg-purple-50 text-purple-600 hover:bg-purple-100 border border-purple-200'
+              'px-2 py-1 rounded-lg text-[10px] font-semibold transition-all flex-1 text-center border',
+              isCheque30Active
+                ? isDark
+                  ? 'bg-purple-900/40 text-purple-300 border-purple-500/40 ring-1 ring-purple-500/30 font-bold'
+                  : 'bg-purple-100 text-purple-800 border-purple-300 ring-1 ring-purple-400/30 font-bold'
+                : isDark
+                ? 'bg-purple-950/60 text-purple-300 hover:bg-purple-900/60 border-purple-500/20'
+                : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border-purple-200'
             )}
             title="Forward-dated Cheque (+30 Days)"
           >
@@ -221,7 +251,7 @@ export const ThemedDatePicker: React.FC<DatePickerProps> = ({
 
         {/* Month / Year Header Navigation */}
         <div className="flex items-center justify-between mb-2 px-1">
-          <span className="text-xs font-bold tracking-tight">
+          <span className={cn('text-xs font-bold tracking-tight', isDark ? 'text-white' : 'text-slate-900')}>
             {format(viewMonth, 'MMMM yyyy')}
           </span>
           <div className="flex items-center gap-1">
@@ -229,8 +259,10 @@ export const ThemedDatePicker: React.FC<DatePickerProps> = ({
               type="button"
               onClick={() => setViewMonth(subMonths(viewMonth, 1))}
               className={cn(
-                'p-1 rounded-lg transition-colors',
-                isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-600'
+                'p-1 rounded-lg border transition-colors',
+                isDark
+                  ? 'border-slate-700/60 hover:bg-slate-800 text-slate-300'
+                  : 'border-slate-200 hover:bg-slate-100 text-slate-700'
               )}
             >
               <ChevronLeft className="w-4 h-4" />
@@ -239,8 +271,10 @@ export const ThemedDatePicker: React.FC<DatePickerProps> = ({
               type="button"
               onClick={() => setViewMonth(addMonths(viewMonth, 1))}
               className={cn(
-                'p-1 rounded-lg transition-colors',
-                isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-100 text-slate-600'
+                'p-1 rounded-lg border transition-colors',
+                isDark
+                  ? 'border-slate-700/60 hover:bg-slate-800 text-slate-300'
+                  : 'border-slate-200 hover:bg-slate-100 text-slate-700'
               )}
             >
               <ChevronRight className="w-4 h-4" />
@@ -251,7 +285,13 @@ export const ThemedDatePicker: React.FC<DatePickerProps> = ({
         {/* Days of Week */}
         <div className="grid grid-cols-7 gap-1 text-center mb-1">
           {weekDays.map((d) => (
-            <span key={d} className="text-[10px] font-semibold text-slate-400 py-0.5">
+            <span
+              key={d}
+              className={cn(
+                'text-[10px] font-semibold py-0.5',
+                isDark ? 'text-slate-400' : 'text-slate-600 font-bold'
+              )}
+            >
               {d}
             </span>
           ))}
@@ -271,13 +311,13 @@ export const ThemedDatePicker: React.FC<DatePickerProps> = ({
                 onClick={() => handleSelectDate(day)}
                 className={cn(
                   'h-7 w-7 text-xs font-medium rounded-lg transition-all flex items-center justify-center relative mx-auto',
-                  !isCurrentMonth && 'text-slate-600 opacity-30',
+                  !isCurrentMonth && (isDark ? 'text-slate-600 opacity-30' : 'text-slate-400 opacity-40'),
                   isSelected
                     ? 'bg-gradient-to-r from-orange-500 to-rose-500 text-white font-bold shadow-md shadow-orange-500/30'
                     : isToday
                     ? isDark
                       ? 'border border-orange-500/60 text-orange-400 hover:bg-slate-800'
-                      : 'border border-orange-500/60 text-orange-600 hover:bg-slate-100'
+                      : 'border border-orange-500/70 text-orange-600 bg-orange-50/60 hover:bg-orange-100 font-semibold'
                     : isDark
                     ? 'hover:bg-slate-800 text-slate-200'
                     : 'hover:bg-slate-100 text-slate-700'
@@ -415,7 +455,7 @@ export const ThemedTimePicker: React.FC<TimePickerProps> = ({
         'w-auto shrink-0 h-9 px-2.5 rounded-xl border inline-flex items-center gap-1.5 transition-all select-none',
         isDark
           ? 'border-slate-700/60 bg-slate-900/60 text-white'
-          : 'border-slate-300 bg-white text-slate-900 shadow-sm',
+          : 'border-slate-200 bg-white text-slate-900 shadow-sm',
         disabled && 'opacity-50 cursor-not-allowed pointer-events-none',
         className
       )}
@@ -438,12 +478,12 @@ export const ThemedTimePicker: React.FC<TimePickerProps> = ({
             'w-7 sm:w-8 h-7 text-xs font-bold text-center rounded-lg border font-mono transition-all focus:outline-none focus:ring-1 shrink-0',
             isDark
               ? 'bg-slate-800 border-slate-700 text-orange-400 focus:border-orange-500 focus:ring-orange-500/30'
-              : 'bg-slate-100 border-slate-300 text-orange-600 focus:border-orange-500 focus:ring-orange-500/30'
+              : 'bg-slate-50 border-slate-200 text-orange-700 focus:border-orange-500 focus:ring-orange-500/30'
           )}
           title="Hour (01-12)"
         />
 
-        <span className="text-xs font-bold px-0.5 text-slate-400 font-mono select-none">:</span>
+        <span className={cn('text-xs font-bold px-0.5 font-mono select-none', isDark ? 'text-slate-400' : 'text-slate-500')}>:</span>
 
         {/* Minute Input [ MM ] */}
         <input
@@ -460,7 +500,7 @@ export const ThemedTimePicker: React.FC<TimePickerProps> = ({
             'w-7 sm:w-8 h-7 text-xs font-bold text-center rounded-lg border font-mono transition-all focus:outline-none focus:ring-1 shrink-0',
             isDark
               ? 'bg-slate-800 border-slate-700 text-orange-400 focus:border-orange-500 focus:ring-orange-500/30'
-              : 'bg-slate-100 border-slate-300 text-orange-600 focus:border-orange-500 focus:ring-orange-500/30'
+              : 'bg-slate-50 border-slate-200 text-orange-700 focus:border-orange-500 focus:ring-orange-500/30'
           )}
           title="Minute (00-59)"
         />
@@ -470,7 +510,7 @@ export const ThemedTimePicker: React.FC<TimePickerProps> = ({
       <div className="flex items-center gap-1.5 shrink-0 ml-0.5">
         <div className={cn(
           'flex items-center rounded-lg p-0.5 border h-7',
-          isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-slate-100 border-slate-300'
+          isDark ? 'bg-slate-800/80 border-slate-700' : 'bg-slate-50 border-slate-200'
         )}>
           <button
             type="button"
@@ -480,7 +520,7 @@ export const ThemedTimePicker: React.FC<TimePickerProps> = ({
               'h-6 px-2 rounded text-[11px] font-bold font-mono transition-all',
               period === 'AM'
                 ? 'bg-orange-500 text-white shadow'
-                : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'
+                : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200/60'
             )}
           >
             AM
@@ -493,7 +533,7 @@ export const ThemedTimePicker: React.FC<TimePickerProps> = ({
               'h-6 px-2 rounded text-[11px] font-bold font-mono transition-all',
               period === 'PM'
                 ? 'bg-orange-500 text-white shadow'
-                : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-600 hover:text-slate-900'
+                : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200/60'
             )}
           >
             PM
@@ -508,7 +548,7 @@ export const ThemedTimePicker: React.FC<TimePickerProps> = ({
             'h-7 px-2.5 text-xs font-semibold rounded-lg transition-colors border shrink-0',
             isDark
               ? 'bg-orange-500/20 text-orange-400 border-orange-500/30 hover:bg-orange-500/30'
-              : 'bg-orange-50 text-orange-600 border-orange-200 hover:bg-orange-100'
+              : 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100 font-bold'
           )}
           title="Set to Current Time"
         >

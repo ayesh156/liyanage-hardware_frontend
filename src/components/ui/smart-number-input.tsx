@@ -70,7 +70,13 @@ export const SmartNumberInput: React.FC<SmartNumberInputProps> = ({
   if (prefix) {
     return (
       <div className={cn('relative flex items-center w-full', containerClassName)}>
-        <span className="absolute left-3.5 text-xs font-bold text-slate-400 select-none pointer-events-none z-10">
+        <span
+          className={cn(
+            'absolute left-3.5 text-xs font-bold select-none pointer-events-none z-10',
+            /* Crisp readable typography for prefix in light and dark modes */
+            isDark ? 'text-slate-400' : 'text-slate-700'
+          )}
+        >
           {prefix}
         </span>
         <input

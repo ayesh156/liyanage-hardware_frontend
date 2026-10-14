@@ -89,51 +89,78 @@ const ThermalReceiptPreview: React.FC<ThermalReceiptPreviewProps> = memo(({
         const body = doc.body;
         const shell = previewShellRef.current;
         const receiptRoot = body?.firstElementChild as HTMLElement | null;
-        const previewScale = 1.05;
+
+        if (doc.documentElement) {
+          doc.documentElement.style.setProperty('margin', '0', 'important');
+          doc.documentElement.style.setProperty('padding', '0', 'important');
+          doc.documentElement.style.setProperty('overflow', 'hidden', 'important');
+          doc.documentElement.style.setProperty('width', '100%', 'important');
+          doc.documentElement.style.setProperty('max-width', '100%', 'important');
+          doc.documentElement.style.setProperty('min-width', '0', 'important');
+        }
 
         if (body) {
-          body.style.margin = '0';
-          body.style.padding = '0';
-          body.style.background = '#ffffff';
-          body.style.display = 'flex';
-          body.style.justifyContent = 'center';
-          body.style.alignItems = 'flex-start';
-          body.style.overflowX = 'hidden';
-          body.style.width = '100%';
-          body.style.minHeight = '100%';
-          body.style.boxSizing = 'border-box';
+          body.style.setProperty('margin', '0', 'important');
+          body.style.setProperty('padding', '0', 'important');
+          body.style.setProperty('background', '#ffffff', 'important');
+          body.style.setProperty('overflow', 'hidden', 'important');
+          body.style.setProperty('width', '100%', 'important');
+          body.style.setProperty('max-width', '100%', 'important');
+          body.style.setProperty('min-width', '0', 'important');
+          body.style.setProperty('display', 'block', 'important');
         }
 
         if (receiptRoot) {
-          receiptRoot.style.display = 'block';
-          receiptRoot.style.margin = '0 auto';
-          receiptRoot.style.transform = `scale(${previewScale})`;
-          receiptRoot.style.transformOrigin = 'top left';
-          receiptRoot.style.width = `${100 / previewScale}%`;
-          receiptRoot.style.maxWidth = `${100 / previewScale}%`;
-          receiptRoot.style.boxSizing = 'border-box';
-          receiptRoot.style.minWidth = '0';
-        }
+          // Reset transform temporarily to measure natural unscaled 80mm width
+          receiptRoot.style.transform = 'none';
+          receiptRoot.style.setProperty('margin', '0', 'important');
+          receiptRoot.style.setProperty('display', 'block', 'important');
 
-        const contentHeight = Math.max(320, receiptRoot?.scrollHeight || body?.scrollHeight || 320);
-        iframe.style.height = `${Math.ceil(contentHeight * previewScale)}px`;
-        iframe.style.width = '100%';
-        iframe.style.maxWidth = '100%';
+          const baseWidth = receiptRoot.offsetWidth || 302.36; // 80mm base roll width in pixels
+          // Measure container inner available width (excluding vertical scrollbar)
+          const availableWidth = Math.floor(shell?.clientWidth || iframe.clientWidth || baseWidth);
+          // Scale to 100% of available card width with a safety minimum
+          const containerWidth = Math.max(baseWidth, availableWidth);
+          const dynamicScale = containerWidth > 0 && baseWidth > 0 ? (containerWidth / baseWidth) : 1;
+
+          receiptRoot.style.setProperty('transform-origin', 'top left', 'important');
+          receiptRoot.style.setProperty('transform', `scale(${dynamicScale})`, 'important');
+
+          const contentHeight = Math.max(320, receiptRoot.scrollHeight || 320);
+          // Extra bottom clearance ensures grand totals and footer are fully reachable when scrolling
+          iframe.style.height = `${Math.ceil(contentHeight * dynamicScale) + 24}px`;
+          iframe.style.width = '100%';
+          iframe.style.maxWidth = '100%';
+        }
       } catch (_) {}
     };
 
     iframe.onload = applyPreviewScaling;
     requestAnimationFrame(applyPreviewScaling);
-    setTimeout(applyPreviewScaling, 180);
+    setTimeout(applyPreviewScaling, 150);
     window.addEventListener('resize', applyPreviewScaling);
 
-    return () => window.removeEventListener('resize', applyPreviewScaling);
+    // ResizeObserver ensures seamless recalculation when parent container/layout shifts
+    let resizeObserver: ResizeObserver | null = null;
+    if (previewShellRef.current && typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        applyPreviewScaling();
+      });
+      resizeObserver.observe(previewShellRef.current);
+    }
+
+    return () => {
+      window.removeEventListener('resize', applyPreviewScaling);
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+    };
   }, [items, discount, receivedAmount, paymentMethod, subtotal, total, customer, invoiceNumber, language, cashierName]);
 
   return (
-    <div className={`${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-700'} border-2 shadow-lg rounded-xl p-4 flex flex-col gap-3`}>
-      {/* Header bar */}
-      <div className={`flex items-center justify-between border-b pb-2 ${isDark ? 'border-slate-700' : 'border-slate-600'}`}>
+    <div className={`w-full ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-700'} border-2 shadow-lg rounded-xl p-3 flex flex-col gap-2.5`}>
+      {/* Header bar - stays pinned at top */}
+      <div className={`flex items-center justify-between border-b pb-2 flex-shrink-0 ${isDark ? 'border-slate-700' : 'border-slate-600'}`}>
         <span className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-white' : 'text-slate-900'}`}>
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
           Live Receipt Preview
@@ -141,12 +168,14 @@ const ThermalReceiptPreview: React.FC<ThermalReceiptPreviewProps> = memo(({
         <span className={`text-[10px] font-bold font-mono ${isDark ? 'text-slate-300' : 'text-slate-800'}`}>{invoiceNumber}</span>
       </div>
 
-      {/* Paper receipt container */}
+      {/* ── Scrollable Receipt Viewport Container (Edge-to-edge scaling with custom-scrollbar) ── */}
       <div
         ref={previewShellRef}
-        className={`w-full h-full flex flex-col items-center p-0 m-0 overflow-y-auto overflow-x-hidden bg-slate-900/5 box-border ${isDark ? 'rounded-xl shadow-slate-950/80 ring-1 ring-slate-800' : 'rounded-xl shadow-slate-700/40 ring-1 ring-slate-700'}`}
+        className={`w-full max-h-[calc(100vh-140px)] flex flex-col items-center p-0 m-0 overflow-y-auto overflow-x-hidden custom-scrollbar bg-slate-900/5 box-border ${
+          isDark ? 'rounded-xl shadow-slate-950/80 ring-1 ring-slate-800' : 'rounded-xl shadow-slate-700/40 ring-1 ring-slate-700'
+        }`}
       >
-        <div className="w-full min-w-full bg-white text-black px-1 py-4 shadow-none border-x-0 flex flex-col break-words box-border" style={{ width: '100% !important' }}>
+        <div className="w-full min-w-full bg-white text-black p-0 m-0 shadow-none border-x-0 flex flex-col break-words box-border" style={{ width: '100%' }}>
           <iframe
             ref={iframeRef}
             title="receipt-preview"
@@ -159,7 +188,7 @@ const ThermalReceiptPreview: React.FC<ThermalReceiptPreviewProps> = memo(({
               display: 'block',
               minHeight: '320px',
               backgroundColor: '#ffffff',
-              overflow: 'visible',
+              overflow: 'hidden',
               boxSizing: 'border-box',
               minWidth: '0',
             }}

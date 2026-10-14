@@ -261,15 +261,15 @@ const generate80mmReceiptContent = (invoice: Invoice, customer?: Customer | null
     const hasPriceGap = displayPrice > ourPrice;
 
     return `
-      <div style="border-bottom: 1px solid #000000; padding: 4px 0;">
-        <div style="font-weight: 800; font-size: 12px; color: #000000; margin-bottom: 2px;">
+      <div style="border-bottom: 1px dashed #000000; padding: 5px 0;">
+        <div style="font-weight: 800; font-size: 14px; color: #000000; margin-bottom: 2px; line-height: 1.2; white-space: normal; word-break: break-word; overflow-wrap: break-word;">
           ${displayName}
         </div>
-        <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 700; font-family: 'Courier New', monospace; color: #000000;">
-          <span style="width: 15%; text-align: center;">${item.quantity}</span>
-          <span class="${hasPriceGap ? 'strikethrough-price' : ''}" style="width: 25%; text-align: right; color: #000000;">${formatPrice(displayPrice)}</span>
-          <span class="${hasPriceGap ? 'discounted-price' : ''}" style="width: 25%; text-align: right; color: #000000; font-weight: 800;">${formatPrice(ourPrice)}</span>
-          <span style="width: 30%; text-align: right; font-weight: 900;">${formatPrice(lineTotal)}</span>
+        <div style="display: flex; gap: 5px; justify-content: space-between; align-items: flex-start; font-size: 15px; font-weight: 800; font-family: 'Courier New', monospace; color: #000000; width: 100%; box-sizing: border-box;">
+          <span style="flex: 0 0 15%; width: 15%; text-align: center; line-height: 1.2; white-space: normal; word-break: break-word; overflow-wrap: anywhere; min-width: 0;">${item.quantity}</span>
+          <span class="${hasPriceGap ? 'strikethrough-price' : ''}" style="flex: 1 1 25%; width: 25%; text-align: right; line-height: 1.2; color: #000000; white-space: normal; word-break: break-word; overflow-wrap: anywhere; min-width: 0;">${formatPrice(displayPrice)}</span>
+          <span class="${hasPriceGap ? 'discounted-price' : ''}" style="flex: 1 1 25%; width: 25%; text-align: right; color: #000000; font-weight: 900; line-height: 1.2; white-space: normal; word-break: break-word; overflow-wrap: anywhere; min-width: 0;">${formatPrice(ourPrice)}</span>
+          <span style="flex: 1 1 35%; width: 35%; text-align: right; font-weight: 900; line-height: 1.2; color: #000000; white-space: normal; word-break: break-word; overflow-wrap: anywhere; min-width: 0;">${formatPrice(lineTotal)}</span>
         </div>
       </div>
     `;
@@ -426,15 +426,15 @@ const generate80mmReceiptContent = (invoice: Invoice, customer?: Customer | null
           ` : ''}
 
           <!-- ═══ ITEMS HEADER ═══ -->
-          <div style="padding: 3px 0 2px 0; border-bottom: 2px solid #000000;">
-            <div style="font-size: 11px; font-weight: 800; color: #000000; margin-bottom: 3px;">
+          <div style="padding: 4px 0 3px 0; border-bottom: 2px solid #000000;">
+            <div style="font-size: 14px; font-weight: 900; color: #000000; margin-bottom: 3px;">
               භාණ්ඩය
             </div>
-            <div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: 800; color: #000000;">
-              <span style="width: 15%; text-align: center;">ප්‍රමාණය</span>
-              <span style="width: 25%; text-align: right;">සදහන් මිල</span>
-              <span style="width: 25%; text-align: right;">අපේ මිල</span>
-              <span style="width: 30%; text-align: right;">එකතුව</span>
+            <div style="display: flex; gap: 5px; justify-content: space-between; align-items: flex-end; width: 100%; box-sizing: border-box;">
+              <span style="flex: 0 0 15%; width: 15%; text-align: center; font-size: 14px; font-weight: 900; line-height: 1.2; white-space: normal; word-break: break-word; overflow-wrap: anywhere; min-width: 0;">ප්‍රමාණය</span>
+              <span style="flex: 1 1 25%; width: 25%; text-align: right; font-size: 14px; font-weight: 900; line-height: 1.2; white-space: normal; word-break: break-word; overflow-wrap: anywhere; min-width: 0;">සඳහන් මිල</span>
+              <span style="flex: 1 1 25%; width: 25%; text-align: right; font-size: 14px; font-weight: 900; line-height: 1.2; white-space: normal; word-break: break-word; overflow-wrap: anywhere; min-width: 0;">අපේ මිල</span>
+              <span style="flex: 1 1 35%; width: 35%; text-align: right; font-size: 14px; font-weight: 900; line-height: 1.2; white-space: normal; word-break: break-word; overflow-wrap: anywhere; min-width: 0;">එකතුව</span>
             </div>
           </div>
 
