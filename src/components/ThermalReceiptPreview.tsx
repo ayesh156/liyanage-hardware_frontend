@@ -88,7 +88,7 @@ const ThermalReceiptPreview: React.FC<ThermalReceiptPreviewProps> = memo(({
       try {
         const body = doc.body;
         const shell = previewShellRef.current;
-        const receiptRoot = body?.firstElementChild as HTMLElement | null;
+        const receiptRoot = (body?.querySelector('.receipt-root') || body?.firstElementChild) as HTMLElement | null;
 
         if (doc.documentElement) {
           doc.documentElement.style.setProperty('margin', '0', 'important');
@@ -97,38 +97,65 @@ const ThermalReceiptPreview: React.FC<ThermalReceiptPreviewProps> = memo(({
           doc.documentElement.style.setProperty('width', '100%', 'important');
           doc.documentElement.style.setProperty('max-width', '100%', 'important');
           doc.documentElement.style.setProperty('min-width', '0', 'important');
+          doc.documentElement.style.setProperty('box-sizing', 'border-box', 'important');
+          doc.documentElement.style.setProperty('height', 'auto', 'important');
         }
 
         if (body) {
           body.style.setProperty('margin', '0', 'important');
           body.style.setProperty('padding', '0', 'important');
+          // Snug zero bottom padding so preview terminates directly after footer
+          body.style.setProperty('padding-bottom', '0', 'important');
           body.style.setProperty('background', '#ffffff', 'important');
           body.style.setProperty('overflow', 'hidden', 'important');
           body.style.setProperty('width', '100%', 'important');
           body.style.setProperty('max-width', '100%', 'important');
           body.style.setProperty('min-width', '0', 'important');
+          body.style.setProperty('box-sizing', 'border-box', 'important');
           body.style.setProperty('display', 'block', 'important');
+          body.style.setProperty('height', 'auto', 'important');
         }
 
         if (receiptRoot) {
-          // Reset transform temporarily to measure natural unscaled 80mm width
+          // Temporarily reset zoom/transform to measure natural unscaled 80mm width and content height
+          receiptRoot.style.zoom = '1';
           receiptRoot.style.transform = 'none';
-          receiptRoot.style.setProperty('margin', '0', 'important');
+          receiptRoot.style.setProperty('margin', '0 auto', 'important');
           receiptRoot.style.setProperty('display', 'block', 'important');
+          receiptRoot.style.setProperty('box-sizing', 'border-box', 'important');
 
           const baseWidth = receiptRoot.offsetWidth || 302.36; // 80mm base roll width in pixels
+          // Measure unscaled content height directly from receiptRoot (avoiding doc/body scrollHeight
+          // which can get locked to previous iframe dimensions)
+          const unscaledContentHeight = Math.ceil(
+            Math.max(
+              receiptRoot.offsetHeight,
+              receiptRoot.scrollHeight,
+              receiptRoot.getBoundingClientRect().height
+            )
+          );
+
           // Measure container inner available width (excluding vertical scrollbar)
           const availableWidth = Math.floor(shell?.clientWidth || iframe.clientWidth || baseWidth);
-          // Scale to 100% of available card width with a safety minimum
-          const containerWidth = Math.max(baseWidth, availableWidth);
-          const dynamicScale = containerWidth > 0 && baseWidth > 0 ? (containerWidth / baseWidth) : 1;
+          // Scale to fit available card width cleanly
+          const dynamicScale = availableWidth > 0 && baseWidth > 0 ? (availableWidth / baseWidth) : 1;
 
-          receiptRoot.style.setProperty('transform-origin', 'top left', 'important');
-          receiptRoot.style.setProperty('transform', `scale(${dynamicScale})`, 'important');
+          // Apply CSS zoom for seamless, layout-aware scaling
+          receiptRoot.style.setProperty('zoom', String(dynamicScale), 'important');
+          receiptRoot.style.setProperty('transform', 'none', 'important');
 
-          const contentHeight = Math.max(320, receiptRoot.scrollHeight || 320);
-          // Extra bottom clearance ensures grand totals and footer are fully reachable when scrolling
-          iframe.style.height = `${Math.ceil(contentHeight * dynamicScale) + 24}px`;
+          // Accurately capture rendered scaled height directly from receiptRoot
+          // (Avoid reading body/documentElement scrollHeight which creates an inflationary height loop
+          // and leaves empty space after the developer footer line)
+          const scaledHeight = Math.ceil(
+            Math.max(
+              receiptRoot.getBoundingClientRect().height,
+              unscaledContentHeight * dynamicScale
+            )
+          );
+
+          // Dynamically sync iframe height snugly (+2px subpixel clearance, zero trailing blank space)
+          iframe.style.height = `${scaledHeight + 2}px`;
           iframe.style.width = '100%';
           iframe.style.maxWidth = '100%';
         }
@@ -137,8 +164,26 @@ const ThermalReceiptPreview: React.FC<ThermalReceiptPreviewProps> = memo(({
 
     iframe.onload = applyPreviewScaling;
     requestAnimationFrame(applyPreviewScaling);
-    setTimeout(applyPreviewScaling, 150);
+    setTimeout(applyPreviewScaling, 60);
+    setTimeout(applyPreviewScaling, 200);
+    setTimeout(applyPreviewScaling, 600);
     window.addEventListener('resize', applyPreviewScaling);
+
+    // Re-scale once web fonts finish loading
+    if ((doc as any).fonts && (doc as any).fonts.ready) {
+      (doc as any).fonts.ready.then(() => {
+        applyPreviewScaling();
+      }).catch(() => {});
+    }
+
+    // Attach listeners to receipt images (e.g. invoice logo) so height adapts on load
+    const images = Array.from(doc.images || []);
+    images.forEach(img => {
+      if (!img.complete) {
+        img.addEventListener('load', applyPreviewScaling);
+        img.addEventListener('error', applyPreviewScaling);
+      }
+    });
 
     // ResizeObserver ensures seamless recalculation when parent container/layout shifts
     let resizeObserver: ResizeObserver | null = null;
@@ -158,7 +203,11 @@ const ThermalReceiptPreview: React.FC<ThermalReceiptPreviewProps> = memo(({
   }, [items, discount, receivedAmount, paymentMethod, subtotal, total, customer, invoiceNumber, language, cashierName]);
 
   return (
-    <div className={`w-full ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-700'} border-2 shadow-lg rounded-xl p-3 flex flex-col gap-2.5`}>
+    <div
+      className={`w-full h-full max-h-[calc(100vh-140px)] ${
+        isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-700'
+      } border-2 shadow-lg rounded-xl p-3 flex flex-col gap-2.5 overflow-hidden box-border`}
+    >
       {/* Header bar - stays pinned at top */}
       <div className={`flex items-center justify-between border-b pb-2 flex-shrink-0 ${isDark ? 'border-slate-700' : 'border-slate-600'}`}>
         <span className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${isDark ? 'text-white' : 'text-slate-900'}`}>
@@ -171,7 +220,7 @@ const ThermalReceiptPreview: React.FC<ThermalReceiptPreviewProps> = memo(({
       {/* ── Scrollable Receipt Viewport Container (Edge-to-edge scaling with custom-scrollbar) ── */}
       <div
         ref={previewShellRef}
-        className={`w-full max-h-[calc(100vh-140px)] flex flex-col items-center p-0 m-0 overflow-y-auto overflow-x-hidden custom-scrollbar bg-slate-900/5 box-border ${
+        className={`w-full flex-1 min-h-0 overflow-y-auto overflow-x-hidden custom-scrollbar p-0 m-0 bg-slate-900/5 box-border ${
           isDark ? 'rounded-xl shadow-slate-950/80 ring-1 ring-slate-800' : 'rounded-xl shadow-slate-700/40 ring-1 ring-slate-700'
         }`}
       >
@@ -186,7 +235,7 @@ const ThermalReceiptPreview: React.FC<ThermalReceiptPreviewProps> = memo(({
               maxWidth: '100%',
               border: 'none',
               display: 'block',
-              minHeight: '320px',
+              minHeight: '0',
               backgroundColor: '#ffffff',
               overflow: 'hidden',
               boxSizing: 'border-box',

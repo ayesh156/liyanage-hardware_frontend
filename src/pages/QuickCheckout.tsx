@@ -4663,8 +4663,10 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
           {/* ── RECEIPT PREVIEW COLUMN — visible on xl+ ── */}
           {/* ORDER CONTRACT: the live `items` state array is passed straight to
               ThermalReceiptPreview / generateReceiptHTML with NO intermediate
-              sort() — the preview always mirrors the exact cart sequence. */}
-          <div className="hidden xl:block w-[420px] xl:w-[460px] 2xl:w-[480px] flex-shrink-0 sticky top-[52px] self-start min-w-0">
+              sort() — the preview always mirrors the exact cart sequence.
+          {/* CONTAINER VIEWPORT CONTRACT: h-[calc(100vh-140px)] bounds the preview
+              to the viewport so internal overflow scrolls cleanly down to the footer. */}
+          <div className="hidden xl:block w-[420px] xl:w-[460px] 2xl:w-[480px] flex-shrink-0 sticky top-[52px] self-start min-w-0 h-[calc(100vh-140px)] max-h-[calc(100vh-140px)] flex flex-col">
             <ThermalReceiptPreview
               items={items}
               discount={computedDiscount}

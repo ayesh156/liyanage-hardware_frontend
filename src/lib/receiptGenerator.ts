@@ -118,13 +118,13 @@ export const generateReceiptHTML = (
       // master reset (* { white-space:nowrap !important; word-break:keep-all
       // !important; }) so long names wrap naturally onto 2-3 compact lines.
       return `
-      <div style="border-bottom:1px dashed #000;padding:5px 0;">
-        <div style="font-weight:bold;font-size:14px;color:#000;margin-bottom:2px;line-height:1.2;max-width:100%;white-space:normal !important;word-break:break-word !important;overflow-wrap:break-word !important;display:block;">${displayName}</div>
-        <div class="receipt-row" style="display:flex;gap:4px;justify-content:space-between;align-items:flex-start;font-size:15px;font-weight:800;font-family:'Courier New',monospace;color:#000;width:100%;min-width:0;box-sizing:border-box;">
-          <span style="flex:0 0 15%;width:15%;text-align:center;line-height:1.2;white-space:normal !important;word-break:break-word !important;overflow-wrap:anywhere !important;min-width:0;">${displayQty}</span>
-          <span style="flex:1 1 24%;width:24%;text-align:right;line-height:1.2;${showStrikethrough ? 'text-decoration:line-through;' : ''}color:#000;opacity:1;white-space:normal !important;word-break:break-word !important;overflow-wrap:anywhere !important;min-width:0;">${displayPriceDisplay}</span>
-          <span style="flex:1 1 24%;width:24%;text-align:right;font-weight:900;line-height:1.2;color:#000;white-space:normal !important;word-break:break-word !important;overflow-wrap:anywhere !important;min-width:0;">${formatPrice(salesPrice)}</span>
-          <span style="flex:1 1 33%;width:33%;text-align:right;font-weight:900;line-height:1.2;color:#000;white-space:normal !important;word-break:break-word !important;overflow-wrap:anywhere !important;min-width:0;">${formatPrice(lineTotal)}</span>
+      <div style="border-bottom:1px dashed #000;padding:5px 0;width:100% !important;max-width:100% !important;box-sizing:border-box !important;">
+        <div style="font-weight:bold;font-size:13.5px;color:#000;margin-bottom:2px;line-height:1.2;width:100%;max-width:100%;white-space:normal !important;word-break:break-word !important;overflow-wrap:break-word !important;display:block;box-sizing:border-box;">${displayName}</div>
+        <div class="receipt-grid-row" style="display:grid !important;grid-template-columns:minmax(0, 16fr) minmax(0, 27fr) minmax(0, 27fr) minmax(0, 30fr) !important;column-gap:4px !important;width:100% !important;max-width:100% !important;min-width:0 !important;box-sizing:border-box !important;align-items:flex-start !important;font-size:13.5px;font-weight:800;font-family:'Courier New',monospace;color:#000;">
+          <span style="text-align:center;line-height:1.2;white-space:normal !important;word-break:break-all !important;overflow-wrap:anywhere !important;min-width:0;box-sizing:border-box;">${displayQty}</span>
+          <span style="text-align:right;line-height:1.2;${showStrikethrough ? 'text-decoration:line-through;' : ''}color:#000;opacity:1;white-space:normal !important;word-break:break-all !important;overflow-wrap:anywhere !important;min-width:0;box-sizing:border-box;">${displayPriceDisplay}</span>
+          <span style="text-align:right;font-weight:900;line-height:1.2;color:#000;white-space:normal !important;word-break:break-all !important;overflow-wrap:anywhere !important;min-width:0;box-sizing:border-box;">${formatPrice(salesPrice)}</span>
+          <span style="text-align:right;font-weight:900;line-height:1.2;color:#000;white-space:normal !important;word-break:break-all !important;overflow-wrap:anywhere !important;min-width:0;box-sizing:border-box;">${formatPrice(lineTotal)}</span>
         </div>
       </div>`;
     })
@@ -142,13 +142,12 @@ export const generateReceiptHTML = (
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Sinhala:wght@400;700;900&display=swap');
   /* ════════════════════════════════════════════════════════
      THERMAL RECEIPT PRINT MASTER RESET — receiptGenerator
-     Enforces strict consistency across all print jobs:
-     - Prevents browser auto-zooming and scaling via:
-       -webkit-text-size-adjust: 100% !important;
-       text-size-adjust: 100% !important;
-       zoom: 100% !important;
-     - Exact margins and paddings: 0 !important;
-     - Fixed 80mm roll width: width: 80mm !important;
+     Enforces strict consistency across all print jobs and live previews:
+     - Prevents browser font disruption via text-size-adjust: 100% !important;
+     - Exact margins: 0 !important;
+     - Strict box-sizing: border-box !important; on all elements
+     - Compact padding for maximum printable width without horizontal clipping
+     - CSS Grid layout for 4-column item header and values
      - Gradient fallback strategy: background-image:linear-gradient
        is NEVER stripped by any browser print engine.
      ════════════════════════════════════════════════════════ */
@@ -158,7 +157,6 @@ export const generateReceiptHTML = (
     padding: 0;
     -webkit-text-size-adjust: 100% !important;
     text-size-adjust: 100% !important;
-    zoom: 100% !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     color-adjust: exact !important;
@@ -168,20 +166,19 @@ export const generateReceiptHTML = (
     margin: 0 !important;
   }
   html, body {
-    width: 80mm !important;
+    width: 100% !important;
     max-width: 80mm !important;
-    min-width: 80mm !important;
-    margin: 0 !important;
+    margin: 0 auto !important;
     padding: 0 !important;
     background: #ffffff !important;
     -webkit-text-size-adjust: 100% !important;
     text-size-adjust: 100% !important;
-    zoom: 100% !important;
     font-family: 'Segoe UI', 'Noto Sans Sinhala', Arial, sans-serif !important;
     font-weight: 700 !important;
     font-size: 12px !important;
     line-height: 1.35 !important;
     color: #000000 !important;
+    box-sizing: border-box !important;
   }
   @media print {
     html, body {
@@ -190,9 +187,15 @@ export const generateReceiptHTML = (
       min-width: 80mm !important;
       margin: 0 !important;
       padding: 0 !important;
+      zoom: 100% !important;
       -webkit-text-size-adjust: 100% !important;
       text-size-adjust: 100% !important;
-      zoom: 100% !important;
+    }
+    .receipt-root {
+      width: 80mm !important;
+      max-width: 80mm !important;
+      box-sizing: border-box !important;
+      padding: 6px 4px 8px 4px !important;
     }
     * {
       -webkit-print-color-adjust: exact !important;
@@ -201,19 +204,29 @@ export const generateReceiptHTML = (
     }
   }
   .receipt-root {
-    width: 80mm !important;
+    width: 100% !important;
     max-width: 80mm !important;
     margin: 0 auto !important;
-    padding: 6px 10px !important;
+    /* Snug bottom padding (2px) so document terminates directly after developer footer */
+    padding: 6px 4px 2px 4px !important;
     background: #ffffff !important;
     color: #000000 !important;
     box-sizing: border-box !important;
   }
-  .receipt-row, .receipt-columns {
+  .receipt-row, .receipt-columns, .receipt-grid-row {
     width: 100% !important;
+    max-width: 100% !important;
     min-width: 0 !important;
-    display: flex !important;
-    gap: 5px !important;
+    box-sizing: border-box !important;
+  }
+  /* Strict 4-column CSS Grid: 16% (Qty), 27% (Marked Price), 27% (Our Price), 30% (Total) */
+  .receipt-grid-row {
+    display: grid !important;
+    grid-template-columns: minmax(0, 16fr) minmax(0, 27fr) minmax(0, 27fr) minmax(0, 30fr) !important;
+    column-gap: 4px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
     box-sizing: border-box !important;
   }
   /* ── Grand Total black box — gradient cannot be stripped ── */
@@ -244,12 +257,12 @@ export const generateReceiptHTML = (
 <div class="receipt-root">
 
   <!-- HEADER -->
-  <div style="text-align:center;padding-bottom:4px;border-bottom:2px double #000;margin-bottom:4px;">
+  <div style="text-align:center;padding-bottom:4px;border-bottom:2px double #000;margin-bottom:4px;width:100%;box-sizing:border-box;">
     <img src="/inv_logo.png" alt="LHD Logo" style="width:90px;height:90px;max-height:90px;display:block;margin:0 auto;object-fit:contain;"/>
-    <div style="margin:4px 0 2px;border-bottom:1px solid #000;padding-bottom:3px;text-align:center;">
+    <div style="margin:4px 0 2px;border-bottom:1px solid #000;padding-bottom:3px;text-align:center;width:100%;box-sizing:border-box;">
       <div style="font-size:24px;font-weight:900;color:#000;line-height:1.2;white-space:normal !important;word-break:break-word !important;">ලියනගේ හාඩ්වෙයාර්</div>
     </div>
-    <div style="font-size:13px;font-weight:800;color:#000;line-height:1.4;margin-top:2px;white-space:normal !important;word-break:break-word !important;text-align:center;">
+    <div style="font-size:13px;font-weight:800;color:#000;line-height:1.4;margin-top:2px;white-space:normal !important;word-break:break-word !important;text-align:center;width:100%;box-sizing:border-box;">
       හක්මන පාර, දෙයියන්දර<br/>
       දුරකථන: 0773751805 / 0412268217<br/>
       Email: liyanagehardware1986@gmail.com
@@ -257,7 +270,7 @@ export const generateReceiptHTML = (
   </div>
 
   <!-- INVOICE META -->
-  <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:2px dashed #000;">
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:2px dashed #000;width:100%;box-sizing:border-box;">
     <div>
       <div style="font-size:11px;font-weight:700;">බිල්පත</div>
       <div style="font-size:15px;font-weight:900;font-family:'Courier New',monospace;">${invoice.invoiceNumber}</div>
@@ -275,20 +288,20 @@ export const generateReceiptHTML = (
 
   ${!isWalkIn ? `
   <!-- CUSTOMER -->
-  <div style="padding:3px 0;border-bottom:2px dashed #000;">
+  <div style="padding:3px 0;border-bottom:2px dashed #000;width:100%;box-sizing:border-box;">
     <span style="font-size:11px;font-weight:700;">පාරිභෝගිකයා: </span>
     <span style="font-size:13px;font-weight:800;">${customerName}</span>
     ${customerPhone ? `<span style="float:right;font-size:12px;font-weight:700;">${customerPhone}</span>` : ''}
   </div>` : ''}
 
   <!-- ITEMS HEADER -->
-  <div style="padding:4px 0 3px;border-bottom:2px solid #000;">
+  <div style="padding:4px 0 3px;border-bottom:2px solid #000;width:100%;box-sizing:border-box;">
     <div style="font-size:14px;font-weight:900;margin-bottom:3px;color:#000;">භාණ්ඩය</div>
-    <div class="receipt-row" style="display:flex;gap:4px;justify-content:space-between;align-items:flex-end;width:100%;min-width:0;box-sizing:border-box;">
-      <span style="flex:0 0 15%;width:15%;text-align:center;font-size:14px;font-weight:900;line-height:1.2;white-space:normal !important;word-break:break-word !important;overflow-wrap:anywhere !important;min-width:0;">ප්‍රමාණය</span>
-      <span style="flex:1 1 24%;width:24%;text-align:right;font-size:14px;font-weight:900;line-height:1.2;white-space:normal !important;word-break:break-word !important;overflow-wrap:anywhere !important;min-width:0;">සඳහන් මිල</span>
-      <span style="flex:1 1 24%;width:24%;text-align:right;font-size:14px;font-weight:900;line-height:1.2;white-space:normal !important;word-break:break-word !important;overflow-wrap:anywhere !important;min-width:0;">අපේ මිල</span>
-      <span style="flex:1 1 33%;width:33%;text-align:right;font-size:14px;font-weight:900;line-height:1.2;white-space:normal !important;word-break:break-word !important;overflow-wrap:anywhere !important;min-width:0;">එකතුව</span>
+    <div class="receipt-grid-row" style="display:grid !important;grid-template-columns:minmax(0, 16fr) minmax(0, 27fr) minmax(0, 27fr) minmax(0, 30fr) !important;column-gap:4px !important;width:100% !important;max-width:100% !important;min-width:0 !important;box-sizing:border-box !important;align-items:flex-end !important;">
+      <span style="text-align:center;font-size:11.5px;font-weight:900;line-height:1.2;white-space:nowrap !important;min-width:0;box-sizing:border-box;">ප්‍රමාණය</span>
+      <span style="text-align:right;font-size:11.5px;font-weight:900;line-height:1.2;white-space:nowrap !important;min-width:0;box-sizing:border-box;">සඳහන් මිල</span>
+      <span style="text-align:right;font-size:11.5px;font-weight:900;line-height:1.2;white-space:nowrap !important;min-width:0;box-sizing:border-box;">අපේ මිල</span>
+      <span style="text-align:right;font-size:11.5px;font-weight:900;line-height:1.2;white-space:nowrap !important;min-width:0;box-sizing:border-box;">එකතුව</span>
     </div>
   </div>
 
@@ -296,35 +309,35 @@ export const generateReceiptHTML = (
   <div style="padding:2px 0;">${itemsHtml}</div>
 
   <!-- TOTALS -->
-  <div style="border-top:2px solid #000;padding-top:4px;margin-top:2px;">
+  <div style="border-top:2px solid #000;padding-top:4px;margin-top:2px;width:100% !important;box-sizing:border-box !important;">
     ${finalDiscount > 0 ? `
-    <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:13px;font-weight:800;">
+    <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:13px;font-weight:800;width:100%;box-sizing:border-box;">
       <span>වට්ටම්</span>
       <span style="font-family:'Courier New',monospace;font-weight:800;">-${formatPrice(finalDiscount)}</span>
     </div>` : ''}
 
     <!-- GRAND TOTAL -->
-    <div class="wb" style="background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;color:#ffffff !important;padding:6px;margin-top:4px;border-radius:3px;border:2px solid #000000;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;">
-      <div style="display:flex;justify-content:space-between;align-items:center;">
+    <div class="wb" style="background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;color:#ffffff !important;padding:6px;margin-top:4px;border-radius:3px;border:2px solid #000000;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;width:100%;box-sizing:border-box;">
+      <div style="display:flex;justify-content:space-between;align-items:center;width:100%;box-sizing:border-box;">
         <span style="font-size:15px;font-weight:800;color:#ffffff !important;">මුළු එකතුව</span>
         <span style="font-size:19px;font-weight:900;font-family:'Courier New',monospace;letter-spacing:1px;color:#ffffff !important;">${formatPrice(invoice.total)}</span>
       </div>
     </div>
 
     <!-- 🌿 Shopping Bag Statutory Compliance Notice (Govt. Regulation Rs. 5 Notice) -->
-    <div style="border:1px dashed #000000;border-radius:3px;padding:3px 4px;margin-top:4px;margin-bottom:2px;text-align:center;font-size:10px;font-weight:800;color:#000000;line-height:1.3;letter-spacing:0.1px;white-space:normal !important;word-break:break-word !important;">
+    <div style="border:1px dashed #000000;border-radius:3px;padding:3px 4px;margin-top:4px;margin-bottom:2px;text-align:center;font-size:10px;font-weight:800;color:#000000;line-height:1.3;letter-spacing:0.1px;white-space:normal !important;word-break:break-word !important;width:100%;box-sizing:border-box;">
       * පොලිතින් බෑගයක් සඳහා රු. 5/- ක් අය කෙරේ.
     </div>
 
     <!-- ITEM COUNT (Distinct unique line items count) -->
-    <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:14px;font-weight:800;margin-top:2px;">
+    <div style="display:flex;justify-content:space-between;padding:3px 0;font-size:14px;font-weight:800;margin-top:2px;width:100%;box-sizing:border-box;">
       <span>භාණ්ඩ සංඛ්‍යාව</span>
       <span style="font-weight:900;">[${invoice.items.length}]</span>
     </div>
 
     ${totalSavings > 0 ? `
     <!-- SAVINGS -->
-    <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:15px;font-weight:800;border-top:2px dashed #000;margin-top:4px;">
+    <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:15px;font-weight:800;border-top:2px dashed #000;margin-top:4px;width:100%;box-sizing:border-box;">
       <span>ඔබ ලැබූ ලාභය</span>
       <span style="font-family:'Courier New',monospace;font-weight:900;">${formatPrice(totalSavings)}</span>
     </div>` : ''}
@@ -332,13 +345,13 @@ export const generateReceiptHTML = (
 
   ${receivedAmount > 0 ? `
   <!-- PAYMENT -->
-  <div style="border-top:2px dashed #000;margin-top:4px;padding-top:4px;">
-    <div style="border:1px solid #000;padding:4px 6px;border-radius:3px;">
-      <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:13px;font-weight:800;">
+  <div style="border-top:2px dashed #000;margin-top:4px;padding-top:4px;width:100%;box-sizing:border-box;">
+    <div style="border:1px solid #000;padding:4px 6px;border-radius:3px;width:100%;box-sizing:border-box;">
+      <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:13px;font-weight:800;width:100%;box-sizing:border-box;">
         <span>ගෙවූ මුදල</span>
         <span style="font-family:'Courier New',monospace;font-weight:800;">${formatPrice(receivedAmount)}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:13px;font-weight:800;">
+      <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:13px;font-weight:800;width:100%;box-sizing:border-box;">
         <span>${changeLabel}</span>
         <span style="font-family:'Courier New',monospace;font-weight:800;">${formatPrice(displayChangeValue)}</span>
       </div>
@@ -346,15 +359,15 @@ export const generateReceiptHTML = (
   </div>` : ''}
 
   <!-- CASHIER -->
-  <div style="padding:3px 0;border-top:1px dashed #000;margin-top:3px;">
+  <div style="padding:3px 0;border-top:1px dashed #000;margin-top:3px;width:100%;box-sizing:border-box;">
     <span style="font-size:12px;font-weight:700;">කැෂියර්: </span>
     <span style="font-size:12px;font-weight:800;">${cashierName || 'Admin User'}</span>
   </div>
 
   <!-- FOOTER -->
-  <div style="text-align:center;padding-top:6px;border-top:2px dashed #000;">
+  <div style="text-align:center;padding-top:6px;border-top:2px dashed #000;width:100%;box-sizing:border-box;">
     <div style="font-size:14px;font-weight:800;">ස්තූතියි නැවත එන්න !</div>
-    <div style="margin:4px 0;border-top:1px solid #000;"></div>
+    <div style="margin:4px 0;border-top:1px solid #000;width:100%;box-sizing:border-box;"></div>
     <div style="font-size:12px;font-weight:700;letter-spacing:0.3px;">Software by nebulainfinite - 078 3233 760</div>
   </div>
 
