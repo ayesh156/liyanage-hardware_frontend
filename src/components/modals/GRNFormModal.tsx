@@ -308,7 +308,10 @@ export const GRNFormModal: React.FC<GRNFormModalProps> = ({
       : 'border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:border-orange-500/80 focus:ring-orange-500/30 shadow-sm'
   );
 
-  const labelClass = 'text-[11px] font-semibold tracking-wide uppercase text-slate-400 flex items-center gap-1.5 mb-1';
+  const labelClass = cn(
+    'text-[11px] font-semibold tracking-wide uppercase flex items-center gap-1.5 mb-1',
+    isDark ? 'text-slate-400' : 'text-slate-600'
+  );
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -337,7 +340,7 @@ export const GRNFormModal: React.FC<GRNFormModalProps> = ({
                     {isEditMode ? t('grn.modifyRecord', 'Modify Record') : t('grn.stockEntry', 'Stock Entry')}
                   </span>
                 </DialogTitle>
-                <DialogDescription className="text-[11px] text-slate-400 mt-0.5">
+                <DialogDescription className={cn('text-[11px] mt-0.5', isDark ? 'text-slate-400' : 'text-slate-500')}>
                   {isEditMode
                     ? t('grn.editGrnSubtitle', 'Update line items, total amounts, and synchronized ledger balances')
                     : t('grn.newGrnSubtitle', 'Record incoming supplier stock, upload bills, and calculate live balances')}
@@ -413,7 +416,7 @@ export const GRNFormModal: React.FC<GRNFormModalProps> = ({
                   {t('grn.totalAmount', 'Total Bill Amount')}
                 </span>
                 {useItemization ? (
-                  <div className="font-mono font-bold text-base text-slate-100 h-9 flex items-center">
+                  <div className={cn('font-mono font-bold text-base h-9 flex items-center', isDark ? 'text-slate-100' : 'text-slate-900')}>
                     Rs. {calculatedItemsTotal.toLocaleString('en-LK', { minimumFractionDigits: 2 })}
                   </div>
                 ) : (
@@ -425,7 +428,7 @@ export const GRNFormModal: React.FC<GRNFormModalProps> = ({
                     placeholder="0.00"
                     step="0.01"
                     min="0"
-                    className={cn(inputClass, 'font-mono font-bold text-slate-100')}
+                    className={cn(inputClass, 'font-mono font-bold', isDark ? 'text-slate-100' : 'text-slate-900')}
                   />
                 )}
               </div>
@@ -498,7 +501,7 @@ export const GRNFormModal: React.FC<GRNFormModalProps> = ({
                 {/* Sub-row 1: Payment Method (50%) and Cheque / Reference No. (50%) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block">
+                    <label className={cn('text-[10px] font-semibold uppercase mb-1 block', isDark ? 'text-slate-400' : 'text-slate-600')}>
                       {t('grn.paymentMethod', 'Payment Method')}
                     </label>
                     <SearchableSelect
@@ -512,7 +515,7 @@ export const GRNFormModal: React.FC<GRNFormModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block">
+                    <label className={cn('text-[10px] font-semibold uppercase mb-1 block', isDark ? 'text-slate-400' : 'text-slate-600')}>
                       {t('grn.chequeNumber', 'Reference / Cheque Number')}
                     </label>
                     <input
@@ -532,7 +535,7 @@ export const GRNFormModal: React.FC<GRNFormModalProps> = ({
 
                 {/* Sub-row 2: Dedicated Payment Date & Time Inline Row */}
                 <div className="w-fit">
-                  <label className="text-[10px] font-semibold text-slate-400 uppercase mb-1 block">
+                  <label className={cn('text-[10px] font-semibold uppercase mb-1 block', isDark ? 'text-slate-400' : 'text-slate-600')}>
                     {t('grn.paymentDate', 'Payment Date & Time')}
                   </label>
                   <ThemedDateTimePicker
@@ -546,7 +549,7 @@ export const GRNFormModal: React.FC<GRNFormModalProps> = ({
 
             {/* Toggle Itemized Breakdown */}
             <div className="flex items-center justify-between pt-1">
-              <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+              <span className={cn('text-xs font-bold flex items-center gap-1.5', isDark ? 'text-slate-300' : 'text-slate-700')}>
                 <Layers className="w-4 h-4 text-orange-500" />
                 {t('grn.itemizedLineItems', 'Itemized Line Items (Optional)')}
               </span>
@@ -557,7 +560,7 @@ export const GRNFormModal: React.FC<GRNFormModalProps> = ({
                   'px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all border',
                   useItemization
                     ? 'bg-orange-500/15 border-orange-500/40 text-orange-400'
-                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200'
+                    : isDark ? 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200' : 'bg-slate-100 border-slate-200 text-slate-600 hover:text-slate-900'
                 )}
               >
                 {useItemization ? t('grn.disableItemization', 'Disable Itemization') : t('grn.enableItemization', 'Enable Itemization')}
@@ -573,7 +576,7 @@ export const GRNFormModal: React.FC<GRNFormModalProps> = ({
                 )}
               >
                 <div className="p-2 space-y-2">
-                  <div className="grid grid-cols-12 gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">
+                  <div className={cn('grid grid-cols-12 gap-2 text-[10px] font-bold uppercase tracking-wider px-1', isDark ? 'text-slate-400' : 'text-slate-600')}>
                     <div className="col-span-5">{t('grn.itemDescription', 'Item Description')}</div>
                     <div className="col-span-3 text-right">{t('suppliers.unitPrice', 'Unit Price')}</div>
                     <div className="col-span-2 text-right">{t('suppliers.quantity', 'Qty')}</div>
@@ -614,13 +617,13 @@ export const GRNFormModal: React.FC<GRNFormModalProps> = ({
                         />
                       </div>
                       <div className="col-span-2 flex items-center justify-between gap-1">
-                        <span className="font-mono font-bold text-xs text-slate-200 truncate">
+                        <span className={cn('font-mono font-bold text-xs truncate', isDark ? 'text-slate-200' : 'text-slate-800')}>
                           {Number(row.subtotal).toFixed(2)}
                         </span>
                         <button
                           type="button"
                           onClick={() => removeItemRow(idx)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                          className={cn('p-1.5 rounded-lg transition-colors', isDark ? 'text-slate-400 hover:text-rose-400 hover:bg-rose-500/10' : 'text-slate-500 hover:text-rose-600 hover:bg-rose-50')}
                           title="Remove item"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -632,7 +635,10 @@ export const GRNFormModal: React.FC<GRNFormModalProps> = ({
                   <button
                     type="button"
                     onClick={addItemRow}
-                    className="w-full py-1.5 rounded-lg border border-dashed border-slate-700 hover:border-orange-500/60 text-xs font-semibold text-slate-400 hover:text-orange-400 flex items-center justify-center gap-1.5 transition-all"
+                    className={cn(
+                      'w-full py-1.5 rounded-lg border border-dashed text-xs font-semibold flex items-center justify-center gap-1.5 transition-all',
+                      isDark ? 'border-slate-700 hover:border-orange-500/60 text-slate-400 hover:text-orange-400' : 'border-slate-300 hover:border-orange-500/60 text-slate-600 hover:text-orange-600'
+                    )}
                   >
                     <Plus className="w-3.5 h-3.5" /> {t('grn.addRow', 'Add Row')}
                   </button>
@@ -680,7 +686,10 @@ export const GRNFormModal: React.FC<GRNFormModalProps> = ({
               type="button"
               onClick={onClose}
               disabled={isSubmitting}
-              className="px-4 py-2 rounded-xl text-xs font-bold border border-slate-700 text-slate-300 hover:bg-slate-800 transition-colors"
+              className={cn(
+                'px-4 py-2 rounded-xl text-xs font-bold border transition-colors',
+                isDark ? 'border-slate-700 text-slate-300 hover:bg-slate-800' : 'border-slate-300 text-slate-700 hover:bg-slate-100'
+              )}
             >
               {t('common.cancel', 'Cancel')}
             </button>

@@ -39,11 +39,18 @@ export function useHiddenIframePrint() {
           // ── 2. Build a standalone document with thermal-receipt styling ──
           const printDocument = buildPrintDocument(receiptHTML);
 
-          // ── 3. Create hidden iframe ──
+          // ── 3. Create hidden iframe with exact 80mm layout dimensions ──
+          // Clean up any stale iframes
+          const stale = document.querySelectorAll('iframe[data-role="receipt-print-frame"]');
+          stale.forEach((el) => {
+            try { el.remove(); } catch (_) {}
+          });
+
           const iframe = document.createElement('iframe');
+          iframe.setAttribute('data-role', 'receipt-print-frame');
           iframe.setAttribute(
             'style',
-            'position:fixed; top:-9999px; left:-9999px; width:0; height:0; border:none; opacity:0; pointer-events:none;'
+            'position:fixed; top:0; left:-9999px; width:80mm; height:100vh; border:none; opacity:0; pointer-events:none; z-index:-9999; visibility:hidden;'
           );
           iframe.setAttribute('title', 'thermal-receipt-print-frame');
           iframe.setAttribute('aria-hidden', 'true');
@@ -55,7 +62,7 @@ export function useHiddenIframePrint() {
           const iframeDoc =
             iframe.contentDocument || iframe.contentWindow?.document;
           if (!iframeDoc) {
-            document.body.removeChild(iframe);
+            try { iframe.remove(); } catch (_) {}
             reject(new Error('Could not access iframe document'));
             return;
           }
@@ -64,34 +71,61 @@ export function useHiddenIframePrint() {
           iframeDoc.write(printDocument);
           iframeDoc.close();
 
+          let isCleanedUp = false;
+          const cleanup = () => {
+            if (isCleanedUp) return;
+            isCleanedUp = true;
+            try {
+              if (iframe.parentNode) {
+                iframe.parentNode.removeChild(iframe);
+              } else {
+                iframe.remove();
+              }
+            } catch (_) {}
+            resolve();
+          };
+
           // ── 5. Wait for images/fonts to load, then print ──
           const handlePrint = () => {
             try {
-              // Focus the iframe window to ensure print dialog targets it
-              iframe.contentWindow?.focus();
-              iframe.contentWindow?.print();
-
-              // Clean up after a short delay (print is non-blocking)
-              setTimeout(() => {
-                try {
-                  if (document.body.contains(iframe)) {
-                    document.body.removeChild(iframe);
-                  }
-                } catch (cleanupErr) {
-                  // Silently ignore cleanup errors
-                }
-                resolve();
-              }, 500);
-            } catch (printErr) {
-              // Clean up on error
-              try {
-                if (document.body.contains(iframe)) {
-                  document.body.removeChild(iframe);
-                }
-              } catch (e) {
-                // ignore
+              const win = iframe.contentWindow;
+              if (!win) {
+                cleanup();
+                return;
               }
+
+              // Clean up immediately upon print dialog close
+              win.onafterprint = cleanup;
+
+              // Focus the iframe window to ensure print dialog targets it
+              win.focus();
+              win.print();
+
+              // Fallback cleanup timer in case onafterprint doesn't fire
+              setTimeout(cleanup, 2000);
+            } catch (printErr) {
+              cleanup();
               reject(printErr);
+            }
+          };
+
+          // Wait for images inside iframe
+          const waitForImagesAndPrint = () => {
+            const images = Array.from(iframeDoc.images || []);
+            const pending = images.filter((img) => !img.complete);
+            if (pending.length > 0) {
+              let count = 0;
+              const onDone = () => {
+                count++;
+                if (count >= pending.length) setTimeout(handlePrint, 50);
+              };
+              pending.forEach((img) => {
+                img.onload = onDone;
+                img.onerror = onDone;
+              });
+              setTimeout(handlePrint, 350);
+            } else {
+              setTimeout(handlePrint, 50);
             }
           };
 
@@ -100,10 +134,9 @@ export function useHiddenIframePrint() {
             iframeDoc.readyState === 'complete' ||
             iframeDoc.readyState === 'interactive'
           ) {
-            handlePrint();
+            waitForImagesAndPrint();
           } else {
-            // Wait for load
-            iframe.onload = handlePrint;
+            iframe.onload = waitForImagesAndPrint;
           }
         } catch (err) {
           reject(err);
@@ -125,33 +158,22 @@ function buildPrintDocument(receiptHTML: string): string {
 <html>
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=80mm" />
+  <meta name="viewport" content="width=80mm, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Thermal Receipt</title>
   <style>
     /* ── Page setup for 80mm thermal roll ── */
     @page {
       size: 80mm auto;
-      margin: 0;
-    }
-
-    /* ════════════════════════════════════════════════════════
-       THERMAL RECEIPT PRINT MASTER RESET
-       Browser-defying strategy — three-layer defence:
-       1. print-color-adjust: exact on every element
-       2. background-image: linear-gradient(#000,#000) — NEVER
-          stripped by any browser, unlike background-color
-       3. Remove global color:#000 override so white text
-          inside black boxes is NEVER silently killed
-       ════════════════════════════════════════════════════════ */
-    @page {
-      size: 80mm auto;
-      margin: 0;
+      margin: 0 !important;
     }
 
     * {
-      box-sizing: border-box;
+      box-sizing: border-box !important;
       margin: 0;
       padding: 0;
+      -webkit-text-size-adjust: 100% !important;
+      text-size-adjust: 100% !important;
+      zoom: 100% !important;
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
       color-adjust: exact !important;
@@ -163,14 +185,29 @@ function buildPrintDocument(receiptHTML: string): string {
         print-color-adjust: exact !important;
         color-adjust: exact !important;
       }
+      html, body {
+        width: 80mm !important;
+        max-width: 80mm !important;
+        min-width: 80mm !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        -webkit-text-size-adjust: 100% !important;
+        text-size-adjust: 100% !important;
+        zoom: 100% !important;
+      }
     }
 
     html, body {
-      width: 80mm;
+      width: 80mm !important;
+      max-width: 80mm !important;
+      min-width: 80mm !important;
       min-height: auto;
-      margin: 0;
-      padding: 2px;
-      background: #ffffff;
+      margin: 0 !important;
+      padding: 2px !important;
+      background: #ffffff !important;
+      -webkit-text-size-adjust: 100% !important;
+      text-size-adjust: 100% !important;
+      zoom: 100% !important;
       font-family: 'Segoe UI', Arial, sans-serif;
       font-size: 12px;
       color: #000000;

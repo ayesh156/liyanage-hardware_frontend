@@ -275,13 +275,13 @@ export default function GRNPage() {
       {/* ── Top Header Bar ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black tracking-tight flex items-center gap-2.5 text-slate-100">
+          <h1 className={cn('text-xl sm:text-2xl font-black tracking-tight flex items-center gap-2.5', isDark ? 'text-slate-100' : 'text-slate-900')}>
             <div className="p-2.5 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25">
               <Layers className="w-6 h-6" />
             </div>
             <span>{t('grn.title', 'Goods Received Notes (GRN)')}</span>
           </h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+          <p className={cn('text-xs sm:text-sm mt-1', isDark ? 'text-slate-400' : 'text-slate-500')}>
             {t('grn.subtitle', 'Manage incoming stock arrivals, item breakdowns, bill attachments, and settlement payments')}
           </p>
         </div>
@@ -320,17 +320,17 @@ export default function GRNPage() {
           )}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-400">
+            <span className={cn('text-[11px] font-bold uppercase tracking-wider', isDark ? 'text-cyan-400' : 'text-cyan-600')}>
               {t('grn.totalStockReceived', 'Total Stock Received')}
             </span>
             <div className="w-8 h-8 rounded-xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center border border-cyan-500/20">
               <Layers className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-xl sm:text-2xl font-black tracking-tight text-cyan-400 font-mono">
+          <div className={cn('text-xl sm:text-2xl font-black tracking-tight font-mono', isDark ? 'text-cyan-400' : 'text-cyan-600')}>
             Rs. {grnSummary.totalGrnValue.toLocaleString('en-LK', { minimumFractionDigits: 2 })}
           </div>
-          <p className="text-[10px] text-slate-400 mt-1">{grns.length} records</p>
+          <p className={cn('text-[10px] mt-1', isDark ? 'text-slate-400' : 'text-slate-500')}>{grns.length} records</p>
         </div>
 
         {/* Total Paid Out */}
@@ -341,17 +341,17 @@ export default function GRNPage() {
           )}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-400">
+            <span className={cn('text-[11px] font-bold uppercase tracking-wider', isDark ? 'text-emerald-400' : 'text-emerald-600')}>
               {t('grn.totalPaymentsMade', 'Total Payments Made')}
             </span>
             <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center border border-emerald-500/20">
               <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-xl sm:text-2xl font-black tracking-tight text-emerald-400 font-mono">
+          <div className={cn('text-xl sm:text-2xl font-black tracking-tight font-mono', isDark ? 'text-emerald-400' : 'text-emerald-600')}>
             Rs. {grnSummary.totalPaidValue.toLocaleString('en-LK', { minimumFractionDigits: 2 })}
           </div>
-          <p className="text-[10px] text-slate-400 mt-1">{t('grn.settled', 'Settled payments to vendors')}</p>
+          <p className={cn('text-[10px] mt-1', isDark ? 'text-slate-400' : 'text-slate-500')}>{t('grn.settled', 'Settled payments to vendors')}</p>
         </div>
 
         {/* Outstanding Due Debt */}
@@ -362,17 +362,17 @@ export default function GRNPage() {
           )}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-rose-400">
+            <span className={cn('text-[11px] font-bold uppercase tracking-wider', isDark ? 'text-rose-400' : 'text-rose-600')}>
               {t('grn.totalDueBalance', 'Total Due Balance')}
             </span>
             <div className="w-8 h-8 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center border border-rose-500/20">
               <ShieldAlert className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-xl sm:text-2xl font-black tracking-tight text-rose-500 font-mono">
+          <div className={cn('text-xl sm:text-2xl font-black tracking-tight font-mono', isDark ? 'text-rose-500' : 'text-rose-600')}>
             Rs. {grnSummary.totalDueValue.toLocaleString('en-LK', { minimumFractionDigits: 2 })}
           </div>
-          <p className="text-[10px] text-slate-400 mt-1">{t('grn.dueBalance', 'Pending debt across all GRNs')}</p>
+          <p className={cn('text-[10px] mt-1', isDark ? 'text-slate-400' : 'text-slate-500')}>{t('grn.dueBalance', 'Pending debt across all GRNs')}</p>
         </div>
 
         {/* Total Receipts */}
@@ -383,17 +383,17 @@ export default function GRNPage() {
           )}
         >
           <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+            <span className={cn('text-[11px] font-bold uppercase tracking-wider', isDark ? 'text-slate-400' : 'text-slate-500')}>
               {t('grn.totalGrnEntries', 'Total GRN Entries')}
             </span>
             <div className="w-8 h-8 rounded-xl bg-orange-500/10 text-orange-400 flex items-center justify-center border border-orange-500/20">
               <FileText className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-xl sm:text-2xl font-black tracking-tight text-slate-100 font-mono">
+          <div className={cn('text-xl sm:text-2xl font-black tracking-tight font-mono', isDark ? 'text-slate-100' : 'text-slate-900')}>
             {grns.length}
           </div>
-          <p className="text-[10px] text-slate-400 mt-1">{t('grn.stockIn', 'Active inventory intake records')}</p>
+          <p className={cn('text-[10px] mt-1', isDark ? 'text-slate-400' : 'text-slate-500')}>{t('grn.stockIn', 'Active inventory intake records')}</p>
         </div>
       </div>
 
@@ -406,7 +406,7 @@ export default function GRNPage() {
             isDark ? 'bg-slate-900/80 border-slate-800' : 'bg-white border-slate-200 shadow-sm'
           )}
         >
-          <Search className="w-4 h-4 text-slate-400 shrink-0" />
+          <Search className={cn('w-4 h-4 shrink-0', isDark ? 'text-slate-400' : 'text-slate-500')} />
           <input
             type="text"
             placeholder={t('grn.searchTablePlaceholder', 'Search by GRN Number, supplier name, notes, or bill reference...')}
@@ -472,7 +472,7 @@ export default function GRNPage() {
                 <th className="p-4 text-right">{t('common.actions', 'Actions')}</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-800/50">
+            <tbody className={cn('divide-y', isDark ? 'divide-slate-800/50' : 'divide-slate-200')}>
               {grns.length > 0 ? (
                 grns.map((g) => {
                   const due = Number(g.dueAmount || 0);
@@ -490,15 +490,15 @@ export default function GRNPage() {
                     >
                       {/* GRN & Date */}
                       <td className="p-4">
-                        <div className="font-mono font-bold text-sm text-cyan-400 group-hover:underline flex items-center gap-1.5">
+                        <div className={cn('font-mono font-bold text-sm group-hover:underline flex items-center gap-1.5', isDark ? 'text-cyan-400' : 'text-cyan-600')}>
                           #{g.grnNumber}
                           <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 text-slate-400 transition-opacity" />
                         </div>
-                        <div className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
-                          <Calendar className="w-3 h-3 text-slate-500 shrink-0" />
+                        <div className={cn('text-[11px] flex items-center gap-1 mt-0.5', isDark ? 'text-slate-400' : 'text-slate-500')}>
+                          <Calendar className={cn('w-3 h-3 shrink-0', isDark ? 'text-slate-500' : 'text-slate-400')} />
                           <span>{new Date(g.createdAt).toLocaleDateString()}</span>
                           {itemsCount > 0 && (
-                            <span className="ml-1 text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 font-mono">
+                            <span className={cn('ml-1 text-[10px] px-1.5 py-0.2 rounded font-mono', isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600 border border-slate-200')}>
                               {t('grn.itemsCount', '{{count}} items', { count: itemsCount })}
                             </span>
                           )}
@@ -507,19 +507,19 @@ export default function GRNPage() {
 
                       {/* Supplier */}
                       <td className="p-4">
-                        <div className="font-bold text-slate-200">{g.supplier?.name}</div>
+                        <div className={cn('font-bold', isDark ? 'text-slate-200' : 'text-slate-800')}>{g.supplier?.name}</div>
                         {g.supplier?.companyName && (
-                          <div className="text-[11px] text-slate-400">{g.supplier.companyName}</div>
+                          <div className={cn('text-[11px]', isDark ? 'text-slate-400' : 'text-slate-500')}>{g.supplier.companyName}</div>
                         )}
                       </td>
 
                       {/* Total */}
-                      <td className="p-4 text-right font-mono font-bold text-slate-100">
+                      <td className={cn('p-4 text-right font-mono font-bold', isDark ? 'text-slate-100' : 'text-slate-900')}>
                         Rs. {Number(g.totalAmount).toLocaleString('en-LK', { minimumFractionDigits: 2 })}
                       </td>
 
                       {/* Paid */}
-                      <td className="p-4 text-right font-mono font-semibold text-emerald-400">
+                      <td className={cn('p-4 text-right font-mono font-semibold', isDark ? 'text-emerald-400' : 'text-emerald-600')}>
                         Rs. {Number(g.paidAmount || 0).toLocaleString('en-LK', { minimumFractionDigits: 2 })}
                       </td>
 
@@ -528,7 +528,9 @@ export default function GRNPage() {
                         <span
                           className={cn(
                             'font-mono font-bold text-sm',
-                            due > 0 ? 'text-rose-400' : 'text-emerald-400'
+                            due > 0
+                              ? isDark ? 'text-rose-400' : 'text-rose-600'
+                              : isDark ? 'text-emerald-400' : 'text-emerald-600'
                           )}
                         >
                           Rs. {due.toLocaleString('en-LK', { minimumFractionDigits: 2 })}
@@ -541,10 +543,10 @@ export default function GRNPage() {
                           className={cn(
                             'px-2.5 py-1 rounded-full text-[10px] font-bold uppercase font-mono border',
                             g.status === 'PAID'
-                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                              ? isDark ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
                               : g.status === 'PARTIAL'
-                              ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                              : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                              ? isDark ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-amber-50 text-amber-700 border-amber-200'
+                              : isDark ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-rose-50 text-rose-700 border-rose-200'
                           )}
                         >
                           {g.status}
@@ -564,11 +566,14 @@ export default function GRNPage() {
                                   key={idx}
                                   type="button"
                                   onClick={(e) => handleOpenLightbox(imagesList, idx, e)}
-                                  className="relative w-8 h-8 rounded-lg overflow-hidden border border-slate-700 hover:border-cyan-400 transition-all hover:scale-110 shadow group/thumb"
+                                  className={cn(
+                                    'relative w-8 h-8 rounded-lg overflow-hidden border transition-all hover:scale-110 shadow group/thumb',
+                                    isDark ? 'border-slate-700 hover:border-cyan-400' : 'border-slate-200 hover:border-cyan-500'
+                                  )}
                                   title={t('grn.clickToViewBill', 'Click to view high-resolution bill')}
                                 >
                                   {isDocPdf ? (
-                                    <div className="w-full h-full bg-slate-950 flex items-center justify-center text-rose-400">
+                                    <div className={cn('w-full h-full flex items-center justify-center', isDark ? 'bg-slate-950 text-rose-400' : 'bg-rose-50 text-rose-600')}>
                                       <FileText className="w-4 h-4" />
                                     </div>
                                   ) : (
@@ -586,7 +591,10 @@ export default function GRNPage() {
                               <button
                                 type="button"
                                 onClick={(e) => handleOpenLightbox(imagesList, 2, e)}
-                                className="w-8 h-8 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 flex items-center justify-center text-[10px] font-bold font-mono hover:bg-slate-700"
+                                className={cn(
+                                  'w-8 h-8 rounded-lg border flex items-center justify-center text-[10px] font-bold font-mono transition-colors',
+                                  isDark ? 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+                                )}
                                 title={t('grn.viewAllAttachments', 'View all attachments')}
                               >
                                 +{imagesList.length - 2}
@@ -594,7 +602,7 @@ export default function GRNPage() {
                             )}
                           </div>
                         ) : (
-                          <span className="text-slate-600 text-[11px]">-</span>
+                          <span className={cn('text-[11px]', isDark ? 'text-slate-600' : 'text-slate-400')}>-</span>
                         )}
                       </td>
 
@@ -606,7 +614,12 @@ export default function GRNPage() {
                             <button
                               type="button"
                               onClick={() => handleOpenQuickSettle(g)}
-                              className="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 hover:bg-amber-500/20 transition-all flex items-center gap-1"
+                              className={cn(
+                                'px-2.5 py-1 rounded-lg text-xs font-bold border transition-all flex items-center gap-1',
+                                isDark
+                                  ? 'bg-amber-500/10 text-amber-400 border-amber-500/30 hover:bg-amber-500/20'
+                                  : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
+                              )}
                               title={t('suppliers.settle', 'Settle')}
                             >
                               <Banknote className="w-3.5 h-3.5" />
@@ -630,21 +643,21 @@ export default function GRNPage() {
               ) : isLoadingGrns ? (
                 <>
                   {Array.from({ length: 8 }).map((_, rIdx) => (
-                    <tr key={rIdx} className="animate-pulse bg-slate-900/40">
-                      <td className="p-3"><div className="h-4 rounded-full w-24 bg-slate-800" /></td>
-                      <td className="p-3"><div className="h-4 rounded-full w-36 bg-slate-800" /></td>
-                      <td className="p-3"><div className="h-4 rounded-full w-24 bg-slate-800" /></td>
-                      <td className="p-3"><div className="h-4 rounded-full w-24 bg-slate-800" /></td>
-                      <td className="p-3"><div className="h-4 rounded-full w-24 bg-slate-800" /></td>
-                      <td className="p-3"><div className="h-4 rounded-full w-24 bg-slate-800" /></td>
-                      <td className="p-3"><div className="h-6 rounded-full w-20 bg-slate-800" /></td>
-                      <td className="p-3"><div className="h-6 rounded-lg w-28 ml-auto bg-slate-800" /></td>
+                    <tr key={rIdx} className={cn('animate-pulse', isDark ? 'bg-slate-900/40' : 'bg-slate-50')}>
+                      <td className="p-3"><div className={cn('h-4 rounded-full w-24', isDark ? 'bg-slate-800' : 'bg-slate-200')} /></td>
+                      <td className="p-3"><div className={cn('h-4 rounded-full w-36', isDark ? 'bg-slate-800' : 'bg-slate-200')} /></td>
+                      <td className="p-3"><div className={cn('h-4 rounded-full w-24', isDark ? 'bg-slate-800' : 'bg-slate-200')} /></td>
+                      <td className="p-3"><div className={cn('h-4 rounded-full w-24', isDark ? 'bg-slate-800' : 'bg-slate-200')} /></td>
+                      <td className="p-3"><div className={cn('h-4 rounded-full w-24', isDark ? 'bg-slate-800' : 'bg-slate-200')} /></td>
+                      <td className="p-3"><div className={cn('h-4 rounded-full w-24', isDark ? 'bg-slate-800' : 'bg-slate-200')} /></td>
+                      <td className="p-3"><div className={cn('h-6 rounded-full w-20', isDark ? 'bg-slate-800' : 'bg-slate-200')} /></td>
+                      <td className="p-3"><div className={cn('h-6 rounded-lg w-28 ml-auto', isDark ? 'bg-slate-800' : 'bg-slate-200')} /></td>
                     </tr>
                   ))}
                 </>
               ) : (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-slate-400 text-xs">
+                  <td colSpan={8} className={cn('p-8 text-center text-xs', isDark ? 'text-slate-400' : 'text-slate-500')}>
                     {t('grn.noGrnsFound', 'No Goods Received Notes found matching your filters.')}
                   </td>
                 </tr>

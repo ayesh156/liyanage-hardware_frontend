@@ -1401,7 +1401,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
    * Explicit Credit selection handler:
    * 1. Clears receivedAmount (set to 0).
    * 2. Forces paymentMethod = 'credit'.
-   * 3. Sets isExplicitCreditMode.current = true.
+   * 3. Sets isExplicitCreditMode.current = true.  
    * 4. Due balance immediately reflects the full invoice total.
    */
   const handleSelectCredit = useCallback(() => {

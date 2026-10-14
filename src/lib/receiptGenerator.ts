@@ -136,37 +136,80 @@ export const generateReceiptHTML = (
 <html>
 <head>
 <meta charset="UTF-8"/>
+<meta name="viewport" content="width=80mm, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+<title>Receipt ${invoice.invoiceNumber}</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Sinhala:wght@400;700;900&display=swap');
   /* ════════════════════════════════════════════════════════
      THERMAL RECEIPT PRINT MASTER RESET — receiptGenerator
-     Gradient fallback strategy: background-image:linear-gradient
-     is NEVER stripped by any browser print engine.
-     * color override REMOVED — it silently kills white text.
+     Enforces strict consistency across all print jobs:
+     - Prevents browser auto-zooming and scaling via:
+       -webkit-text-size-adjust: 100% !important;
+       text-size-adjust: 100% !important;
+       zoom: 100% !important;
+     - Exact margins and paddings: 0 !important;
+     - Fixed 80mm roll width: width: 80mm !important;
+     - Gradient fallback strategy: background-image:linear-gradient
+       is NEVER stripped by any browser print engine.
      ════════════════════════════════════════════════════════ */
   * {
-    box-sizing: border-box;
+    box-sizing: border-box !important;
     margin: 0;
     padding: 0;
+    -webkit-text-size-adjust: 100% !important;
+    text-size-adjust: 100% !important;
+    zoom: 100% !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     color-adjust: exact !important;
-    word-break: keep-all !important;
-    overflow-wrap: normal !important;
-    white-space: nowrap !important;
+  }
+  @page {
+    size: 80mm auto;
+    margin: 0 !important;
+  }
+  html, body {
+    width: 80mm !important;
+    max-width: 80mm !important;
+    min-width: 80mm !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    -webkit-text-size-adjust: 100% !important;
+    text-size-adjust: 100% !important;
+    zoom: 100% !important;
+    font-family: 'Segoe UI', 'Noto Sans Sinhala', Arial, sans-serif !important;
+    font-weight: 700 !important;
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+    color: #000000 !important;
   }
   @media print {
+    html, body {
+      width: 80mm !important;
+      max-width: 80mm !important;
+      min-width: 80mm !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      -webkit-text-size-adjust: 100% !important;
+      text-size-adjust: 100% !important;
+      zoom: 100% !important;
+    }
     * {
       -webkit-print-color-adjust: exact !important;
       print-color-adjust: exact !important;
       color-adjust: exact !important;
-      word-break: keep-all !important;
-      overflow-wrap: normal !important;
-      white-space: nowrap !important;
-      min-width: 0 !important;
     }
   }
-  .receipt-root, .receipt-row, .receipt-columns {
+  .receipt-root {
+    width: 80mm !important;
+    max-width: 80mm !important;
+    margin: 0 auto !important;
+    padding: 6px 10px !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-sizing: border-box !important;
+  }
+  .receipt-row, .receipt-columns {
     width: 100% !important;
     min-width: 0 !important;
     table-layout: fixed !important;
@@ -196,31 +239,18 @@ export const generateReceiptHTML = (
   }
   .status-paid-text * { color: #ffffff !important; }
   hr { border: none !important; border-top: 1px dashed #000000 !important; }
-  @page {
-    size: 80mm auto;
-    margin: 0;
-  }
-  body {
-    font-family: 'Segoe UI', 'Noto Sans Sinhala', Arial, sans-serif;
-    background: #ffffff;
-    font-weight: 700;
-    font-size: 12px;
-    line-height: 1.4;
-    width: 80mm;
-    color: #000000;
-  }
 </style>
 </head>
 <body>
-<div class="receipt-root" style="width:80mm;padding:8px 12px;margin:0 auto;background:#fff;font-family:'Segoe UI','Noto Sans Sinhala',Arial,sans-serif;font-size:12px;font-weight:700;color:#000;">
+<div class="receipt-root">
 
   <!-- HEADER -->
-  <div style="text-align:center;padding-bottom:4px;border-bottom:2px double #000;">
-    <img src="/inv_logo.png" alt="" style="width:90px;height:auto;display:block;margin:0 auto;"/>
-    <div style="margin:5px 0 3px;border-bottom:1px solid #000;padding-bottom:3px;">
-      <div style="font-size:24px;font-weight:900;color:#000;line-height:1.1;">ලියනගේ හාඩ්වෙයාර්</div>
+  <div style="text-align:center;padding-bottom:4px;border-bottom:2px double #000;margin-bottom:4px;">
+    <img src="/inv_logo.png" alt="LHD Logo" style="width:90px;height:90px;max-height:90px;display:block;margin:0 auto;object-fit:contain;"/>
+    <div style="margin:4px 0 2px;border-bottom:1px solid #000;padding-bottom:3px;text-align:center;">
+      <div style="font-size:24px;font-weight:900;color:#000;line-height:1.2;white-space:normal !important;word-break:break-word !important;">ලියනගේ හාඩ්වෙයාර්</div>
     </div>
-    <div style="font-size:14px;font-weight:800;color:#000;line-height:1.5;">
+    <div style="font-size:13px;font-weight:800;color:#000;line-height:1.4;margin-top:2px;white-space:normal !important;word-break:break-word !important;text-align:center;">
       හක්මන පාර, දෙයියන්දර<br/>
       දුරකථන: 0773751805 / 0412268217<br/>
       Email: liyanagehardware1986@gmail.com

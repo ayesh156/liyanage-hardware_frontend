@@ -3,6 +3,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { Invoice, Customer, InvoiceItem } from '../../types/index';
 import { X, Printer } from 'lucide-react';
 import { useHiddenIframePrint } from '../../hooks/useHiddenIframePrint';
+import { printInvoice } from './PrintInvoiceModal';
 
 interface ExtendedInvoiceItem extends InvoiceItem {
   originalPrice?: number;
@@ -55,16 +56,13 @@ export const InvoicePreviewModal: React.FC<InvoicePreviewModalProps> = ({
   const { printViaHiddenIframe } = useHiddenIframePrint();
 
   const handlePrint = useCallback(() => {
-    if (printWrapperRef.current) {
-      printViaHiddenIframe(printWrapperRef.current)
-        .catch((err) => {
-          console.warn('Iframe print failed, falling back to window.print():', err);
-          window.print();
-        });
-    } else {
+    // 🌟 Unified Thermal Print Engine: guarantees exact 1:1 identical template, font size,
+    //    and layout whether printed upon checkout or re-printed from invoice review.
+    printInvoice(invoice, customer, 'si', 'Admin User').catch((err) => {
+      console.warn('Thermal print failed, falling back to window.print():', err);
       window.print();
-    }
-  }, [printViaHiddenIframe]);
+    });
+  }, [invoice, customer]);
 
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {

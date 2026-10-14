@@ -74,9 +74,9 @@ export const SupplierRowActionMenu: React.FC<SupplierRowActionMenuProps> = ({
             : 'bg-white/95 border-slate-200 text-slate-800'
         )}
       >
-        <div className="px-2.5 py-1.5 border-b border-slate-800/50 mb-1">
-          <p className="text-[11px] font-bold truncate text-slate-200">{supplier.name}</p>
-          <p className="text-[10px] text-slate-400 truncate">
+        <div className={cn("px-2.5 py-1.5 border-b mb-1", isDark ? "border-slate-800/50" : "border-slate-200")}>
+          <p className={cn("text-[11px] font-bold truncate", isDark ? "text-slate-200" : "text-slate-900")}>{supplier.name}</p>
+          <p className={cn("text-[10px] truncate", isDark ? "text-slate-400" : "text-slate-500")}>
             {supplier.companyName || 'Hardware Supplier'}
           </p>
         </div>
@@ -84,33 +84,53 @@ export const SupplierRowActionMenu: React.FC<SupplierRowActionMenuProps> = ({
         {/* View Supplier Ledger */}
         <DropdownMenuItem
           onClick={() => onViewLedger(supplier)}
-          className="flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-xl cursor-pointer hover:bg-amber-500/15 hover:text-amber-400 focus:bg-amber-500/15 focus:text-amber-400 transition-colors"
+          className={cn(
+            "flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-xl cursor-pointer transition-colors",
+            isDark
+              ? "hover:bg-amber-500/15 hover:text-amber-400 focus:bg-amber-500/15 focus:text-amber-400 text-slate-200"
+              : "hover:bg-amber-50 hover:text-amber-700 focus:bg-amber-50 focus:text-amber-700 text-slate-700"
+          )}
         >
-          <BookOpen className="w-4 h-4 text-amber-400" />
+          <BookOpen className={cn("w-4 h-4", isDark ? "text-amber-400" : "text-amber-600")} />
           <span>{t('supplierLedger.title', 'Supplier Ledger')}</span>
         </DropdownMenuItem>
 
         <DropdownMenuItem
           onClick={() => onAddGrn(supplier.id)}
-          className="flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-xl cursor-pointer hover:bg-cyan-500/15 hover:text-cyan-400 focus:bg-cyan-500/15 focus:text-cyan-400 transition-colors"
+          className={cn(
+            "flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-xl cursor-pointer transition-colors",
+            isDark
+              ? "hover:bg-cyan-500/15 hover:text-cyan-400 focus:bg-cyan-500/15 focus:text-cyan-400 text-slate-200"
+              : "hover:bg-cyan-50 hover:text-cyan-700 focus:bg-cyan-50 focus:text-cyan-700 text-slate-700"
+          )}
         >
-          <PackagePlus className="w-4 h-4 text-cyan-400" />
+          <PackagePlus className={cn("w-4 h-4", isDark ? "text-cyan-400" : "text-cyan-600")} />
           <span>{t('supplierLedger.newGrn', 'New GRN')}</span>
         </DropdownMenuItem>
 
         <DropdownMenuItem
           onClick={() => onSettle(supplier)}
-          className="flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-xl cursor-pointer hover:bg-emerald-500/15 hover:text-emerald-400 focus:bg-emerald-500/15 focus:text-emerald-400 transition-colors"
+          className={cn(
+            "flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-xl cursor-pointer transition-colors",
+            isDark
+              ? "hover:bg-emerald-500/15 hover:text-emerald-400 focus:bg-emerald-500/15 focus:text-emerald-400 text-slate-200"
+              : "hover:bg-emerald-50 hover:text-emerald-700 focus:bg-emerald-50 focus:text-emerald-700 text-slate-700"
+          )}
         >
-          <Banknote className="w-4 h-4 text-emerald-400" />
+          <Banknote className={cn("w-4 h-4", isDark ? "text-emerald-400" : "text-emerald-600")} />
           <span>{t('grn.pendingGrns', 'Pending GRNs')}</span>
         </DropdownMenuItem>
 
         <DropdownMenuItem
           onClick={() => onEdit(supplier)}
-          className="flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-xl cursor-pointer hover:bg-orange-500/15 hover:text-orange-400 focus:bg-orange-500/15 focus:text-orange-400 transition-colors"
+          className={cn(
+            "flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-xl cursor-pointer transition-colors",
+            isDark
+              ? "hover:bg-orange-500/15 hover:text-orange-400 focus:bg-orange-500/15 focus:text-orange-400 text-slate-200"
+              : "hover:bg-orange-50 hover:text-orange-700 focus:bg-orange-50 focus:text-orange-700 text-slate-700"
+          )}
         >
-          <Edit2 className="w-4 h-4 text-orange-400" />
+          <Edit2 className={cn("w-4 h-4", isDark ? "text-orange-400" : "text-orange-600")} />
           <span>{t('suppliers.editSupplier', 'Edit Supplier')}</span>
         </DropdownMenuItem>
 
@@ -118,9 +138,14 @@ export const SupplierRowActionMenu: React.FC<SupplierRowActionMenuProps> = ({
 
         <DropdownMenuItem
           onClick={() => onDelete(supplier)}
-          className="flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-xl cursor-pointer text-rose-400 hover:bg-rose-500/15 hover:text-rose-300 focus:bg-rose-500/15 focus:text-rose-300 transition-colors"
+          className={cn(
+            "flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-xl cursor-pointer transition-colors",
+            isDark
+              ? "text-rose-400 hover:bg-rose-500/15 hover:text-rose-300 focus:bg-rose-500/15 focus:text-rose-300"
+              : "text-rose-600 hover:bg-rose-50 hover:text-rose-700 focus:bg-rose-50 focus:text-rose-700"
+          )}
         >
-          <Trash2 className="w-4 h-4 text-rose-400" />
+          <Trash2 className={cn("w-4 h-4", isDark ? "text-rose-400" : "text-rose-600")} />
           <span>{t('suppliers.deleteSupplier', 'Delete Supplier')}</span>
         </DropdownMenuItem>
       </DropdownMenuContent>

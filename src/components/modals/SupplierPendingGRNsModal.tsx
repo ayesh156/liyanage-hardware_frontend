@@ -244,8 +244,8 @@ export const SupplierPendingGRNsModal: React.FC<SupplierPendingGRNsModalProps> =
                 <DialogTitle className="text-base sm:text-lg font-black tracking-tight flex items-center gap-2">
                   <span>{t('grn.pendingGrns', 'Pending GRNs')}</span>
                 </DialogTitle>
-                <DialogDescription className="text-xs text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
-                  <span className="font-bold text-slate-200">{supplier.name}</span>
+                <DialogDescription className={cn('text-xs mt-0.5 flex items-center gap-2 flex-wrap', isDark ? 'text-slate-400' : 'text-slate-500')}>
+                  <span className={cn('font-bold', isDark ? 'text-slate-200' : 'text-slate-800')}>{supplier.name}</span>
                   {supplier.companyName && <span>• {supplier.companyName}</span>}
                   {(supplier.mobileNumber || supplier.telephoneNumber) && (
                     <span className="font-mono text-[11px]">
@@ -271,7 +271,7 @@ export const SupplierPendingGRNsModal: React.FC<SupplierPendingGRNsModalProps> =
               )}
 
               <div className="text-right hidden sm:block">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                <span className={cn('text-[10px] font-bold uppercase tracking-wider block', isDark ? 'text-slate-400' : 'text-slate-500')}>
                   {t('grn.totalOutstanding', 'Total Outstanding')}
                 </span>
                 <span className="text-sm font-black font-mono text-rose-400">
@@ -306,16 +306,16 @@ export const SupplierPendingGRNsModal: React.FC<SupplierPendingGRNsModalProps> =
                 isDark ? 'bg-slate-900 border-slate-700/80 text-white' : 'bg-white border-slate-300 text-slate-900'
               )}
             >
-              <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <Search className={cn('w-3.5 h-3.5 shrink-0', isDark ? 'text-slate-400' : 'text-slate-500')} />
               <input
                 type="text"
                 placeholder={t('common.search', 'Search GRN # or items...')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-transparent border-none text-xs focus:outline-none placeholder-slate-500"
+                className={cn('w-full bg-transparent border-none text-xs focus:outline-none', isDark ? 'placeholder-slate-500 text-white' : 'placeholder-slate-400 text-slate-900')}
               />
               {searchQuery && (
-                <button onClick={() => setSearchQuery('')} className="text-slate-400 hover:text-white">
+                <button onClick={() => setSearchQuery('')} className={cn(isDark ? 'text-slate-400 hover:text-white' : 'text-slate-400 hover:text-slate-700')}>
                   <X className="w-3 h-3" />
                 </button>
               )}
@@ -323,7 +323,7 @@ export const SupplierPendingGRNsModal: React.FC<SupplierPendingGRNsModalProps> =
 
             {/* Sorting Controls */}
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] text-slate-400 font-bold uppercase mr-1">{t('common.sort', 'Sort')}:</span>
+              <span className={cn('text-[10px] font-bold uppercase mr-1', isDark ? 'text-slate-400' : 'text-slate-500')}>{t('common.sort', 'Sort')}:</span>
               <button
                 type="button"
                 onClick={() => {
@@ -397,7 +397,7 @@ export const SupplierPendingGRNsModal: React.FC<SupplierPendingGRNsModalProps> =
             {isLoading ? (
               <div className="py-16 text-center space-y-3">
                 <RefreshCw className="w-7 h-7 text-orange-400 animate-spin mx-auto" />
-                <p className="text-xs text-slate-400">Loading pending GRNs for {supplier.name}...</p>
+                <p className={cn('text-xs', isDark ? 'text-slate-400' : 'text-slate-500')}>Loading pending GRNs for {supplier.name}...</p>
               </div>
             ) : processedGrns.length === 0 ? (
               <div
@@ -410,8 +410,8 @@ export const SupplierPendingGRNsModal: React.FC<SupplierPendingGRNsModalProps> =
                   <CheckCircle2 className="w-6 h-6" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-slate-200">{t('grn.allSettled', 'All Settled & Clear!')}</h4>
-                  <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+                  <h4 className={cn('text-sm font-bold', isDark ? 'text-slate-200' : 'text-slate-800')}>{t('grn.allSettled', 'All Settled & Clear!')}</h4>
+                  <p className={cn('text-xs mt-1 max-w-sm mx-auto', isDark ? 'text-slate-400' : 'text-slate-500')}>
                     {searchQuery
                       ? 'No pending GRNs matched your search criteria.'
                       : t('grn.noPendingGrns', `There are currently no unpaid or pending GRNs for ${supplier.name}.`)}
@@ -451,10 +451,10 @@ export const SupplierPendingGRNsModal: React.FC<SupplierPendingGRNsModalProps> =
                           #{grn.grnNumber}
                         </span>
                         <div className="flex flex-col">
-                          <span className="text-xs text-slate-300 font-medium whitespace-nowrap">
+                          <span className={cn('text-xs font-medium whitespace-nowrap', isDark ? 'text-slate-300' : 'text-slate-700')}>
                             {new Date(grn.createdAt).toLocaleDateString('en-CA')}
                           </span>
-                          <span className="text-[10px] text-slate-500 font-mono">
+                          <span className={cn('text-[10px] font-mono', isDark ? 'text-slate-500' : 'text-slate-400')}>
                             {new Date(grn.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </span>
                         </div>
@@ -463,7 +463,7 @@ export const SupplierPendingGRNsModal: React.FC<SupplierPendingGRNsModalProps> =
                       {/* Middle Column: Financial Metrics (Total / Paid / Due) with generous flex spacing */}
                       <div className="flex items-center gap-6 sm:gap-8 text-xs shrink-0 mx-auto sm:mx-0">
                         <div className="flex flex-col">
-                          <span className="text-[10px] text-slate-400 uppercase font-semibold">
+                          <span className={cn('text-[10px] uppercase font-semibold', isDark ? 'text-slate-400' : 'text-slate-500')}>
                             {t('common.total', 'Total')}
                           </span>
                           <span className={cn('font-semibold font-mono text-xs sm:text-sm', isDark ? 'text-slate-200' : 'text-slate-800')}>
@@ -546,7 +546,7 @@ export const SupplierPendingGRNsModal: React.FC<SupplierPendingGRNsModalProps> =
                         )}
                       >
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                          <span className={cn('text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5', isDark ? 'text-slate-400' : 'text-slate-500')}>
                             <Package className="w-3 h-3 text-cyan-400" />
                             {t('grn.itemsBreakdown', 'Line Items Breakdown')} ({itemsCount})
                           </span>
@@ -567,19 +567,19 @@ export const SupplierPendingGRNsModal: React.FC<SupplierPendingGRNsModalProps> =
                                 <th className="pb-1.5 text-right">{t('common.total', 'Subtotal')}</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-800/40">
+                            <tbody className={cn('divide-y', isDark ? 'divide-slate-800/40' : 'divide-slate-200')}>
                               {grn.items!.map((it, idx) => (
                                 <tr key={it.id || idx} className="text-[11px]">
-                                  <td className="py-1.5 font-medium text-slate-200 truncate max-w-xs">
+                                  <td className={cn('py-1.5 font-medium truncate max-w-xs', isDark ? 'text-slate-200' : 'text-slate-800')}>
                                     {it.name}
                                   </td>
-                                  <td className="py-1.5 text-right font-mono text-slate-400">
+                                  <td className={cn('py-1.5 text-right font-mono', isDark ? 'text-slate-400' : 'text-slate-600')}>
                                     Rs. {Number(it.unitPrice || 0).toLocaleString('en-LK', { minimumFractionDigits: 2 })}
                                   </td>
-                                  <td className="py-1.5 text-center font-mono font-bold text-slate-300">
+                                  <td className={cn('py-1.5 text-center font-mono font-bold', isDark ? 'text-slate-300' : 'text-slate-700')}>
                                     {Number(it.qty || 0)}
                                   </td>
-                                  <td className="py-1.5 text-right font-mono font-bold text-slate-200">
+                                  <td className={cn('py-1.5 text-right font-mono font-bold', isDark ? 'text-slate-200' : 'text-slate-800')}>
                                     Rs. {Number(it.subtotal || 0).toLocaleString('en-LK', { minimumFractionDigits: 2 })}
                                   </td>
                                 </tr>
@@ -602,8 +602,8 @@ export const SupplierPendingGRNsModal: React.FC<SupplierPendingGRNsModalProps> =
               isDark ? 'border-slate-800 bg-slate-900/90' : 'border-slate-200 bg-slate-50'
             )}
           >
-            <div className="text-xs text-slate-400">
-              <span>{t('grn.showingPending', 'Showing pending GRNs')}: <strong className="text-slate-200 font-mono font-bold">{processedGrns.length}</strong></span>
+            <div className={cn('text-xs', isDark ? 'text-slate-400' : 'text-slate-500')}>
+              <span>{t('grn.showingPending', 'Showing pending GRNs')}: <strong className={cn('font-mono font-bold', isDark ? 'text-slate-200' : 'text-slate-800')}>{processedGrns.length}</strong></span>
             </div>
 
             <div className="flex items-center gap-2">

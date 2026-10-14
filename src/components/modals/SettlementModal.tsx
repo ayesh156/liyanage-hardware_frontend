@@ -263,7 +263,10 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
       : 'border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:border-emerald-500/80 focus:ring-emerald-500/30 shadow-sm'
   );
 
-  const labelClass = 'text-[11px] font-semibold tracking-wide uppercase text-slate-400 flex items-center gap-1.5 mb-1';
+  const labelClass = cn(
+    'text-[11px] font-semibold tracking-wide uppercase flex items-center gap-1.5 mb-1',
+    isDark ? 'text-slate-400' : 'text-slate-600'
+  );
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -286,12 +289,12 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                 {isEditing ? <Edit3 className="w-4 h-4" /> : <Banknote className="w-4 h-4" />}
               </div>
               <div>
-                <DialogTitle className="text-sm font-bold tracking-tight">
+                <DialogTitle className={cn("text-sm font-bold tracking-tight", isDark ? "text-white" : "text-slate-900")}>
                   {isEditing
                     ? t('settlement.editSettlement', 'Edit Settlement')
                     : t('settlement.recordSettlement', 'Record Settlement')}
                 </DialogTitle>
-                <DialogDescription className="text-[11px] text-slate-400 mt-0.5">
+                <DialogDescription className={cn("text-[11px] mt-0.5", isDark ? "text-slate-400" : "text-slate-500")}>
                   {effectiveGrn
                     ? `For GRN #${effectiveGrn.grnNumber} (${effectiveGrn.supplier?.name || supplier?.name || ''})`
                     : `Supplier Ledger: ${supplier?.name || ''}`}
@@ -311,17 +314,22 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                 )}
               >
                 <div>
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block mb-0.5">
+                  <span className={cn("text-[10px] font-semibold uppercase tracking-wider block mb-0.5", isDark ? "text-slate-400" : "text-slate-500")}>
                     {t('grn.dueBalance', 'Outstanding Balance')}
                   </span>
-                  <div className="text-base font-black text-rose-400 tracking-tight font-mono">
+                  <div className={cn("text-base font-black tracking-tight font-mono", isDark ? "text-rose-400" : "text-rose-600")}>
                     Rs. {outstandingBalance.toLocaleString('en-LK', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={handleFullPay}
-                  className="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/20 transition-all flex items-center gap-1"
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg text-xs font-bold border transition-all flex items-center gap-1",
+                    isDark
+                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20"
+                      : "bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100"
+                  )}
                 >
                   <Calculator className="w-3 h-3" />
                   {t('grn.payFull', 'Pay Full')}
@@ -332,12 +340,12 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
             {/* Payment Amount Input with Non-Overlapping Static Left Adornment */}
             <div>
               <label className={labelClass}>
-                <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
+                <DollarSign className={cn("w-3.5 h-3.5", isDark ? "text-emerald-400" : "text-emerald-600")} />
                 {t('settlement.settlementAmount', 'Settlement Amount')} <span className="text-rose-500">*</span>
               </label>
 
               <div className="relative flex items-center">
-                <span className="absolute left-3.5 text-xs font-bold text-slate-400 select-none pointer-events-none z-10">
+                <span className={cn("absolute left-3.5 text-xs font-bold select-none pointer-events-none z-10", isDark ? "text-slate-400" : "text-slate-500")}>
                   Rs.
                 </span>
                 <input
@@ -361,8 +369,10 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                   step="0.01"
                   min="0.01"
                   className={cn(
-                    'w-full pl-12 pr-4 h-10 text-sm font-semibold rounded-xl bg-slate-900/60 border border-slate-700/60 text-emerald-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500/30 font-mono transition-all',
-                    !isDark && 'bg-white border-slate-300 text-emerald-600 focus:border-emerald-500 shadow-sm'
+                    'w-full pl-12 pr-4 h-10 text-sm font-semibold rounded-xl border font-mono transition-all focus:outline-none focus:ring-1 focus:ring-emerald-500/30',
+                    isDark
+                      ? 'bg-slate-900/60 border-slate-700/60 text-emerald-400 focus:border-emerald-500'
+                      : 'bg-white border-slate-300 text-emerald-700 focus:border-emerald-500 shadow-sm'
                   )}
                   autoFocus
                   required
@@ -394,7 +404,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
             {/* Decoupled Payment Date & Time Picker (Inline Cluster) */}
             <div className="w-fit">
               <label className={labelClass}>
-                <Calendar className="w-3.5 h-3.5 text-orange-500" />
+                <Calendar className={cn("w-3.5 h-3.5", isDark ? "text-orange-400" : "text-orange-600")} />
                 {t('settlement.paymentDate', 'Payment Date & Time')}
               </label>
               <ThemedDateTimePicker
@@ -407,7 +417,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
             {/* Payment Method Selector */}
             <div>
               <label className={labelClass}>
-                <CreditCard className="w-3.5 h-3.5 text-orange-500" />
+                <CreditCard className={cn("w-3.5 h-3.5", isDark ? "text-orange-400" : "text-orange-600")} />
                 {t('settlement.paymentMethod', 'Payment Method')}
               </label>
               <div className="grid grid-cols-3 gap-2">
@@ -426,7 +436,9 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                       className={cn(
                         'flex flex-col items-center justify-center py-2 px-1 rounded-xl border text-[11px] font-semibold transition-all',
                         isSelected
-                          ? 'bg-emerald-500/15 border-emerald-500 text-emerald-400 shadow-md shadow-emerald-500/10'
+                          ? isDark
+                            ? 'bg-emerald-500/15 border-emerald-500 text-emerald-400 shadow-md shadow-emerald-500/10'
+                            : 'bg-emerald-50 border-emerald-600 text-emerald-800 shadow-sm shadow-emerald-500/10'
                           : isDark
                             ? 'bg-slate-900/60 border-slate-700/60 text-slate-400 hover:bg-slate-800'
                             : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
@@ -443,7 +455,7 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
             {/* Note / Reference with Intelligent Clearing */}
             <div>
               <label className={labelClass}>
-                <FileText className="w-3.5 h-3.5 text-orange-500" />
+                <FileText className={cn("w-3.5 h-3.5", isDark ? "text-orange-400" : "text-orange-600")} />
                 {paymentMethod === 'CHEQUE'
                   ? t('grn.chequeNumber', 'Cheque / Ref No.')
                   : t('settlement.reference', 'Reference / Cheque No')}
@@ -471,8 +483,10 @@ export const SettlementModal: React.FC<SettlementModalProps> = ({
                   isDark ? 'bg-slate-950/40 border-slate-800' : 'bg-slate-50 border-slate-200'
                 )}
               >
-                <span className="text-slate-400 text-[11px]">{t('settlement.remainingDue', 'Remaining Due Balance')}:</span>
-                <span className="font-mono font-bold text-slate-200">
+                <span className={cn("text-[11px]", isDark ? "text-slate-400" : "text-slate-500")}>
+                  {t('settlement.remainingDue', 'Remaining Due Balance')}:
+                </span>
+                <span className={cn("font-mono font-bold", isDark ? "text-slate-200" : "text-slate-800")}>
                   Rs. {remainingBalance.toLocaleString('en-LK', { minimumFractionDigits: 2 })}
                 </span>
               </div>

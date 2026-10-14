@@ -145,7 +145,10 @@ export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
         : 'border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:border-orange-500/80 focus:ring-orange-500/30 shadow-sm'
     );
 
-  const labelClass = 'text-[11px] font-semibold tracking-wide uppercase text-slate-400 flex items-center gap-1.5 mb-1';
+  const labelClass = cn(
+    'text-[11px] font-semibold tracking-wide uppercase flex items-center gap-1.5 mb-1',
+    isDark ? 'text-slate-400' : 'text-slate-600'
+  );
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -171,7 +174,7 @@ export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
                 <DialogTitle className="text-sm font-bold tracking-tight">
                   {isEditing ? t('suppliers.editProfile', 'Edit Supplier Profile') : t('suppliers.newSupplier', 'New Supplier')}
                 </DialogTitle>
-                <DialogDescription className="text-[11px] text-slate-400 mt-0.5">
+                <DialogDescription className={cn('text-[11px] mt-0.5', isDark ? 'text-slate-400' : 'text-slate-500')}>
                   {isEditing
                     ? t('suppliers.updating', 'Updating {{name}}', { name: supplier.name })
                     : t('suppliers.createRecordDesc', 'Create supplier record with starting balance tracking')}
@@ -282,11 +285,11 @@ export const SupplierFormModal: React.FC<SupplierFormModalProps> = ({
                     onChange={(e) => setFormData({ ...formData, startingBalance: e.target.value })}
                     className={cn(inputClass(), 'pl-7 font-mono font-medium')}
                   />
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] font-bold text-slate-400">
+                  <span className={cn('absolute left-2.5 top-1/2 -translate-y-1/2 text-[11px] font-bold', isDark ? 'text-slate-400' : 'text-slate-500')}>
                     Rs.
                   </span>
                 </div>
-                <p className="text-[10px] text-slate-400 mt-1">
+                <p className={cn('text-[10px] mt-1', isDark ? 'text-slate-400' : 'text-slate-500')}>
                   {t('suppliers.startingBalanceDesc', 'Outstanding balance brought forward from legacy ledger.')}
                 </p>
               </div>

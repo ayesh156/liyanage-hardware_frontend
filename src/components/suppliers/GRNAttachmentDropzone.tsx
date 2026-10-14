@@ -328,15 +328,16 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
 
       {/* Header bar */}
       <div className="flex items-center justify-between">
-        <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-          <ImageIcon className="w-3.5 h-3.5 text-orange-500" />
+        <label className={cn("text-[11px] font-semibold uppercase tracking-wider flex items-center gap-1.5", isDark ? "text-slate-400" : "text-slate-600")}>
+          <ImageIcon className={cn("w-3.5 h-3.5", isDark ? "text-orange-500" : "text-orange-600")} />
           {t('attachments.attachedBills', { count: images.length, defaultValue: `Attached Bills & Receipts (${images.length})` })}
         </label>
         <button
           type="button"
           onClick={() => setShowUrlDialog(true)}
           className={cn(
-            'text-[11px] font-medium flex items-center gap-1 text-orange-400 hover:text-orange-300 transition-colors',
+            'text-[11px] font-medium flex items-center gap-1 transition-colors',
+            isDark ? 'text-orange-400 hover:text-orange-300' : 'text-orange-600 hover:text-orange-700',
             disabled && 'opacity-50 pointer-events-none'
           )}
         >
@@ -382,10 +383,10 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
               >
                 <Plus className="w-4 h-4" />
               </div>
-              <span className="text-[11px] font-bold text-slate-200 leading-tight">
+              <span className={cn("text-[11px] font-bold leading-tight", isDark ? "text-slate-200" : "text-slate-800")}>
                 {t('attachments.uploadFile', 'Upload File')}
               </span>
-              <span className="text-[9px] text-slate-400 font-mono mt-0.5">
+              <span className={cn("text-[9px] font-mono mt-0.5", isDark ? "text-slate-400" : "text-slate-500")}>
                 {t('attachments.orPaste', 'or Ctrl+V')}
               </span>
             </>
@@ -401,18 +402,24 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
           return (
             <div
               key={idx}
-              className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl border border-slate-700/70 bg-slate-900 relative overflow-hidden group shadow-sm transition-all hover:border-orange-500/80 shrink-0"
+              className={cn(
+                "w-24 h-24 sm:w-28 sm:h-28 rounded-2xl border relative overflow-hidden group shadow-sm transition-all hover:border-orange-500/80 shrink-0",
+                isDark ? "border-slate-700/70 bg-slate-900" : "border-slate-200 bg-white"
+              )}
             >
               {isPdf ? (
                 <div 
                   onClick={() => setLightboxIndex(idx)}
-                  className="w-full h-full bg-slate-950 flex flex-col items-center justify-center p-2 cursor-pointer text-center"
+                  className={cn(
+                    "w-full h-full flex flex-col items-center justify-center p-2 cursor-pointer text-center",
+                    isDark ? "bg-slate-950" : "bg-rose-50/40"
+                  )}
                 >
-                  <FileText className="w-8 h-8 text-rose-400 mb-1" />
-                  <span className="text-[9px] font-bold text-slate-300 truncate max-w-full px-1">
+                  <FileText className={cn("w-8 h-8 mb-1", isDark ? "text-rose-400" : "text-rose-600")} />
+                  <span className={cn("text-[9px] font-bold truncate max-w-full px-1", isDark ? "text-slate-300" : "text-slate-700")}>
                     {img.name || 'Invoice PDF'}
                   </span>
-                  <span className="text-[8px] font-mono font-semibold text-rose-400 bg-rose-500/10 px-1.5 py-0.2 rounded mt-0.5">
+                  <span className={cn("text-[8px] font-mono font-semibold px-1.5 py-0.2 rounded mt-0.5", isDark ? "text-rose-400 bg-rose-500/10" : "text-rose-700 bg-rose-100")}>
                     PDF DOC
                   </span>
                 </div>
@@ -470,13 +477,13 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
                 : 'bg-slate-100 border-slate-300 hover:border-orange-500 hover:bg-slate-200 shadow-sm'
             )}
           >
-            <span className="text-lg font-black text-orange-400 group-hover:scale-110 transition-transform">
+            <span className={cn("text-lg font-black group-hover:scale-110 transition-transform", isDark ? "text-orange-400" : "text-orange-600")}>
               +{overflowCount}
             </span>
-            <span className="text-[10px] font-bold text-slate-300 mt-0.5">
+            <span className={cn("text-[10px] font-bold mt-0.5", isDark ? "text-slate-300" : "text-slate-700")}>
               {t('attachments.moreFiles', 'More Files')}
             </span>
-            <span className="text-[9px] text-slate-400">
+            <span className={cn("text-[9px]", isDark ? "text-slate-400" : "text-slate-500")}>
               {t('attachments.viewAll', { count: images.length, defaultValue: `View All (${images.length})` })}
             </span>
           </button>
@@ -502,10 +509,10 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
                 <Layers className="w-4 h-4" />
               </div>
               <div>
-                <DialogTitle className="text-sm font-bold tracking-tight">
+                <DialogTitle className={cn("text-sm font-bold tracking-tight", isDark ? "text-white" : "text-slate-900")}>
                   {t('attachments.galleryTitle', { count: images.length, defaultValue: `Attached Receipts & Invoices (${images.length})` })}
                 </DialogTitle>
-                <DialogDescription className="text-[11px] text-slate-400 mt-0.5">
+                <DialogDescription className={cn("text-[11px] mt-0.5", isDark ? "text-slate-400" : "text-slate-500")}>
                   {t('attachments.galleryDesc', 'Manage, preview, and download attached invoice documents')}
                 </DialogDescription>
               </div>
@@ -521,7 +528,10 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
                 return (
                   <div
                     key={idx}
-                    className="relative rounded-2xl border border-slate-700/70 bg-slate-950 aspect-square overflow-hidden group shadow transition-all hover:border-orange-500"
+                    className={cn(
+                      "relative rounded-2xl border aspect-square overflow-hidden group shadow transition-all hover:border-orange-500",
+                      isDark ? "border-slate-700/70 bg-slate-950" : "border-slate-200 bg-white"
+                    )}
                   >
                     {isPdf ? (
                       <div 
@@ -529,13 +539,16 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
                           setIsAllAttachmentsOpen(false);
                           setLightboxIndex(idx);
                         }}
-                        className="w-full h-full flex flex-col items-center justify-center p-3 cursor-pointer text-center"
+                        className={cn(
+                          "w-full h-full flex flex-col items-center justify-center p-3 cursor-pointer text-center",
+                          isDark ? "" : "bg-rose-50/40"
+                        )}
                       >
-                        <FileText className="w-8 h-8 text-rose-400 mb-1" />
-                        <span className="text-[10px] font-bold text-slate-200 truncate max-w-full px-1">
+                        <FileText className={cn("w-8 h-8 mb-1", isDark ? "text-rose-400" : "text-rose-600")} />
+                        <span className={cn("text-[10px] font-bold truncate max-w-full px-1", isDark ? "text-slate-200" : "text-slate-700")}>
                           {img.name || `Document #${idx + 1}`}
                         </span>
-                        <span className="text-[9px] font-mono text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded mt-1">
+                        <span className={cn("text-[9px] font-mono px-1.5 py-0.5 rounded mt-1", isDark ? "text-rose-400 bg-rose-500/10" : "text-rose-700 bg-rose-100")}>
                           PDF FILE
                         </span>
                       </div>
@@ -611,10 +624,10 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
                 <Link2 className="w-4 h-4" />
               </div>
               <div>
-                <DialogTitle className="text-sm font-bold tracking-tight">
+                <DialogTitle className={cn("text-sm font-bold tracking-tight", isDark ? "text-white" : "text-slate-900")}>
                   {t('attachments.addLinkTitle', 'Attach Document URL or Drive Link')}
                 </DialogTitle>
-                <DialogDescription className="text-[11px] text-slate-400 mt-0.5">
+                <DialogDescription className={cn("text-[11px] mt-0.5", isDark ? "text-slate-400" : "text-slate-500")}>
                   {t('attachments.addLinkDesc', 'Paste a public Google Drive sharing link, direct image URL, or PDF link')}
                 </DialogDescription>
               </div>
@@ -624,7 +637,7 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
           <div className="p-5 space-y-4">
             {/* ── Document Type Toggle ── */}
             <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-2">
+              <label className={cn("text-[11px] font-semibold uppercase tracking-wider block mb-2", isDark ? "text-slate-400" : "text-slate-600")}>
                 {t('grn.documentType', 'DOCUMENT TYPE')}
               </label>
               <div
@@ -665,7 +678,7 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
                 </button>
               </div>
               {/* Context hint under toggle */}
-              <p className={cn('text-[10px] mt-1.5 font-medium', docTypeSelection === 'pdf' ? 'text-rose-400' : 'text-slate-500')}>
+              <p className={cn('text-[10px] mt-1.5 font-medium', docTypeSelection === 'pdf' ? (isDark ? 'text-rose-400' : 'text-rose-600') : (isDark ? 'text-slate-500' : 'text-slate-600'))}>
                 {docTypeSelection === 'pdf'
                   ? t('grn.pdfViewerNotice', 'Will be opened as an interactive multi-page PDF viewer')
                   : t('grn.imageViewerNotice', 'Will be opened as a zoomable image')}
@@ -674,7 +687,7 @@ export const GRNAttachmentDropzone: React.FC<GRNAttachmentDropzoneProps> = ({
 
             {/* ── URL Input ── */}
             <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-1">
+              <label className={cn("text-[11px] font-semibold uppercase tracking-wider block mb-1", isDark ? "text-slate-400" : "text-slate-600")}>
                 {t('grn.documentOrImageUrl', 'DOCUMENT / IMAGE URL')}
               </label>
               <input

@@ -119,10 +119,10 @@ export const GRNDetailsModal: React.FC<GRNDetailsModalProps> = ({
                   isDark ? 'bg-slate-950/50 border-slate-800' : 'bg-slate-50 border-slate-200'
                 )}
               >
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block mb-0.5">
+                <span className={cn('text-[10px] font-semibold uppercase tracking-wider block mb-0.5', isDark ? 'text-slate-400' : 'text-slate-500')}>
                   Total Bill
                 </span>
-                <div className="text-sm font-bold font-mono text-slate-100">
+                <div className={cn('text-sm font-bold font-mono', isDark ? 'text-slate-100' : 'text-slate-900')}>
                   Rs. {totalAmount.toLocaleString('en-LK', { minimumFractionDigits: 2 })}
                 </div>
               </div>
@@ -132,7 +132,7 @@ export const GRNDetailsModal: React.FC<GRNDetailsModalProps> = ({
                   isDark ? 'bg-slate-950/50 border-slate-800' : 'bg-slate-50 border-slate-200'
                 )}
               >
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block mb-0.5">
+                <span className={cn('text-[10px] font-semibold uppercase tracking-wider block mb-0.5', isDark ? 'text-slate-400' : 'text-slate-500')}>
                   Paid Amount
                 </span>
                 <div className="text-sm font-bold font-mono text-emerald-400">
@@ -145,13 +145,15 @@ export const GRNDetailsModal: React.FC<GRNDetailsModalProps> = ({
                   isDark ? 'bg-slate-950/50 border-slate-800' : 'bg-slate-50 border-slate-200'
                 )}
               >
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 block mb-0.5">
+                <span className={cn('text-[10px] font-semibold uppercase tracking-wider block mb-0.5', isDark ? 'text-slate-400' : 'text-slate-500')}>
                   Due Balance
                 </span>
                 <div
                   className={cn(
                     'text-sm font-bold font-mono',
-                    dueAmount > 0 ? 'text-rose-400' : 'text-emerald-400'
+                    dueAmount > 0
+                      ? isDark ? 'text-rose-400' : 'text-rose-600'
+                      : isDark ? 'text-emerald-400' : 'text-emerald-600'
                   )}
                 >
                   Rs. {dueAmount.toLocaleString('en-LK', { minimumFractionDigits: 2 })}
@@ -169,28 +171,28 @@ export const GRNDetailsModal: React.FC<GRNDetailsModalProps> = ({
               >
                 <div className="flex items-center gap-1.5 mb-2.5">
                   <Layers className="w-3.5 h-3.5 text-orange-500" />
-                  <span className="text-xs font-bold text-slate-200">
+                  <span className={cn('text-xs font-bold', isDark ? 'text-slate-200' : 'text-slate-800')}>
                     Itemized Stock Lines ({grn.items.length})
                   </span>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="border-b border-slate-700/60 text-slate-400 uppercase tracking-wider text-[10px]">
+                      <tr className={cn('border-b uppercase tracking-wider text-[10px]', isDark ? 'border-slate-700/60 text-slate-400' : 'border-slate-200 text-slate-600')}>
                         <th className="pb-2 font-semibold">Item Name</th>
                         <th className="pb-2 font-semibold text-right">Unit Price</th>
                         <th className="pb-2 font-semibold text-right">Qty</th>
                         <th className="pb-2 font-semibold text-right">Subtotal</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800">
+                    <tbody className={cn('divide-y', isDark ? 'divide-slate-800' : 'divide-slate-200')}>
                       {grn.items.map((item, idx) => (
-                        <tr key={idx} className="hover:bg-slate-800/20">
-                          <td className="py-2 font-medium text-slate-200">{item.name}</td>
-                          <td className="py-2 text-right font-mono text-slate-300">
+                        <tr key={idx} className={isDark ? 'hover:bg-slate-800/20' : 'hover:bg-slate-100/50'}>
+                          <td className={cn('py-2 font-medium', isDark ? 'text-slate-200' : 'text-slate-800')}>{item.name}</td>
+                          <td className={cn('py-2 text-right font-mono', isDark ? 'text-slate-300' : 'text-slate-700')}>
                             Rs. {Number(item.unitPrice).toFixed(2)}
                           </td>
-                          <td className="py-2 text-right font-mono text-slate-300">
+                          <td className={cn('py-2 text-right font-mono', isDark ? 'text-slate-300' : 'text-slate-700')}>
                             {Number(item.qty)}
                           </td>
                           <td className="py-2 text-right font-mono font-bold text-orange-400">
@@ -213,11 +215,11 @@ export const GRNDetailsModal: React.FC<GRNDetailsModalProps> = ({
                 )}
               >
                 <div className="flex items-center justify-between mb-2.5">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                  <span className={cn('text-[11px] font-semibold uppercase tracking-wider flex items-center gap-1.5', isDark ? 'text-slate-400' : 'text-slate-600')}>
                     <FileText className="w-3.5 h-3.5 text-orange-500" />
                     Attached Invoices & Bill Photos ({imagesList.length})
                   </span>
-                  <span className="text-[10px] text-slate-400 font-medium">
+                  <span className={cn('text-[10px] font-medium', isDark ? 'text-slate-400' : 'text-slate-500')}>
                     Click any attachment for full-screen hover-zoom lens
                   </span>
                 </div>
@@ -229,13 +231,16 @@ export const GRNDetailsModal: React.FC<GRNDetailsModalProps> = ({
                     return (
                       <div
                         key={idx}
-                        className="group relative rounded-xl overflow-hidden border border-slate-700/60 bg-slate-900 aspect-square cursor-pointer hover:border-orange-500/80 transition-all shadow-sm"
+                        className={cn(
+                          'group relative rounded-xl overflow-hidden border aspect-square cursor-pointer transition-all shadow-sm',
+                          isDark ? 'border-slate-700/60 bg-slate-900 hover:border-orange-500/80' : 'border-slate-200 bg-slate-100 hover:border-orange-500/80'
+                        )}
                         onClick={() => setLightboxIndex(idx)}
                       >
                         {isPdf ? (
-                          <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center p-2 text-center">
+                          <div className={cn('w-full h-full flex flex-col items-center justify-center p-2 text-center', isDark ? 'bg-slate-950' : 'bg-rose-50')}>
                             <FileText className="w-7 h-7 text-rose-400 mb-1" />
-                            <span className="text-[9px] font-bold text-slate-300 truncate max-w-full px-1">
+                            <span className={cn('text-[9px] font-bold truncate max-w-full px-1', isDark ? 'text-slate-300' : 'text-slate-700')}>
                               {img.name || 'PDF Doc'}
                             </span>
                             <span className="text-[8px] font-mono text-rose-400 bg-rose-500/10 px-1 rounded mt-0.5">
@@ -268,7 +273,7 @@ export const GRNDetailsModal: React.FC<GRNDetailsModalProps> = ({
                   isDark ? 'bg-slate-950/40 border-slate-800' : 'bg-slate-50/70 border-slate-200'
                 )}
               >
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-2">
+                <span className={cn('text-[11px] font-semibold uppercase tracking-wider flex items-center gap-1.5 mb-2', isDark ? 'text-slate-400' : 'text-slate-600')}>
                   <Banknote className="w-3.5 h-3.5 text-emerald-400" />
                   Payment Settlement Logs
                 </span>
@@ -276,15 +281,18 @@ export const GRNDetailsModal: React.FC<GRNDetailsModalProps> = ({
                   {grn.settlements.map((st, idx) => (
                     <div
                       key={idx}
-                      className="p-2 rounded-lg bg-slate-800/40 border border-slate-700/40 flex items-center justify-between text-xs"
+                      className={cn(
+                        'p-2 rounded-lg border flex items-center justify-between text-xs',
+                        isDark ? 'bg-slate-800/40 border-slate-700/40' : 'bg-white border-slate-200 shadow-sm'
+                      )}
                     >
                       <div>
-                        <div className="font-semibold text-slate-200">
+                        <div className={cn('font-semibold', isDark ? 'text-slate-200' : 'text-slate-800')}>
                           Rs. {Number(st.amount).toFixed(2)} via {st.paymentMethod}
                         </div>
-                        {st.note && <div className="text-[11px] text-slate-400">{st.note}</div>}
+                        {st.note && <div className={cn('text-[11px]', isDark ? 'text-slate-400' : 'text-slate-500')}>{st.note}</div>}
                       </div>
-                      <div className="text-[10px] text-slate-400 font-mono">
+                      <div className={cn('text-[10px] font-mono', isDark ? 'text-slate-400' : 'text-slate-500')}>
                         {new Date(st.createdAt).toLocaleDateString()}
                       </div>
                     </div>
@@ -295,8 +303,8 @@ export const GRNDetailsModal: React.FC<GRNDetailsModalProps> = ({
 
             {/* Notes */}
             {grn.notes && (
-              <div className="text-xs text-slate-400 bg-slate-800/30 p-2.5 rounded-xl border border-slate-700/60">
-                <span className="font-semibold text-slate-300">Notes:</span> {grn.notes}
+              <div className={cn('text-xs p-2.5 rounded-xl border', isDark ? 'text-slate-400 bg-slate-800/30 border-slate-700/60' : 'text-slate-600 bg-slate-50 border-slate-200')}>
+                <span className={cn('font-semibold', isDark ? 'text-slate-300' : 'text-slate-800')}>Notes:</span> {grn.notes}
               </div>
             )}
           </div>
