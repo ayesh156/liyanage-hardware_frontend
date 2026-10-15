@@ -10,6 +10,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useTheme } from '@/contexts/ThemeContext';
+import { useTranslation } from 'react-i18next';
 
 export interface DatePickerProps {
   /** Selected date as ISO string or 'YYYY-MM-DD' */
@@ -90,6 +91,8 @@ export const ThemedDatePicker: React.FC<DatePickerProps> = ({
   theme: themeOverride,
 }) => {
   const { theme: contextTheme } = useTheme();
+  const { i18n } = useTranslation();
+  const isSi = (i18n.language || '').toLowerCase().startsWith('si');
   const theme = themeOverride || contextTheme || 'dark';
   const isDark = theme === 'dark';
 
@@ -212,7 +215,7 @@ export const ThemedDatePicker: React.FC<DatePickerProps> = ({
                 : 'bg-white text-slate-700 hover:bg-slate-100 border-slate-200'
             )}
           >
-            Today
+            {isSi ? 'අද' : 'Today'}
           </button>
           <button
             type="button"
@@ -228,7 +231,7 @@ export const ThemedDatePicker: React.FC<DatePickerProps> = ({
                 : 'bg-white text-slate-700 hover:bg-slate-100 border-slate-200'
             )}
           >
-            Yesterday
+            {isSi ? 'ඊයේ' : 'Yesterday'}
           </button>
           <button
             type="button"
@@ -243,9 +246,9 @@ export const ThemedDatePicker: React.FC<DatePickerProps> = ({
                 ? 'bg-purple-950/60 text-purple-300 hover:bg-purple-900/60 border-purple-500/20'
                 : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border-purple-200'
             )}
-            title="Forward-dated Cheque (+30 Days)"
+            title={isSi ? 'පසුදිනැති චෙක්පත් (+දින 30)' : 'Forward-dated Cheque (+30 Days)'}
           >
-            +30d Cheque
+            {isSi ? '+දින 30' : '+30d Cheque'}
           </button>
         </div>
 
@@ -350,6 +353,8 @@ export const ThemedTimePicker: React.FC<TimePickerProps> = ({
   theme: themeOverride,
 }) => {
   const { theme: contextTheme } = useTheme();
+  const { i18n } = useTranslation();
+  const isSi = (i18n.language || '').toLowerCase().startsWith('si');
   const theme = themeOverride || contextTheme || 'dark';
   const isDark = theme === 'dark';
 
@@ -523,7 +528,7 @@ export const ThemedTimePicker: React.FC<TimePickerProps> = ({
                 : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200/60'
             )}
           >
-            AM
+            {isSi ? 'පෙ.ව.' : 'AM'}
           </button>
           <button
             type="button"
@@ -536,7 +541,7 @@ export const ThemedTimePicker: React.FC<TimePickerProps> = ({
                 : isDark ? 'text-slate-400 hover:text-slate-200' : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200/60'
             )}
           >
-            PM
+            {isSi ? 'ප.ව.' : 'PM'}
           </button>
         </div>
 
@@ -550,9 +555,9 @@ export const ThemedTimePicker: React.FC<TimePickerProps> = ({
               ? 'bg-orange-500/20 text-orange-400 border-orange-500/30 hover:bg-orange-500/30'
               : 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100 font-bold'
           )}
-          title="Set to Current Time"
+          title={isSi ? 'දැන් වේලාවට සකසන්න' : 'Set to Current Time'}
         >
-          Now
+          {isSi ? 'දැන්' : 'Now'}
         </button>
       </div>
     </div>

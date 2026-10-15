@@ -87,8 +87,8 @@ export const SupplierRowActionMenu: React.FC<SupplierRowActionMenuProps> = ({
           className={cn(
             "flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-xl cursor-pointer transition-colors",
             isDark
-              ? "hover:bg-amber-500/15 hover:text-amber-400 focus:bg-amber-500/15 focus:text-amber-400 text-slate-200"
-              : "hover:bg-amber-50 hover:text-amber-700 focus:bg-amber-50 focus:text-amber-700 text-slate-700"
+              ? "text-slate-300 hover:bg-slate-800 hover:text-white focus:bg-slate-800 focus:text-white"
+              : "text-slate-700 hover:bg-slate-100 hover:text-slate-900 focus:bg-slate-100 focus:text-slate-900"
           )}
         >
           <BookOpen className={cn("w-4 h-4", isDark ? "text-amber-400" : "text-amber-600")} />
@@ -100,8 +100,8 @@ export const SupplierRowActionMenu: React.FC<SupplierRowActionMenuProps> = ({
           className={cn(
             "flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-xl cursor-pointer transition-colors",
             isDark
-              ? "hover:bg-cyan-500/15 hover:text-cyan-400 focus:bg-cyan-500/15 focus:text-cyan-400 text-slate-200"
-              : "hover:bg-cyan-50 hover:text-cyan-700 focus:bg-cyan-50 focus:text-cyan-700 text-slate-700"
+              ? "text-slate-300 hover:bg-slate-800 hover:text-white focus:bg-slate-800 focus:text-white"
+              : "text-slate-700 hover:bg-slate-100 hover:text-slate-900 focus:bg-slate-100 focus:text-slate-900"
           )}
         >
           <PackagePlus className={cn("w-4 h-4", isDark ? "text-cyan-400" : "text-cyan-600")} />
@@ -113,8 +113,8 @@ export const SupplierRowActionMenu: React.FC<SupplierRowActionMenuProps> = ({
           className={cn(
             "flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-xl cursor-pointer transition-colors",
             isDark
-              ? "hover:bg-emerald-500/15 hover:text-emerald-400 focus:bg-emerald-500/15 focus:text-emerald-400 text-slate-200"
-              : "hover:bg-emerald-50 hover:text-emerald-700 focus:bg-emerald-50 focus:text-emerald-700 text-slate-700"
+              ? "text-slate-300 hover:bg-slate-800 hover:text-white focus:bg-slate-800 focus:text-white"
+              : "text-slate-700 hover:bg-slate-100 hover:text-slate-900 focus:bg-slate-100 focus:text-slate-900"
           )}
         >
           <Banknote className={cn("w-4 h-4", isDark ? "text-emerald-400" : "text-emerald-600")} />
@@ -126,8 +126,8 @@ export const SupplierRowActionMenu: React.FC<SupplierRowActionMenuProps> = ({
           className={cn(
             "flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-xl cursor-pointer transition-colors",
             isDark
-              ? "hover:bg-orange-500/15 hover:text-orange-400 focus:bg-orange-500/15 focus:text-orange-400 text-slate-200"
-              : "hover:bg-orange-50 hover:text-orange-700 focus:bg-orange-50 focus:text-orange-700 text-slate-700"
+              ? "text-slate-300 hover:bg-slate-800 hover:text-white focus:bg-slate-800 focus:text-white"
+              : "text-slate-700 hover:bg-slate-100 hover:text-slate-900 focus:bg-slate-100 focus:text-slate-900"
           )}
         >
           <Edit2 className={cn("w-4 h-4", isDark ? "text-orange-400" : "text-orange-600")} />
@@ -141,7 +141,7 @@ export const SupplierRowActionMenu: React.FC<SupplierRowActionMenuProps> = ({
           className={cn(
             "flex items-center gap-2.5 px-2.5 py-2 text-xs font-semibold rounded-xl cursor-pointer transition-colors",
             isDark
-              ? "text-rose-400 hover:bg-rose-500/15 hover:text-rose-300 focus:bg-rose-500/15 focus:text-rose-300"
+              ? "text-rose-400 hover:bg-rose-500/20 hover:text-rose-300 focus:bg-rose-500/20 focus:text-rose-300"
               : "text-rose-600 hover:bg-rose-50 hover:text-rose-700 focus:bg-rose-50 focus:text-rose-700"
           )}
         >

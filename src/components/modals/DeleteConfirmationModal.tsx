@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -27,11 +28,22 @@ export const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = (
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 w-screen h-screen min-w-full min-h-full">
-      {/* Full-viewport backdrop — no gap, no leakage */}
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm w-screen h-screen min-w-full min-h-full block" />
-      <div className={`relative rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border ${
+  const modalContent = (
+    <div
+      className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-screen h-screen min-h-screen bg-black/60 backdrop-blur-sm z-[9999] m-0 p-3 sm:p-4 flex items-center justify-center overflow-y-auto animate-in fade-in"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        margin: 0,
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
+    >
+      <div className={`relative rounded-2xl max-w-md w-full shadow-2xl overflow-hidden border my-auto ${
         theme === 'dark' 
           ? 'bg-slate-900 border-slate-700/50' 
           : 'bg-white border-slate-200'
@@ -93,4 +105,6 @@ export const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = (
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 };

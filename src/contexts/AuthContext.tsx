@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react';
-import api from '../lib/api';
+import api, { isNetworkError } from '../lib/api';
 
 interface AuthUser {
   id?: number;
@@ -67,13 +67,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         sessionStorage.setItem('auth_user', JSON.stringify(userData));
         setToken(storedToken);
         setIsAuthenticated(true);
-      } catch {
-        // Token invalid or expired — clear session
-        sessionStorage.removeItem('auth_token');
-        sessionStorage.removeItem('auth_user');
-        setToken(null);
-        setUser(null);
-        setIsAuthenticated(false);
+      } catch (err: unknown) {
+        if (isNetworkError(err)) {
+          // Transient network failure (backend booting / ERR_CONNECTION_REFUSED)
+          // Retain cached session so we don't boot the user or freeze the render tree
+          console.warn('[Auth] Server temporarily unreachable during startup, retaining stored session credentials.');
+          setToken(storedToken);
+          setIsAuthenticated(true);
+        } else {
+          // Token is genuinely invalid or expired — clear session
+          sessionStorage.removeItem('auth_token');
+          sessionStorage.removeItem('auth_user');
+          setToken(null);
+          setUser(null);
+          setIsAuthenticated(false);
+        }
       } finally {
         setIsInitializing(false);
       }
@@ -115,10 +123,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setIsAuthenticated(true);
       return true;
     } catch (err: unknown) {
-      // Extract the actual error message from the backend response
-      const errorMessage = err instanceof Error ? err.message : 'Invalid credentials';
+      const isNetErr = isNetworkError(err);
+      const errorMessage = isNetErr
+        ? 'Cannot connect to server. Please verify the backend is running and try again.'
+        : err instanceof Error ? err.message : 'Invalid credentials';
 
-      // Always fail — no mock fallback permitted
       console.error('[Auth] Login failed:', errorMessage);
       setIsAuthenticated(false);
       throw new Error(errorMessage);

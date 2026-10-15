@@ -379,7 +379,7 @@ export const GRNFormModal: React.FC<GRNFormModalProps> = ({
                   value={supplierId}
                   onValueChange={setSupplierId}
                   placeholder={t('grn.filterBySupplier', 'Select supplier...')}
-                  searchPlaceholder="Search supplier name..."
+                  searchPlaceholder={t('grn.searchSupplierPlaceholder', 'Search supplier name...')}
                   theme={isDark ? 'dark' : 'light'}
                   triggerClassName={cn(
                     'h-9 text-xs rounded-xl',

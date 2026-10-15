@@ -1,8 +1,9 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from 'react-i18next';
 import { useIsMobile } from '../hooks/use-mobile';
 import { useLoading } from '../contexts/LoadingContext';
+import { useCatalog } from '../contexts/CatalogContext';
 import api from '../lib/api';
 import { 
   TrendingUp, TrendingDown, DollarSign, Calendar, Download, 
@@ -10,7 +11,7 @@ import {
   Filter, ChevronDown, Search, Package, Paintbrush, Wrench, Zap,
   Droplets, ShieldCheck, Users, Truck, Receipt, Megaphone, FileCheck,
   SortAsc, SortDesc, RefreshCw, BarChart2, PieChart as PieIcon, FileSpreadsheet,
-  Building2, CreditCard as CardIcon, AlertCircle
+  Building2, CreditCard as CardIcon, AlertCircle, X
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -29,7 +30,8 @@ import {
 } from 'recharts';
 import { SearchableSelect, SearchableSelectOption } from '../components/ui/searchable-select';
 import { DataTable, DataTableColumn } from '../components/ui/data-table';
-import { ThemedDatePicker } from '../components/ui/date-picker';
+import { DateRangePicker } from '../components/ui/date-range-picker';
+import { FinancialBreakdownModal, BreakdownTab } from '../components/modals/FinancialBreakdownModal';
 import { FinancialTransaction } from '../data/mockData';
 
 export type PeriodPreset = 'today' | 'yesterday' | 'this_month' | 'this_year' | 'custom';
@@ -41,9 +43,54 @@ const CATEGORY_COLORS = [
 
 export const FinancialReports: React.FC = () => {
   const { theme } = useTheme();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const isMobile = useIsMobile();
   const { startLoading, finishLoading } = useLoading();
+  const { categories } = useCatalog();
+  const isSinhala = i18n.language === 'si';
+
+  /**
+   * Dynamically maps each item's category to its Sinhala localized name.
+   * Priority:
+   * 1. Direct transaction `categorySi` attribute returned by backend Prisma queries
+   * 2. Category master database entity matching via CatalogContext (`nameSinhala` or `nameSi`)
+   * 3. i18n translation dictionary key (`financial.categories.<name>`)
+   * 4. Original category string fallback
+   */
+  const getCategoryDisplayName = useCallback((categoryName: string, transactionCategorySi?: string): string => {
+    if (!categoryName) return '';
+    if (!isSinhala) {
+      return categoryName;
+    }
+
+    // 1. Explicit Sinhala category from transaction model
+    if (transactionCategorySi && transactionCategorySi.trim()) {
+      return transactionCategorySi.trim();
+    }
+
+    // 2. Dynamic lookup from master Category entities in CatalogContext
+    if (categories && categories.length > 0) {
+      const trimmedQuery = categoryName.trim().toLowerCase();
+      const matched = categories.find(
+        (c) =>
+          c.name?.trim().toLowerCase() === trimmedQuery ||
+          c.id?.trim().toLowerCase() === trimmedQuery
+      );
+      if (matched) {
+        const sinhalaName = (matched.nameSinhala || (matched as any).nameSi)?.trim();
+        if (sinhalaName) return sinhalaName;
+      }
+    }
+
+    // 3. i18n translations dictionary lookup (e.g. 'financial.categories.<category>')
+    const translationKey = `financial.categories.${categoryName}`;
+    const translated = t(translationKey, { defaultValue: '' });
+    if (translated && translated !== translationKey && translated !== categoryName) {
+      return translated;
+    }
+
+    return categoryName;
+  }, [isSinhala, categories, t]);
   
   // Date Preset & Filter State
   const [preset, setPreset] = useState<PeriodPreset>('this_month');
@@ -53,13 +100,25 @@ export const FinancialReports: React.FC = () => {
   // Live Data & Loading State
   const [transactions, setTransactions] = useState<FinancialTransaction[]>([]);
   const [liveSummary, setLiveSummary] = useState<{
+    grossSales?: number;
+    totalDiscounts?: number;
     totalRevenue: number;
+    cogs: number;
+    grossProfit: number;
+    grossProfitMargin: number;
     totalExpenses: number;
+    operatingExpenses: number;
+    grnStockExpenditure: number;
+    supplierSettlementOutflows: number;
     netProfit: number;
     profitMargin: number;
     customerOutstanding: number;
     supplierDue: number;
+    netCashFlow: number;
   } | null>(null);
+  const [breakdownData, setBreakdownData] = useState<any>(null);
+  const [breakdownModalOpen, setBreakdownModalOpen] = useState<boolean>(false);
+  const [breakdownModalTab, setBreakdownModalTab] = useState<BreakdownTab>('profit');
   const [loading, setLoading] = useState<boolean>(true);
 
   // Table & Chart State
@@ -99,17 +158,30 @@ export const FinancialReports: React.FC = () => {
             ? res.transactions
             : [];
           const summaryObj = payload.summary || res?.summary || null;
+          const bdObj = payload.breakdown || res?.breakdown || null;
 
           setTransactions(txList);
           if (summaryObj) {
             setLiveSummary({
+              grossSales: Number(summaryObj.grossSales || summaryObj.totalRevenue || 0),
+              totalDiscounts: Number(summaryObj.totalDiscounts || 0),
               totalRevenue: Number(summaryObj.totalRevenue || 0),
+              cogs: Number(summaryObj.cogs || 0),
+              grossProfit: Number(summaryObj.grossProfit || 0),
+              grossProfitMargin: Number(summaryObj.grossProfitMargin || 0),
               totalExpenses: Number(summaryObj.totalExpenses || 0),
+              operatingExpenses: Number(summaryObj.operatingExpenses || 0),
+              grnStockExpenditure: Number(summaryObj.grnStockExpenditure || 0),
+              supplierSettlementOutflows: Number(summaryObj.supplierSettlementOutflows || 0),
               netProfit: Number(summaryObj.netProfit || 0),
               profitMargin: Number(summaryObj.profitMargin || 0),
               customerOutstanding: Number(summaryObj.customerOutstanding || 0),
               supplierDue: Number(summaryObj.supplierDue || 0),
+              netCashFlow: Number(summaryObj.netCashFlow || 0),
             });
+          }
+          if (bdObj) {
+            setBreakdownData(bdObj);
           }
         }
       } catch (err) {
@@ -174,12 +246,21 @@ export const FinancialReports: React.FC = () => {
     const profitMargin = revenue > 0 ? (netProfit / revenue) * 100 : 0;
     
     return { 
+      grossSales: revenue,
+      totalDiscounts: 0,
       totalRevenue: revenue, 
+      cogs: 0,
+      grossProfit: revenue,
+      grossProfitMargin: 100,
       totalExpenses: expenses, 
+      operatingExpenses: expenses,
+      grnStockExpenditure: 0,
+      supplierSettlementOutflows: 0,
       netProfit, 
       profitMargin,
       customerOutstanding: 0,
-      supplierDue: 0
+      supplierDue: 0,
+      netCashFlow: netProfit,
     };
   }, [filteredTransactions, liveSummary]);
 
@@ -262,16 +343,17 @@ export const FinancialReports: React.FC = () => {
     ];
 
     allCategories.forEach(cat => {
+      const firstTx = transactions.find(t => t.category === cat);
       options.push({
         value: cat,
-        label: cat,
+        label: getCategoryDisplayName(cat, firstTx?.categorySi),
         icon: getCategoryIcon(cat),
         count: categoryCounts[cat]
       });
     });
 
     return options;
-  }, [allCategories, transactions, t]);
+  }, [allCategories, transactions, getCategoryDisplayName]);
 
   const typeOptions: SearchableSelectOption[] = useMemo(() => {
     const revenueCount = transactions.filter(t => t.type === 'revenue').length;
@@ -323,7 +405,7 @@ export const FinancialReports: React.FC = () => {
             ${t.type === 'revenue' ? '↑ Revenue' : '↓ Expense'}
           </span>
         </td>
-        <td class="cell-category">${t.category}</td>
+        <td class="cell-category">${isSinhala ? getCategoryDisplayName(t.category, t.categorySi) : t.category}</td>
         <td class="cell-description">${t.description}</td>
         <td class="cell-payment">${t.paymentMethod ? t.paymentMethod.replace('_', ' ').toUpperCase() : 'N/A'}</td>
         <td class="cell-amount ${t.type === 'revenue' ? 'amount-revenue' : 'amount-expense'}">
@@ -428,7 +510,7 @@ export const FinancialReports: React.FC = () => {
     yesterday: { en: 'Yesterday', si: 'ඊයේ' },
     this_month: { en: 'This Month', si: 'මෙම මාසය' },
     this_year: { en: 'This Year', si: 'මෙම වසර' },
-    custom: { en: 'Custom Range', si: 'අභිරුචි පරාසය' },
+    custom: { en: 'Date Range', si: 'දින පරාසය' },
   };
 
   return (
@@ -447,7 +529,7 @@ export const FinancialReports: React.FC = () => {
           <div className="flex flex-wrap items-center gap-3">
             <button
               onClick={handleExportCSV}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium border transition-all ${
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-medium border transition-all cursor-pointer ${
                 theme === 'dark'
                   ? 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700'
                   : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100 shadow-sm'
@@ -458,7 +540,7 @@ export const FinancialReports: React.FC = () => {
             </button>
             <button
               onClick={handleExportPDF}
-              className="no-print flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600 text-white rounded-xl font-medium transition-all shadow-lg shadow-orange-500/20"
+              className="no-print flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600 text-white rounded-xl font-medium transition-all shadow-lg shadow-orange-500/20 cursor-pointer"
             >
               <Download className="w-4 h-4" />
               {t('financial.exportPdf', 'Export PDF')}
@@ -466,16 +548,21 @@ export const FinancialReports: React.FC = () => {
           </div>
         </div>
 
-        {/* Quick Date Range Preset & Custom Date Picker Toolbar */}
+        {/* Quick Date Range Preset Toolbar with Integrated DateRangePicker */}
         <div className={`p-4 rounded-xl border ${theme === 'dark' ? 'bg-slate-800/50 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}>
-          <div className="no-print flex flex-col md:flex-row md:items-center justify-between gap-4">
-            {/* Quick Presets */}
-            <div className="flex flex-wrap items-center gap-2">
-              {(['today', 'yesterday', 'this_month', 'this_year', 'custom'] as PeriodPreset[]).map((p) => (
+          <div className="no-print flex flex-wrap items-center gap-2">
+            {(['today', 'yesterday', 'this_month', 'this_year'] as PeriodPreset[]).map((p) => {
+              const presetKey = p === 'this_month' ? 'thisMonth' : p === 'this_year' ? 'thisYear' : p;
+              return (
                 <button
                   key={p}
-                  onClick={() => setPreset(p)}
-                  className={`px-4 py-2 rounded-xl font-semibold text-xs transition-all flex items-center gap-1.5 ${
+                  type="button"
+                  onClick={() => {
+                    setPreset(p);
+                    setStartDate('');
+                    setEndDate('');
+                  }}
+                  className={`px-4 py-2 rounded-xl font-semibold text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
                     preset === p
                       ? 'bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow-lg shadow-orange-500/20'
                       : theme === 'dark'
@@ -484,55 +571,93 @@ export const FinancialReports: React.FC = () => {
                   }`}
                 >
                   <Calendar className="w-3.5 h-3.5" />
-                  <span>{presetLabels[p].en} ({presetLabels[p].si})</span>
+                  <span>{t(`financial.${presetKey}`, presetLabels[p].si)}</span>
                 </button>
-              ))}
-            </div>
+              );
+            })}
 
-            {/* Custom Date Pickers (Active when preset is 'custom') */}
-            {preset === 'custom' && (
-              <div className="flex items-center gap-3 animate-in fade-in duration-200">
-                <div className="w-36">
-                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">From Date</label>
-                  <ThemedDatePicker
-                    value={startDate}
-                    onChange={setStartDate}
-                    placeholder="Start date"
-                    theme={theme}
-                  />
-                </div>
-                <div className="w-36">
-                  <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">To Date</label>
-                  <ThemedDatePicker
-                    value={endDate}
-                    onChange={setEndDate}
-                    placeholder="End date"
-                    theme={theme}
-                  />
-                </div>
-              </div>
-            )}
+            {/* 'දින පරාසය' (Date Range) Single Calendar Popover anchored directly below trigger button */}
+            <DateRangePicker
+              startDate={startDate}
+              endDate={endDate}
+              onChange={({ startDate: s, endDate: e }) => {
+                setStartDate(s);
+                setEndDate(e);
+                setPreset('custom');
+              }}
+              onClear={() => {
+                setStartDate('');
+                setEndDate('');
+                setPreset('this_month');
+              }}
+              isDark={theme === 'dark'}
+              maxDate={new Date()}
+              align="auto"
+              customTrigger={({ onClick, onClear }) => (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreset('custom');
+                    onClick();
+                  }}
+                  className={`px-4 py-2 rounded-xl font-semibold text-xs transition-all flex items-center gap-1.5 cursor-pointer ${
+                    preset === 'custom'
+                      ? 'bg-gradient-to-r from-orange-500 to-rose-500 text-white shadow-lg shadow-orange-500/20'
+                      : theme === 'dark'
+                      ? 'bg-slate-700/70 text-slate-300 hover:bg-slate-600'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>
+                    {preset === 'custom' && startDate && endDate
+                      ? `${startDate} ~ ${endDate}`
+                      : t('financial.customRange', 'දින පරාසය')}
+                  </span>
+                  {preset === 'custom' && startDate && (
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onClear(e);
+                        setPreset('this_month');
+                      }}
+                      className="p-0.5 rounded hover:bg-white/20 text-white ml-0.5"
+                      title={t('calendar.clear', 'Clear')}
+                    >
+                      <X className="w-3 h-3" />
+                    </span>
+                  )}
+                </button>
+              )}
+            />
           </div>
         </div>
 
-        {/* Drill-down KPI Cards */}
+        {/* Drill-down KPI Cards — All Clickable with Breakdown Audit Modal */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Card 1: Total Revenue */}
-          <div className={`p-6 rounded-2xl border transition-all ${
-            theme === 'dark' 
-              ? 'bg-slate-800/80 border-emerald-500/30 shadow-lg shadow-emerald-950/20' 
-              : 'bg-white border-emerald-200 shadow-sm'
-          }`}>
+          <div 
+            onClick={() => {
+              setBreakdownModalTab('revenue');
+              setBreakdownModalOpen(true);
+            }}
+            className={`p-6 rounded-2xl border transition-all cursor-pointer group hover:scale-[1.01] hover:border-emerald-500/60 ${
+              theme === 'dark' 
+                ? 'bg-slate-800/80 border-emerald-500/30 shadow-lg shadow-emerald-950/20 hover:bg-slate-800' 
+                : 'bg-white border-emerald-200 shadow-sm hover:shadow-md'
+            }`}
+            title={t('financial.clickItemizedProof', 'Click to view itemized revenue proof')}
+          >
             <div className="flex items-center justify-between mb-4">
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 ${
                 theme === 'dark' ? 'bg-emerald-500/20' : 'bg-emerald-100'
               }`}>
                 <TrendingUp className="w-6 h-6 text-emerald-500" />
               </div>
-              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                theme === 'dark' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-emerald-100 text-emerald-700'
+              <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${
+                theme === 'dark' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-emerald-50 text-emerald-700 border-emerald-200'
               }`}>
-                Invoices Stream
+                {t('financial.invoicesStreamProof', 'Invoices Stream • Proof ↗')}
               </span>
             </div>
             <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
@@ -541,59 +666,79 @@ export const FinancialReports: React.FC = () => {
             <p className={`text-3xl font-extrabold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
               Rs. {summary.totalRevenue.toLocaleString()}
             </p>
+            <p className={`text-[10px] mt-2 font-mono ${theme === 'dark' ? 'text-emerald-400/80' : 'text-emerald-700'}`}>
+              {t('financial.clickItemizedProof', 'Click to view itemized invoice records')}
+            </p>
           </div>
 
           {/* Card 2: Total Expenses / GRN Procurement */}
-          <div className={`p-6 rounded-2xl border transition-all ${
-            theme === 'dark' 
-              ? 'bg-slate-800/80 border-red-500/30 shadow-lg shadow-red-950/20' 
-              : 'bg-white border-red-200 shadow-sm'
-          }`}>
+          <div 
+            onClick={() => {
+              setBreakdownModalTab('expenses');
+              setBreakdownModalOpen(true);
+            }}
+            className={`p-6 rounded-2xl border transition-all cursor-pointer group hover:scale-[1.01] hover:border-red-500/60 ${
+              theme === 'dark' 
+                ? 'bg-slate-800/80 border-red-500/30 shadow-lg shadow-red-950/20 hover:bg-slate-800' 
+                : 'bg-white border-red-200 shadow-sm hover:shadow-md'
+            }`}
+            title={t('financial.clickExpensesProof', 'Click to view GRN stock & expense breakdown')}
+          >
             <div className="flex items-center justify-between mb-4">
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 ${
                 theme === 'dark' ? 'bg-red-500/20' : 'bg-red-100'
               }`}>
                 <TrendingDown className="w-6 h-6 text-red-500" />
               </div>
-              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-                theme === 'dark' ? 'bg-red-500/20 text-red-400' : 'bg-red-100 text-red-700'
+              <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full border ${
+                theme === 'dark' ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-red-50 text-red-700 border-red-200'
               }`}>
-                GRN & Settlements
+                {t('financial.grnOverheadProof', 'GRN & Overhead • Proof ↗')}
               </span>
             </div>
             <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-              {t('financial.expenses', 'Total Expenses / Procurement')}
+              {t('financial.expenses', 'Total Expenses / Outflows')}
             </p>
             <p className={`text-3xl font-extrabold ${theme === 'dark' ? 'text-white' : 'text-slate-900'}`}>
               Rs. {summary.totalExpenses.toLocaleString()}
             </p>
+            <p className={`text-[10px] mt-2 font-mono ${theme === 'dark' ? 'text-red-400/80' : 'text-red-700'}`}>
+              {t('financial.opExPrefix', 'OpEx')}: Rs. {summary.operatingExpenses.toLocaleString()} • {t('financial.grnPrefix', 'GRN')}: Rs. {summary.grnStockExpenditure.toLocaleString()}
+            </p>
           </div>
 
-          {/* Card 3: Net Profit / Loss with Margin */}
-          <div className={`p-6 rounded-2xl border transition-all ${
-            summary.netProfit >= 0
-              ? theme === 'dark' ? 'bg-slate-800/80 border-blue-500/30 shadow-lg shadow-blue-950/20' : 'bg-white border-blue-200 shadow-sm'
-              : theme === 'dark' ? 'bg-slate-800/80 border-orange-500/30 shadow-lg shadow-orange-950/20' : 'bg-white border-orange-200 shadow-sm'
-          }`}>
+          {/* Card 3: True Net Profit / Loss with Gross Profit & Margin */}
+          <div 
+            onClick={() => {
+              setBreakdownModalTab('profit');
+              setBreakdownModalOpen(true);
+            }}
+            className={`p-6 rounded-2xl border transition-all cursor-pointer group hover:scale-[1.01] hover:border-blue-500/60 ${
+              summary.netProfit >= 0
+                ? theme === 'dark' ? 'bg-slate-800/80 border-blue-500/30 shadow-lg shadow-blue-950/20 hover:bg-slate-800' : 'bg-white border-blue-200 shadow-sm hover:shadow-md'
+                : theme === 'dark' ? 'bg-slate-800/80 border-orange-500/30 shadow-lg shadow-orange-950/20 hover:bg-slate-800' : 'bg-white border-orange-200 shadow-sm hover:shadow-md'
+            }`}
+            title={t('financial.clickProfitProof', 'Click to view True Net Profit formula proof')}
+          >
             <div className="flex items-center justify-between mb-4">
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 ${
                 summary.netProfit >= 0
                   ? theme === 'dark' ? 'bg-blue-500/20' : 'bg-blue-100'
                   : theme === 'dark' ? 'bg-orange-500/20' : 'bg-orange-100'
               }`}>
                 <DollarSign className={`w-6 h-6 ${summary.netProfit >= 0 ? 'text-blue-500' : 'text-orange-500'}`} />
               </div>
-              <span className={`text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1 ${
+              <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full flex items-center gap-1 border ${
                 summary.netProfit >= 0
-                  ? theme === 'dark' ? 'bg-blue-500/20 text-blue-400' : 'bg-blue-100 text-blue-700'
-                  : theme === 'dark' ? 'bg-orange-500/20 text-orange-400' : 'bg-orange-100 text-orange-700'
+                  ? theme === 'dark' ? 'bg-blue-500/10 text-blue-400 border-blue-500/20' : 'bg-blue-50 text-blue-700 border-blue-200'
+                  : theme === 'dark' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' : 'bg-orange-50 text-orange-700 border-orange-200'
               }`}>
                 {summary.netProfit >= 0 ? <ArrowUpRight className="w-3.5 h-3.5" /> : <ArrowDownRight className="w-3.5 h-3.5" />}
-                {summary.profitMargin.toFixed(1)}% Margin
+                {summary.profitMargin.toFixed(1)}% {t('financial.netMargin', 'Net Margin ↗')}
               </span>
             </div>
             <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-              {t('financial.profit', 'Net Profit / Loss')}
+              {t('financial.profit', 'True Net Profit')}
             </p>
             <p className={`text-3xl font-extrabold ${
               summary.netProfit >= 0
@@ -602,22 +747,32 @@ export const FinancialReports: React.FC = () => {
             }`}>
               {summary.netProfit >= 0 ? '' : '-'}Rs. {Math.abs(summary.netProfit).toLocaleString()}
             </p>
+            <p className={`text-[10px] mt-2 font-mono ${theme === 'dark' ? 'text-blue-400/80' : 'text-blue-700'}`}>
+              {t('financial.grossProfitLabel', 'Gross Profit:')} Rs. {summary.grossProfit.toLocaleString()} ({summary.grossProfitMargin.toFixed(1)}% {t('financial.grossPrefix', 'Gross')})
+            </p>
           </div>
 
           {/* Card 4: Outstanding Credit Exposure */}
-          <div className={`p-6 rounded-2xl border transition-all ${
-            theme === 'dark' ? 'bg-slate-800/80 border-purple-500/30 shadow-lg shadow-purple-950/20' : 'bg-white border-purple-200 shadow-sm'
-          }`}>
+          <div 
+            onClick={() => {
+              setBreakdownModalTab('exposure');
+              setBreakdownModalOpen(true);
+            }}
+            className={`p-6 rounded-2xl border transition-all cursor-pointer group hover:scale-[1.01] hover:border-purple-500/60 ${
+              theme === 'dark' ? 'bg-slate-800/80 border-purple-500/30 shadow-lg shadow-purple-950/20 hover:bg-slate-800' : 'bg-white border-purple-200 shadow-sm hover:shadow-md'
+            }`}
+            title={t('financial.clickExposureProof', 'Click to view Customer Loans vs Supplier Dues breakdown')}
+          >
             <div className="flex items-center justify-between mb-3">
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-transform group-hover:scale-110 ${
                 theme === 'dark' ? 'bg-purple-500/20' : 'bg-purple-100'
               }`}>
                 <Building2 className="w-6 h-6 text-purple-500" />
               </div>
-              <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full ${
-                theme === 'dark' ? 'bg-purple-500/20 text-purple-400' : 'bg-purple-100 text-purple-700'
+              <span className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                theme === 'dark' ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' : 'bg-purple-50 text-purple-700 border-purple-200'
               }`}>
-                Live Exposure
+                {t('financial.liveExposure', 'Live Exposure ↗')}
               </span>
             </div>
             <p className={`text-xs font-bold uppercase tracking-wider mb-2 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
@@ -625,11 +780,11 @@ export const FinancialReports: React.FC = () => {
             </p>
             <div className="space-y-1.5 text-xs">
               <div className="flex items-center justify-between">
-                <span className={theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}>Customer Loans:</span>
+                <span className={theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}>{t('financial.customerLoans', 'Customer Loans')}:</span>
                 <span className="font-bold text-emerald-400">Rs. {summary.customerOutstanding.toLocaleString()}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className={theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}>Supplier Dues:</span>
+                <span className={theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}>{t('financial.supplierDues', 'Supplier Dues')}:</span>
                 <span className="font-bold text-rose-400">Rs. {summary.supplierDue.toLocaleString()}</span>
               </div>
             </div>
@@ -648,19 +803,40 @@ export const FinancialReports: React.FC = () => {
                   {t('financial.revenueVSExpense', 'Revenue vs Expenses')}
                 </h3>
                 <p className={`text-xs mt-0.5 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-                  Financial trajectory for active timeframe
+                  {t('financial.financialTrajectory', 'Financial trajectory for active timeframe')}
                 </p>
               </div>
-              <div className="flex items-center gap-1 p-1 rounded-lg border border-slate-700/40 bg-slate-800/40">
+              {/* Chart type toggle button with accessible high-contrast light and dark styling */}
+              <div className={`flex items-center gap-1 p-1 rounded-lg border transition-colors ${
+                theme === 'dark' 
+                  ? 'border-slate-700/40 bg-slate-800/40' 
+                  : 'border-slate-300 bg-slate-100 shadow-inner'
+              }`}>
                 <button
+                  type="button"
                   onClick={() => setChartView('area')}
-                  className={`p-1.5 rounded ${chartView === 'area' ? 'bg-orange-500 text-white' : 'text-slate-400 hover:text-white'}`}
+                  className={`p-1.5 rounded-md transition-all cursor-pointer ${
+                    chartView === 'area'
+                      ? 'bg-orange-500 text-white shadow-sm font-semibold'
+                      : theme === 'dark'
+                      ? 'text-slate-400 hover:text-white hover:bg-slate-700/60'
+                      : 'bg-slate-200 hover:bg-slate-300 text-slate-800'
+                  }`}
+                  title={t('financial.areaChart', 'Line / Area Chart')}
                 >
                   <BarChart2 className="w-4 h-4 rotate-90" />
                 </button>
                 <button
+                  type="button"
                   onClick={() => setChartView('bar')}
-                  className={`p-1.5 rounded ${chartView === 'bar' ? 'bg-orange-500 text-white' : 'text-slate-400 hover:text-white'}`}
+                  className={`p-1.5 rounded-md transition-all cursor-pointer ${
+                    chartView === 'bar'
+                      ? 'bg-orange-500 text-white shadow-sm font-semibold'
+                      : theme === 'dark'
+                      ? 'text-slate-400 hover:text-white hover:bg-slate-700/60'
+                      : 'bg-slate-200 hover:bg-slate-300 text-slate-800'
+                  }`}
+                  title={t('financial.barChart', 'Bar Chart')}
                 >
                   <BarChart2 className="w-4 h-4" />
                 </button>
@@ -676,7 +852,7 @@ export const FinancialReports: React.FC = () => {
               ) : trendChartData.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center text-slate-500 text-sm gap-2">
                   <AlertCircle className="w-8 h-8 opacity-40" />
-                  <span>No financial transactions recorded for this period</span>
+                  <span>{t('financial.noTransactionsPeriod', 'No financial transactions recorded for this period')}</span>
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
@@ -741,7 +917,7 @@ export const FinancialReports: React.FC = () => {
                   {t('financial.categoryBreakdown', 'Category Breakdown')}
                 </h3>
                 <p className={`text-xs mt-0.5 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-                  Top 8 category volumes
+                  {t('financial.topCategories', 'Top 8 category volumes')}
                 </p>
               </div>
               <PieIcon className="w-5 h-5 text-orange-500" />
@@ -750,7 +926,7 @@ export const FinancialReports: React.FC = () => {
             <div className="h-64 w-full">
               {categoryChartData.length === 0 ? (
                 <div className="h-full flex items-center justify-center text-slate-500 text-sm">
-                  No categories recorded
+                  {t('financial.noCategories', 'No categories recorded')}
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
@@ -782,17 +958,20 @@ export const FinancialReports: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-2 gap-2 mt-2 pt-2 border-t border-slate-700/30">
-              {categoryChartData.slice(0, 4).map((entry, index) => (
-                <div key={entry.name} className="flex items-center gap-2 text-xs truncate">
-                  <span 
-                    className="w-2.5 h-2.5 rounded-full flex-shrink-0" 
-                    style={{ backgroundColor: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }} 
-                  />
-                  <span className={`truncate ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>
-                    {entry.name}
-                  </span>
-                </div>
-              ))}
+              {categoryChartData.slice(0, 4).map((entry, index) => {
+                const firstTx = transactions.find(t => t.category === entry.name);
+                return (
+                  <div key={entry.name} className="flex items-center gap-2 text-xs truncate">
+                    <span 
+                      className="w-2.5 h-2.5 rounded-full flex-shrink-0" 
+                      style={{ backgroundColor: CATEGORY_COLORS[index % CATEGORY_COLORS.length] }} 
+                    />
+                    <span className={`truncate ${theme === 'dark' ? 'text-slate-300' : 'text-slate-600'}`}>
+                      {getCategoryDisplayName(entry.name, firstTx?.categorySi)}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -870,30 +1049,30 @@ export const FinancialReports: React.FC = () => {
             <div className={`flex flex-wrap gap-4 pt-4 mt-4 border-t ${theme === 'dark' ? 'border-slate-700/50' : 'border-slate-200'}`}>
               <div className="flex-1 min-w-[180px]">
                 <label className={`block text-xs font-medium mb-1.5 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-                  Transaction Type
+                  {t('financial.transactionType', 'Transaction Type')}
                 </label>
                 <SearchableSelect
                   options={typeOptions}
                   value={typeFilter}
                   onValueChange={(val) => setTypeFilter(val as 'all' | 'revenue' | 'expense')}
-                  placeholder="All Types"
-                  searchPlaceholder="Search type..."
-                  emptyMessage="No type found."
+                  placeholder={t('financial.allTypes', 'All Types')}
+                  searchPlaceholder={t('financial.searchType', 'Search type...')}
+                  emptyMessage={t('financial.noTypeFound', 'No type found.')}
                   theme={theme}
                 />
               </div>
 
               <div className="flex-1 min-w-[180px]">
                 <label className={`block text-xs font-medium mb-1.5 ${theme === 'dark' ? 'text-slate-400' : 'text-slate-500'}`}>
-                  Category
+                  {t('financial.category', 'Category')}
                 </label>
                 <SearchableSelect
                   options={categoryOptions}
                   value={categoryFilter}
                   onValueChange={setCategoryFilter}
-                  placeholder="All Categories"
-                  searchPlaceholder="Search categories..."
-                  emptyMessage="No category found."
+                  placeholder={t('financial.allCategories', 'All Categories')}
+                  searchPlaceholder={t('financial.searchCategories', 'Search categories...')}
+                  emptyMessage={t('financial.noCategoryFound', 'No category found.')}
                   theme={theme}
                 />
               </div>
@@ -938,23 +1117,36 @@ export const FinancialReports: React.FC = () => {
             {
               id: 'category',
               header: t('tableHeaders.category', 'Category'),
-              cell: (transaction) => (
-                <div className="flex items-center gap-2">
-                  {getCategoryIcon(transaction.category)}
-                  <span className={`font-medium ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>
-                    {transaction.category}
-                  </span>
-                </div>
-              ),
+              cell: (transaction) => {
+                // 🌟 Dynamic Sinhala localization mapping for category column
+                const displayName = getCategoryDisplayName(transaction.category, transaction.categorySi);
+                return (
+                  <div className="flex items-center gap-2">
+                    {getCategoryIcon(transaction.category)}
+                    <span className={`font-medium ${theme === 'dark' ? 'text-slate-300' : 'text-slate-700'}`}>
+                      {displayName}
+                    </span>
+                  </div>
+                );
+              },
             },
             {
               id: 'description',
               header: t('tableHeaders.description', 'Description'),
-              cell: (transaction) => (
-                <span className={`max-w-xs truncate block ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`}>
-                  {transaction.description}
-                </span>
-              ),
+              cell: (transaction) => {
+                const rawDesc = transaction.description || '';
+                // Map "Walk-in Customer" to its Sinhala translation via i18n
+                const walkInLabel = t('financial.walkInCustomer', t('quickInvoice.walkInCustomer', 'සාමාන්ය පාරිභෝගිකයා'));
+                const displayDesc = rawDesc.includes('Walk-in Customer')
+                  ? rawDesc.replace(/Walk-in Customer/g, walkInLabel)
+                  : rawDesc;
+
+                return (
+                  <span className={`max-w-xs truncate block ${theme === 'dark' ? 'text-slate-400' : 'text-slate-600'}`} title={displayDesc}>
+                    {displayDesc}
+                  </span>
+                );
+              },
             },
             {
               id: 'amount',
@@ -982,6 +1174,14 @@ export const FinancialReports: React.FC = () => {
           }}
           theme={theme}
           getRowKey={(row) => row.id}
+        />
+
+        {/* Breakdown Proof Modal */}
+        <FinancialBreakdownModal
+          isOpen={breakdownModalOpen}
+          onClose={() => setBreakdownModalOpen(false)}
+          initialTab={breakdownModalTab}
+          data={{ summary, breakdown: breakdownData }}
         />
       </div>
     </div>

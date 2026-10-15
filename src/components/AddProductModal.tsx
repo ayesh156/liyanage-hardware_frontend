@@ -42,16 +42,16 @@ const SALES_TYPE_OPTIONS: ComboboxOption[] = [
 ];
 
 const SALES_TYPE_SINHALA_LABELS: Record<string, string> = {
-  Piece: 'කෑල්ල (Piece)',
-  Full: 'සම්පූර්ණ (Full)',
-  Half: 'අර්ධ (Half)',
-  Quarter: 'කාර්තුව (Quarter)',
-  Kg: 'කිලෝග්‍රෑම් (Kg)',
-  Meter: 'මීටර් (Meter)',
-  Liter: 'ලීටර් (Liter)',
-  Packet: 'පැකට් (Packet)',
-  Box: 'පෙට්ටි (Box)',
-  Set: 'කට්ටල (Set)',
+  Piece: 'කෑල්ල',
+  Full: 'සම්පූර්ණ',
+  Half: 'අර්ධ',
+  Quarter: 'කාර්තුව',
+  Kg: 'කිලෝග්‍රෑම්',
+  Meter: 'මීටර්',
+  Liter: 'ලීටර්',
+  Packet: 'පැකට්',
+  Box: 'පෙට්ටි',
+  Set: 'කට්ටල',
 };
 
 // ── Searchable combobox with "+ Add Category" mini button ──

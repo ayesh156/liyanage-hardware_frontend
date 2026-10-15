@@ -661,9 +661,13 @@ export const Categories: React.FC = () => {
                           {/* Edit Action */}
                           <DropdownMenuItem
                             onClick={() => handleEditCategory(category)}
-                            className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg hover:text-orange-400 focus:text-orange-400 focus:bg-orange-500/10"
+                            className={`flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg transition-colors ${
+                              isDark
+                                ? 'text-slate-300 hover:bg-slate-800 hover:text-white focus:bg-slate-800 focus:text-white'
+                                : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 focus:bg-slate-100 focus:text-slate-900'
+                            }`}
                           >
-                            <Edit2 className="w-3.5 h-3.5 text-orange-400" />
+                            <Edit2 className={`w-3.5 h-3.5 ${isDark ? 'text-orange-400' : 'text-orange-600'}`} />
                             <span>{t('common.actionsList.edit')}</span>
                           </DropdownMenuItem>
 
@@ -673,7 +677,11 @@ export const Categories: React.FC = () => {
                               <DropdownMenuSeparator className={isDark ? 'bg-slate-800' : 'bg-slate-100'} />
                               <DropdownMenuItem
                                 onClick={() => handleDeleteCategory(category)}
-                                className="flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg text-rose-500 hover:text-rose-400 focus:text-rose-400 focus:bg-rose-500/10"
+                                className={`flex items-center gap-2 px-2.5 py-1.5 text-xs font-semibold cursor-pointer rounded-lg transition-colors ${
+                                  isDark
+                                    ? 'text-rose-400 hover:bg-rose-500/20 hover:text-rose-300 focus:bg-rose-500/20 focus:text-rose-300'
+                                    : 'text-rose-600 hover:bg-rose-50 hover:text-rose-700 focus:bg-rose-50 focus:text-rose-700'
+                                }`}
                               >
                                 <Trash2 className="w-3.5 h-3.5 text-rose-500" />
                                 <span>{t('common.actionsList.delete')}</span>

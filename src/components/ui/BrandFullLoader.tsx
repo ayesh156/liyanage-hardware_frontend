@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useLoading, calculateTrickleProgress } from '../../contexts/LoadingContext';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface BrandFullLoaderProps {
   message?: string;
@@ -14,6 +15,16 @@ export const BrandFullLoader: React.FC<BrandFullLoaderProps> = ({
   onComplete,
   minDurationMs = 400,
 }) => {
+  // Theme-aware detection with graceful fallback
+  let isDark = true;
+  try {
+    const themeContext = useTheme();
+    isDark = themeContext.theme === 'dark';
+  } catch {
+    const stored = typeof window !== 'undefined' ? localStorage.getItem('theme') : null;
+    isDark = stored !== 'light';
+  }
+
   // Safe context extraction (handles when rendered outside LoadingProvider or standalone)
   let context: ReturnType<typeof useLoading> | null = null;
   try {
@@ -81,7 +92,9 @@ export const BrandFullLoader: React.FC<BrandFullLoaderProps> = ({
 
   return (
     <div
-      className={`fixed inset-0 z-[99999] bg-slate-950 flex flex-col items-center justify-center pointer-events-auto transition-opacity duration-200 ${
+      className={`fixed inset-0 z-[99999] flex flex-col items-center justify-center pointer-events-auto transition-opacity duration-200 ${
+        isDark ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'
+      } ${
         activeFadingOut ? 'opacity-0 pointer-events-none' : 'opacity-100'
       }`}
     >
@@ -96,34 +109,50 @@ export const BrandFullLoader: React.FC<BrandFullLoaderProps> = ({
       `}</style>
 
       {/* Ambient Radial Glow Halos */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none animate-pulse" />
+      <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 rounded-full blur-3xl pointer-events-none animate-pulse ${
+        isDark ? 'bg-emerald-500/10' : 'bg-emerald-500/15'
+      }`} />
       <div
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-amber-500/15 rounded-full blur-2xl pointer-events-none animate-pulse"
+        className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 rounded-full blur-2xl pointer-events-none animate-pulse ${
+          isDark ? 'bg-amber-500/15' : 'bg-amber-500/20'
+        }`}
         style={{ animationDelay: '500ms' }}
       />
 
       <div className="relative flex flex-col items-center gap-6 max-w-sm w-full px-6 text-center z-10">
         {/* Centered Branding: Logo with Ambient Pulse & Halo Glow */}
         <div className="relative group">
-          <div className="absolute -inset-2 bg-gradient-to-r from-emerald-500/30 via-amber-500/40 to-emerald-500/30 rounded-3xl blur-xl opacity-80 animate-pulse" />
+          <div className={`absolute -inset-2 rounded-3xl blur-xl animate-pulse ${
+            isDark
+              ? 'bg-gradient-to-r from-emerald-500/30 via-amber-500/40 to-emerald-500/30 opacity-80'
+              : 'bg-gradient-to-r from-orange-500/20 via-amber-400/30 to-emerald-500/20 opacity-70'
+          }`} />
 
           <img
             src="/logo.jpg"
             alt="Liyanage Hardware"
-            className="relative w-28 h-28 sm:w-32 sm:h-32 object-cover rounded-2xl border border-slate-700/60 shadow-2xl drop-shadow-[0_0_30px_rgba(245,158,11,0.25)]"
+            className={`relative w-28 h-28 sm:w-32 sm:h-32 object-cover rounded-2xl border transition-all ${
+              isDark
+                ? 'border-slate-700/60 shadow-2xl drop-shadow-[0_0_30px_rgba(245,158,11,0.25)]'
+                : 'border-slate-200 shadow-xl drop-shadow-[0_10px_25px_rgba(245,158,11,0.15)] bg-white'
+            }`}
           />
         </div>
 
         {/* Glowing Segmented/Fluid Progress Track */}
         <div className="flex flex-col items-center gap-3 w-full mt-2">
           {/* Progress Track */}
-          <div className="w-72 sm:w-80 h-1.5 bg-slate-800/80 rounded-full overflow-hidden border border-slate-700/50 relative shadow-inner">
+          <div className={`w-72 sm:w-80 h-2 rounded-full overflow-hidden border relative shadow-inner ${
+            isDark
+              ? 'bg-slate-800/80 border-slate-700/50'
+              : 'bg-slate-200 border-slate-300'
+          }`}>
             {/* Inner Fill with Shimmer Sheen */}
             <div
               className={`h-full transition-all duration-150 ease-out rounded-full relative overflow-hidden ${
                 isComplete
-                  ? 'bg-gradient-to-r from-emerald-500 via-emerald-400 to-teal-300 shadow-[0_0_16px_rgba(16,185,129,0.8)]'
-                  : 'bg-gradient-to-r from-emerald-500 via-amber-500 to-emerald-400 shadow-[0_0_12px_rgba(16,185,129,0.5)]'
+                  ? 'bg-gradient-to-r from-emerald-500 via-emerald-400 to-teal-400 shadow-[0_0_16px_rgba(16,185,129,0.8)]'
+                  : 'bg-gradient-to-r from-orange-500 via-amber-500 to-emerald-500 shadow-[0_0_12px_rgba(245,158,11,0.5)]'
               }`}
               style={{ width: `${displayPercent}%` }}
             >
@@ -134,10 +163,14 @@ export const BrandFullLoader: React.FC<BrandFullLoaderProps> = ({
 
           {/* Subtitle & Tabular Counter */}
           <div className="flex flex-col items-center gap-1">
-            <span className="text-xs font-mono font-bold tracking-wider text-emerald-400 tabular-nums">
+            <span className={`text-xs font-mono font-bold tracking-wider tabular-nums ${
+              isDark ? 'text-emerald-400' : 'text-emerald-600'
+            }`}>
               {displayPercent}%
             </span>
-            <p className="text-xs sm:text-sm text-slate-400 font-medium tracking-wide">
+            <p className={`text-xs sm:text-sm font-medium tracking-wide ${
+              isDark ? 'text-slate-400' : 'text-slate-600'
+            }`}>
               {isComplete ? 'Workspace Ready!' : activeMessage}
             </p>
           </div>

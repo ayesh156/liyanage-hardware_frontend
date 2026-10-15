@@ -4308,7 +4308,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                         className="w-full py-1.5 px-2 rounded-lg text-[10px] font-extrabold bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white shadow shadow-amber-500/20 flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
                       >
                         <CheckCircle className="w-3.5 h-3.5" />
-                        <span>{isSinhala ? 'සම්පූර්ණ මුදල ගෙවීම් කරන්න (Auto-fill Total)' : 'Auto-fill Total (Full Payment)'}</span>
+                        <span>{isSinhala ? 'සම්පූර්ණ මුදල ස්වයංක්‍රීයව ඇතුළත් කරන්න' : 'Auto-fill Total (Full Payment)'}</span>
                       </button>
                     </div>
                   )}

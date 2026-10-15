@@ -1,5 +1,6 @@
 // frontend/src/components/modals/CustomerDueInvoicesModal.tsx
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Customer, Invoice } from '../../types';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useTranslation } from 'react-i18next';
@@ -207,26 +208,42 @@ export const CustomerDueInvoicesModal: React.FC<CustomerDueInvoicesModalProps> =
 
   if (!isOpen || !customer) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/60 backdrop-blur-sm animate-in fade-in">
-      <div className={`w-full max-w-2xl rounded-2xl border shadow-2xl overflow-hidden transition-all flex flex-col max-h-[92vh] ${
-        isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900'
-      }`}>
+  const modalContent = (
+    <div
+      className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-screen h-screen min-h-screen bg-black/60 backdrop-blur-sm z-[9999] m-0 p-3 sm:p-4 flex items-center justify-center overflow-y-auto animate-in fade-in"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        margin: 0,
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className={`w-full max-w-2xl rounded-2xl border shadow-2xl overflow-hidden transition-all flex flex-col max-h-[92vh] my-auto ${
+          isDark ? 'bg-slate-900 border-slate-700 text-white' : 'bg-white border-slate-200 text-slate-900'
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="p-4 border-b border-slate-700/50 flex items-center justify-between">
+        <div className={`p-4 border-b flex items-center justify-between ${isDark ? 'border-slate-700/50' : 'border-slate-200'}`}>
           <div>
             <div className="flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-emerald-400" />
-              <h3 className="font-bold text-sm">
-                {isSi ? 'පාරිභෝගික ණය ගෙවීම් (Customer Bill Settlements)' : 'Customer Due Settlements'}
+              <CreditCard className="w-4 h-4 text-emerald-500" />
+              <h3 className={`font-bold text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                {isSi ? 'පාරිභෝගික ණය පියවීම' : 'Customer Due Settlements'}
               </h3>
             </div>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              {customer.name} {customer.phone ? `(${customer.phone})` : ''} • Total Balance: Rs. {Number(liveBalance).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            <p className={`text-[11px] mt-0.5 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              {customer.name} {customer.phone ? `(${customer.phone})` : ''} • {isSi ? 'මුළු හිඟ ශේෂය:' : 'Total Balance:'} Rs. {Number(liveBalance).toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </p>
           </div>
           <div className="flex items-center gap-1.5">
-            {/* Emoji රහිත WhatsApp Reminder බොත්තම */}
+            {/* WhatsApp Reminder Button */}
             {customer.phone && (
               <button
                 type="button"
@@ -241,7 +258,12 @@ export const CustomerDueInvoicesModal: React.FC<CustomerDueInvoicesModalProps> =
                 <span>WhatsApp</span>
               </button>
             )}
-            <button onClick={onClose} className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white">
+            <button
+              onClick={onClose}
+              className={`p-1 rounded-lg transition-colors ${
+                isDark ? 'hover:bg-slate-800 text-slate-400 hover:text-white' : 'hover:bg-slate-100 text-slate-500 hover:text-slate-900'
+              }`}
+            >
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -252,43 +274,57 @@ export const CustomerDueInvoicesModal: React.FC<CustomerDueInvoicesModalProps> =
           isDark ? 'bg-slate-800/40 border-slate-700/40' : 'bg-slate-50 border-slate-200'
         }`}>
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-slate-400 font-semibold uppercase">Sort By:</span>
+            <span className={`text-[10px] font-semibold uppercase ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              {isSi ? 'පිළිවෙළ:' : 'Sort By:'}
+            </span>
             <button
               onClick={() => {
                 if (sortBy === 'date') setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
                 else { setSortBy('date'); setSortOrder('desc'); }
               }}
-              className={`px-2 py-0.5 rounded text-[11px] border flex items-center gap-1 ${
-                sortBy === 'date' ? 'bg-orange-500 text-white border-orange-500' : 'border-slate-700'
+              className={`px-2 py-0.5 rounded text-[11px] border flex items-center gap-1 transition-all ${
+                sortBy === 'date'
+                  ? 'bg-orange-500 text-white border-orange-500'
+                  : isDark
+                  ? 'border-slate-700 text-slate-400 hover:bg-slate-800'
+                  : 'border-slate-300 text-slate-700 bg-white hover:bg-slate-100'
               }`}
             >
-              <Calendar className="w-3 h-3" /> Date {sortBy === 'date' && (sortOrder === 'asc' ? '↑' : '↓')}
+              <Calendar className="w-3 h-3" /> {isSi ? 'දිනය' : 'Date'} {sortBy === 'date' && (sortOrder === 'asc' ? '↑' : '↓')}
             </button>
             <button
               onClick={() => {
                 if (sortBy === 'price') setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
                 else { setSortBy('price'); setSortOrder('desc'); }
               }}
-              className={`px-2 py-0.5 rounded text-[11px] border flex items-center gap-1 ${
-                sortBy === 'price' ? 'bg-orange-500 text-white border-orange-500' : 'border-slate-700'
+              className={`px-2 py-0.5 rounded text-[11px] border flex items-center gap-1 transition-all ${
+                sortBy === 'price'
+                  ? 'bg-orange-500 text-white border-orange-500'
+                  : isDark
+                  ? 'border-slate-700 text-slate-400 hover:bg-slate-800'
+                  : 'border-slate-300 text-slate-700 bg-white hover:bg-slate-100'
               }`}
             >
-              <DollarSign className="w-3 h-3" /> Price {sortBy === 'price' && (sortOrder === 'asc' ? '↑' : '↓')}
+              <DollarSign className="w-3 h-3" /> {isSi ? 'මුදල' : 'Price'} {sortBy === 'price' && (sortOrder === 'asc' ? '↑' : '↓')}
             </button>
             <button
               onClick={() => {
                 if (sortBy === 'invNo') setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
                 else { setSortBy('invNo'); setSortOrder('asc'); }
               }}
-              className={`px-2 py-0.5 rounded text-[11px] border flex items-center gap-1 ${
-                sortBy === 'invNo' ? 'bg-orange-500 text-white border-orange-500' : 'border-slate-700'
+              className={`px-2 py-0.5 rounded text-[11px] border flex items-center gap-1 transition-all ${
+                sortBy === 'invNo'
+                  ? 'bg-orange-500 text-white border-orange-500'
+                  : isDark
+                  ? 'border-slate-700 text-slate-400 hover:bg-slate-800'
+                  : 'border-slate-300 text-slate-700 bg-white hover:bg-slate-100'
               }`}
             >
-              <FileText className="w-3 h-3" /> A-Z {sortBy === 'invNo' && (sortOrder === 'asc' ? '↑' : '↓')}
+              <FileText className="w-3 h-3" /> {isSi ? 'අංකය' : 'A-Z'} {sortBy === 'invNo' && (sortOrder === 'asc' ? '↑' : '↓')}
             </button>
           </div>
-          <span className="text-[11px] text-slate-400 font-mono">
-            {selectedInvoiceIds.size} / {sortedInvoices.length} Selected
+          <span className={`text-[11px] font-mono ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
+            {selectedInvoiceIds.size} / {sortedInvoices.length} {isSi ? 'තෝරා ඇත' : 'Selected'}
           </span>
         </div>
 
@@ -307,19 +343,23 @@ export const CustomerDueInvoicesModal: React.FC<CustomerDueInvoicesModalProps> =
                   className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
                 />
                 <span className="text-xs font-bold">
-                  සියල්ල තෝරන්න (Select All Invoices)
+                  {isSi ? 'සියලු බිල්පත් තෝරන්න' : 'Select All Invoices'}
                 </span>
               </label>
               <span className="text-[11px] font-mono font-bold text-amber-500">
-                {selectedInvoiceIds.size} / {sortedInvoices.length} Selected
+                {selectedInvoiceIds.size} / {sortedInvoices.length} {isSi ? 'තෝරා ඇත' : 'Selected'}
               </span>
             </div>
           )}
 
           {loading ? (
-            <div className="py-8 text-center text-xs text-slate-400">Loading pending invoices...</div>
+            <div className={`py-8 text-center text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              {isSi ? 'හිඟ බිල්පත් පූරණය වෙමින් පවතී...' : 'Loading pending invoices...'}
+            </div>
           ) : sortedInvoices.length === 0 ? (
-            <div className="py-8 text-center text-xs text-slate-400">No pending invoices found for this customer.</div>
+            <div className={`py-8 text-center text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              {isSi ? 'මෙම පාරිභෝගිකයා සඳහා හිඟ බිල්පත් කිසිවක් හමු නොවීය.' : 'No pending invoices found for this customer.'}
+            </div>
           ) : (
             sortedInvoices.map((inv) => {
               const due = (inv.total || 0) - (inv.receivedAmount || 0);
@@ -330,8 +370,12 @@ export const CustomerDueInvoicesModal: React.FC<CustomerDueInvoicesModalProps> =
                   onClick={() => toggleSelectInvoice(inv.id)}
                   className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
                     isSelected
-                      ? isDark ? 'bg-slate-800 border-amber-500/60 shadow' : 'bg-amber-50 border-amber-300'
-                      : isDark ? 'bg-slate-900/50 border-slate-800 opacity-60' : 'bg-white border-slate-200 opacity-60'
+                      ? isDark
+                        ? 'bg-slate-800 border-amber-500/60 shadow'
+                        : 'bg-amber-50/80 border-amber-400 shadow-sm'
+                      : isDark
+                      ? 'bg-slate-900/50 border-slate-800 opacity-60 hover:opacity-100'
+                      : 'bg-white border-slate-200 opacity-75 hover:opacity-100'
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -343,15 +387,15 @@ export const CustomerDueInvoicesModal: React.FC<CustomerDueInvoicesModalProps> =
                     />
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-xs text-indigo-400">{inv.invoiceNumber}</span>
-                        <span className="text-[10px] text-slate-400">{new Date(inv.issueDate).toISOString().split('T')[0]}</span>
+                        <span className={`font-mono font-bold text-xs ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>{inv.invoiceNumber}</span>
+                        <span className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{new Date(inv.issueDate).toISOString().split('T')[0]}</span>
                       </div>
-                      <span className="text-[10px] text-slate-400">Total: Rs. {inv.total.toLocaleString()}</span>
+                      <span className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{isSi ? 'එකතුව: රු.' : 'Total: Rs.'} {inv.total.toLocaleString()}</span>
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="text-[10px] text-slate-400 block">Due Balance</span>
-                    <span className="text-xs font-mono font-bold text-amber-400">
+                    <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{isSi ? 'හිඟ ශේෂය' : 'Due Balance'}</span>
+                    <span className="text-xs font-mono font-bold text-amber-500 dark:text-amber-400">
                       Rs. {due.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                     </span>
                   </div>
@@ -362,11 +406,13 @@ export const CustomerDueInvoicesModal: React.FC<CustomerDueInvoicesModalProps> =
         </div>
 
         {/* Bottom Settlement Controls */}
-        <div className="p-4 border-t border-slate-700/50 space-y-3">
+        <div className={`p-4 border-t space-y-3 ${isDark ? 'border-slate-700/50' : 'border-slate-200'}`}>
           <div className="flex items-center justify-between text-xs">
             <div>
-              <span className="text-[10px] text-slate-400 block uppercase">Selected Due Sum</span>
-              <span className="text-base font-black font-mono text-amber-400">
+              <span className={`text-[10px] block uppercase font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                {isSi ? 'තෝරාගත් හිඟ මුළු එකතුව' : 'Selected Due Sum'}
+              </span>
+              <span className="text-base font-black font-mono text-amber-500 dark:text-amber-400">
                 Rs. {totalSelectedDue.toLocaleString('en-US', { minimumFractionDigits: 2 })}
               </span>
             </div>
@@ -375,23 +421,23 @@ export const CustomerDueInvoicesModal: React.FC<CustomerDueInvoicesModalProps> =
               onClick={handleFullPay}
               className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-lg transition-all shadow"
             >
-              {isSi ? 'සම්පූර්ණ මුදල (Full Pay)' : 'Full Pay'}
+              {isSi ? 'සම්පූර්ණ මුදල' : 'Full Pay'}
             </button>
           </div>
 
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">Rs.</span>
+              <span className={`absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Rs.</span>
               <input
                 type="number"
                 step="any"
                 min="0"
                 max={totalSelectedDue}
-                placeholder="Enter amount to pay..."
+                placeholder={isSi ? 'ගෙවන මුදල ඇතුළත් කරන්න...' : 'Enter amount to pay...'}
                 value={payingAmountStr}
                 onChange={(e) => setPayingAmountStr(e.target.value)}
                 className={`w-full pl-9 pr-3 py-2 text-sm font-mono font-bold rounded-xl border focus:outline-none focus:ring-2 focus:ring-emerald-500/40 ${
-                  isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-slate-50 border-slate-200'
+                  isDark ? 'bg-slate-800 border-slate-700 text-white' : 'bg-white border-slate-300 text-slate-900'
                 }`}
               />
             </div>
@@ -401,11 +447,13 @@ export const CustomerDueInvoicesModal: React.FC<CustomerDueInvoicesModalProps> =
               onClick={handleSettlePayment}
               className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-bold text-xs rounded-xl shadow transition-all disabled:opacity-40"
             >
-              {isSubmitting ? 'Saving...' : (isSi ? 'ගෙවීම තහවුරු කරන්න' : 'Confirm Settlement')}
+              {isSubmitting ? (isSi ? 'සුරැකෙමින් පවතී...' : 'Saving...') : (isSi ? 'ගෙවීම තහවුරු කරන්න' : 'Confirm Settlement')}
             </button>
           </div>
         </div>
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 };

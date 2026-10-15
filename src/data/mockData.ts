@@ -9,6 +9,7 @@ export interface FinancialTransaction {
   date: string;
   type: 'revenue' | 'expense';
   category: string;
+  categorySi?: string;
   description: string;
   amount: number;
   paymentMethod: 'cash' | 'card' | 'bank_transfer' | 'credit';

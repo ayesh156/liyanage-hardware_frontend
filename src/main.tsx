@@ -1,7 +1,9 @@
 import "./global.css";
 
 import { createRoot } from "react-dom/client";
-import { Suspense, lazy } from "react";
+import { Suspense } from "react";
+import { lazyWithRetry } from "./utils/lazyWithRetry";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -18,19 +20,19 @@ import { AdminLayout } from "./components/AdminLayout";
 import { Login } from "./pages/Login";
 import { BrandFullLoader } from "./components/ui/BrandFullLoader";
 
-// Lazy load all pages
-const QuickCheckout = lazy(() => import("./pages/QuickCheckout").then(m => ({ default: m.QuickCheckout })));
-const Invoices = lazy(() => import("./pages/Invoices").then(m => ({ default: m.Invoices })));
-const BarcodeLabels = lazy(() => import("./pages/BarcodeLabels").then(m => ({ default: m.BarcodeLabels })));
-const FinancialReports = lazy(() => import("./pages/FinancialReports").then(m => ({ default: m.FinancialReports })));
-const Products = lazy(() => import("./pages/Products").then(m => ({ default: m.Products })));
-const Categories = lazy(() => import("./pages/Categories").then(m => ({ default: m.Categories })));
-const Suppliers = lazy(() => import("./pages/Suppliers"));
-const GRN = lazy(() => import("./pages/GRN"));
-const Customers = lazy(() => import("./pages/Customers").then(m => ({ default: m.Customers })));
-const Settings = lazy(() => import("./pages/Settings").then(m => ({ default: m.Settings })));
-const Help = lazy(() => import("./pages/Help").then(m => ({ default: m.Help })));
-const NotFound = lazy(() => import("./pages/NotFound"));
+// Resilient Lazy load all pages with automatic chunk retry and cache-busting reload
+const QuickCheckout = lazyWithRetry(() => import("./pages/QuickCheckout").then(m => ({ default: m.QuickCheckout })));
+const Invoices = lazyWithRetry(() => import("./pages/Invoices").then(m => ({ default: m.Invoices })));
+const BarcodeLabels = lazyWithRetry(() => import("./pages/BarcodeLabels").then(m => ({ default: m.BarcodeLabels })));
+const FinancialReports = lazyWithRetry(() => import("./pages/FinancialReports").then(m => ({ default: m.FinancialReports })));
+const Products = lazyWithRetry(() => import("./pages/Products").then(m => ({ default: m.Products })));
+const Categories = lazyWithRetry(() => import("./pages/Categories").then(m => ({ default: m.Categories })));
+const Suppliers = lazyWithRetry(() => import("./pages/Suppliers"));
+const GRN = lazyWithRetry(() => import("./pages/GRN"));
+const Customers = lazyWithRetry(() => import("./pages/Customers").then(m => ({ default: m.Customers })));
+const Settings = lazyWithRetry(() => import("./pages/Settings").then(m => ({ default: m.Settings })));
+const Help = lazyWithRetry(() => import("./pages/Help").then(m => ({ default: m.Help })));
+const NotFound = lazyWithRetry(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -56,10 +58,11 @@ const AppContent = () => {
           <SidebarProvider>
             <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
               <LoadingProvider>
-                <Suspense fallback={<BrandFullLoader />}>
-                  <Routes>
-                    {/* Public Login Route */}
-                    <Route path="/login" element={<Login />} />
+                <ErrorBoundary>
+                  <Suspense fallback={<BrandFullLoader />}>
+                    <Routes>
+                      {/* Public Login Route */}
+                      <Route path="/login" element={<Login />} />
 
               {/* Protected Routes - Wrapped in AdminLayout */}
               <Route path="/" element={
@@ -186,7 +189,8 @@ const AppContent = () => {
               } />
             </Routes>
           </Suspense>
-        </LoadingProvider>
+        </ErrorBoundary>
+      </LoadingProvider>
       </BrowserRouter>
         </SidebarProvider>
         </CatalogProvider>
