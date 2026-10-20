@@ -204,7 +204,7 @@ export const Invoices: React.FC = () => {
     }
   }, [invoiceQuickSort]);
 
-  // 🌟 LBD Date Filtering States & Configurable 10-Day Window
+  // ── Date Filtering States & Strict 14-Day Rolling Window ──
   const [dateFilterType, setDateFilterType] = useState<'all' | 'today' | 'yesterday' | 'month' | 'custom'>('all');
   const [selectedMonth, setSelectedMonth] = useState<string>('');
   const [startDate, setStartDate] = useState<string>('');
@@ -213,20 +213,21 @@ export const Invoices: React.FC = () => {
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
 
-  // 🌟 Configurable Default History Window (days, defaults to 10)
-  const [defaultHistoryDays] = useState<number>(() => {
-    try {
-      const stored = localStorage.getItem('hardware_invoice_history_days');
-      if (stored) {
-        const val = parseInt(stored, 10);
-        if (!isNaN(val) && val > 0) return val;
-      }
-    } catch {}
-    return 10;
-  });
-  const [showAllHistory, setShowAllHistory] = useState<boolean>(false);
+  /** Hard non-bypassable rolling visibility cap for POS invoice records */
+  const INVOICE_VISIBILITY_WINDOW_DAYS = 14;
 
-  // Custom Date Range තෝරාගත් විට start & end dates සමමුහුර්ත කිරීම
+  /**
+   * Calculates the strict 14-day rolling cutoff date string ('YYYY-MM-DD').
+   * Invoices older than (currentDate - 14 days) must never be loaded, listed, or displayed.
+   */
+  const getInvoice14DayCutoff = useCallback((): string => {
+    const d = new Date();
+    d.setDate(d.getDate() - INVOICE_VISIBILITY_WINDOW_DAYS);
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString().split('T')[0];
+  }, []);
+
+  // Custom Date Range selection synchronized naturally without visual restriction
   const handleDateRangeSelect = (range: DateRange | undefined) => {
     setDateRange(range);
     if (range?.from) {
@@ -242,17 +243,23 @@ export const Invoices: React.FC = () => {
     }
   };
 
-  // ── Fetch invoices from live backend API ──
+  /**
+   * Fetches invoices from backend with 14-day rolling window hard cap.
+   * Defensive client-side filtering guarantees older records are rejected before entering state.
+   */
   const fetchInvoicesHistory = useCallback(async (isInitial = true) => {
     if (isInitial) {
       startLoading('Loading invoice history & ledgers...');
     }
     try {
       setLoading(true);
-      const response = await api.get<any[]>('/invoices', { perPage: 1000 }, true) as any;
+      const cutoffStr = getInvoice14DayCutoff();
+      const response = await api.get<any[]>('/invoices', { perPage: 1000, dateFrom: cutoffStr }, true) as any;
       // Handle response envelope { success, data, meta } or plain array
-      const data = response?.data || response || [];
-      setInvoices(data);
+      const data: Invoice[] = response?.data || response || [];
+      // Strict hard-cap enforcement on loaded dataset
+      const cappedData = data.filter(inv => formatDateISO(inv.issueDate) >= cutoffStr);
+      setInvoices(cappedData);
     } catch (err) {
       console.error('[Invoices] Failed to fetch invoices:', err);
       toast.error('Failed to sync live server invoices');
@@ -262,7 +269,7 @@ export const Invoices: React.FC = () => {
         finishLoading();
       }
     }
-  }, [startLoading, finishLoading]);
+  }, [startLoading, finishLoading, getInvoice14DayCutoff]);
 
   useEffect(() => {
     fetchInvoicesHistory(true);
@@ -277,32 +284,30 @@ export const Invoices: React.FC = () => {
     return () => window.removeEventListener('balance-updated', handleLiveInvoiceSync);
   }, [fetchInvoicesHistory]);
 
-  // 🌟 Date සහ Text සෙවුම් අනුව ඉන්වොයිස් පෙරහන් කිරීම
+  /**
+   * Filters and sorts invoice records strictly bounded by the hard 14-day rolling window.
+   * Under NO filter, preset, or search query are invoices older than 14 days ever displayed.
+   */
   const filteredInvoices = useMemo(() => {
-    const isSearching = searchQuery.trim().length > 0;
+    const cutoffStr = getInvoice14DayCutoff();
 
     return invoices.filter((invoice) => {
+      const invDate = formatDateISO(invoice.issueDate);
+
+      // ── Strict Non-Bypassable 14-Day Visibility Boundary ──
+      // Invoices older than 14 days (currentDate - 14 days) are strictly excluded from display
+      if (invDate < cutoffStr) {
+        return false;
+      }
+
       const matchesSearch =
         invoice.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (invoice.customerName || '').toLowerCase().includes(searchQuery.toLowerCase());
       const matchesStatus = statusFilter === 'all' || invoice.status === statusFilter;
 
       let matchesDate = true;
-      const invDate = formatDateISO(invoice.issueDate);
 
-      // 🌟 Configurable 10-day history window:
-      // When no search query is typed and dateFilterType === 'all' and not explicitly viewing all history,
-      // limit list to the last defaultHistoryDays (defaults to 10).
-      // Searching by invoice # or customer automatically bypasses this window and queries all historical invoices!
-      if (!isSearching && dateFilterType === 'all' && !showAllHistory) {
-        const cutoffDate = new Date();
-        cutoffDate.setDate(cutoffDate.getDate() - defaultHistoryDays);
-        cutoffDate.setHours(0, 0, 0, 0);
-        const cutoffStr = cutoffDate.toISOString().split('T')[0];
-        if (invDate < cutoffStr) {
-          matchesDate = false;
-        }
-      } else if (dateFilterType === 'today') {
+      if (dateFilterType === 'today') {
         const todayStr = new Date().toISOString().split('T')[0];
         matchesDate = invDate === todayStr;
       } else if (dateFilterType === 'yesterday') {
@@ -313,7 +318,8 @@ export const Invoices: React.FC = () => {
       } else if (dateFilterType === 'month' && selectedMonth) {
         matchesDate = invDate.startsWith(selectedMonth);
       } else if (dateFilterType === 'custom') {
-        if (startDate && invDate < startDate) matchesDate = false;
+        const effectiveStart = startDate ? (startDate < cutoffStr ? cutoffStr : startDate) : cutoffStr;
+        if (invDate < effectiveStart) matchesDate = false;
         if (endDate && invDate > endDate) matchesDate = false;
       }
 
@@ -358,7 +364,7 @@ export const Invoices: React.FC = () => {
       }
       return sortOrder === 'asc' ? comparison : -comparison;
     });
-  }, [invoices, searchQuery, statusFilter, dateFilterType, selectedMonth, startDate, endDate, sortField, sortOrder, invoiceQuickSort, defaultHistoryDays, showAllHistory]);
+  }, [invoices, searchQuery, statusFilter, dateFilterType, selectedMonth, startDate, endDate, sortField, sortOrder, invoiceQuickSort, getInvoice14DayCutoff]);
 
   const totalPages = Math.ceil(filteredInvoices.length / rowsPerPage);
   const paginatedInvoices = useMemo(() => {
@@ -368,13 +374,18 @@ export const Invoices: React.FC = () => {
 
   useEffect(() => { setCurrentPage(1); }, [searchQuery, statusFilter, dateFilterType, rowsPerPage]);
 
+  /**
+   * Summary statistics computed exclusively within the strict 14-day rolling visibility window.
+   */
   const stats = useMemo(() => {
-    const total = invoices.length;
-    const totalRevenue = invoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + i.total, 0);
-    const pendingAmount = invoices.filter(i => i.status === 'pending').reduce((sum, i) => sum + i.total, 0);
-    const overdueAmount = invoices.filter(i => i.status === 'overdue').reduce((sum, i) => sum + i.total, 0);
+    const cutoffStr = getInvoice14DayCutoff();
+    const visibleInvoices = invoices.filter(i => formatDateISO(i.issueDate) >= cutoffStr);
+    const total = visibleInvoices.length;
+    const totalRevenue = visibleInvoices.filter(i => i.status === 'paid').reduce((sum, i) => sum + i.total, 0);
+    const pendingAmount = visibleInvoices.filter(i => i.status === 'pending').reduce((sum, i) => sum + i.total, 0);
+    const overdueAmount = visibleInvoices.filter(i => i.status === 'overdue').reduce((sum, i) => sum + i.total, 0);
     return { total, totalRevenue, pendingAmount, overdueAmount };
-  }, [invoices]);
+  }, [invoices, getInvoice14DayCutoff]);
 
   // 🌟 සියලුම පෙරහන් මුලික තත්ත්වයට පත් කිරීම
   const clearFilters = () => {
@@ -604,7 +615,7 @@ export const Invoices: React.FC = () => {
                 })}
               </div>
 
-              {/* Custom Date Range Selector (Absolute Single-Calendar Popover) */}
+              {/* Custom Date Range Selector (Natural Unrestricted Calendar Popover) */}
               <DateRangePicker
                 startDate={startDate}
                 endDate={endDate}
@@ -622,40 +633,6 @@ export const Invoices: React.FC = () => {
                 isDark={isDark}
                 maxDate={new Date()}
               />
-
-              {/* 10-Day Window Status Indicator / Switcher */}
-              {searchQuery.trim().length > 0 ? (
-                <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono font-medium border ${
-                  isDark ? 'bg-blue-950/40 border-blue-800/50 text-blue-400' : 'bg-blue-50 border-blue-200 text-blue-700'
-                }`}>
-                  <span>{t('invoices.searchBypassNotice', 'Searching all history')}</span>
-                </div>
-              ) : dateFilterType === 'all' && (
-                <button
-                  type="button"
-                  onClick={() => setShowAllHistory(!showAllHistory)}
-                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border transition-all cursor-pointer ${
-                    !showAllHistory
-                      ? isDark
-                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-400 hover:bg-amber-500/20'
-                        : 'bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100'
-                      : isDark
-                      ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
-                      : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
-                  }`}
-                  title={!showAllHistory ? 'Click to show all historical invoices' : `Click to limit to last ${defaultHistoryDays} days`}
-                >
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>
-                    {!showAllHistory
-                      ? t('invoices.defaultHistoryNotice', { days: defaultHistoryDays, defaultValue: `Last ${defaultHistoryDays} Days` })
-                      : t('invoices.viewAllHistory', 'All History')}
-                  </span>
-                  <span className="text-[10px] font-mono opacity-70 underline ml-0.5">
-                    {!showAllHistory ? t('invoices.showAll', '(Show All)') : t('invoices.limitHistory', { days: defaultHistoryDays, defaultValue: `(Limit ${defaultHistoryDays}d)` })}
-                  </span>
-                </button>
-              )}
 
               {/* ── Quick Sort Chips ── */}
               <div className="flex items-center gap-1.5 flex-wrap border-l pl-2 border-slate-700/40">

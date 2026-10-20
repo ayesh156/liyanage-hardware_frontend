@@ -21,6 +21,7 @@ import {
   parseISO,
   isValid,
   isAfter,
+  isBefore,
   startOfDay
 } from 'date-fns';
 import { useTranslation } from 'react-i18next';
@@ -41,6 +42,8 @@ export interface DateRangePickerProps {
   align?: 'left' | 'right' | 'auto';
   isDark?: boolean;
   disabled?: boolean;
+  /** Restrict date selection starting from minDate (disables prior dates) */
+  minDate?: Date;
   /** Restrict date selection up to maxDate (defaults to today) */
   maxDate?: Date;
   /** Custom trigger renderer if used as an inline button */
@@ -69,6 +72,7 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
   align = 'auto',
   isDark: isDarkProp,
   disabled = false,
+  minDate,
   maxDate = new Date(),
   customTrigger,
 }) => {
@@ -164,8 +168,11 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
   }, [isOpen]);
 
   const handleDateClick = (day: Date) => {
-    // Restrict date selection up to maxDate
+    // Restrict date selection strictly within [minDate, effectiveMaxDate]
     if (isAfter(startOfDay(day), startOfDay(effectiveMaxDate))) {
+      return;
+    }
+    if (minDate && isBefore(startOfDay(day), startOfDay(minDate))) {
       return;
     }
 
@@ -239,6 +246,7 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
     : defaultPlaceholder;
 
   const isNextMonthDisabled = isAfter(startOfMonth(addMonths(currentMonth, 1)), startOfDay(effectiveMaxDate));
+  const isPrevMonthDisabled = minDate ? isBefore(endOfMonth(subMonths(currentMonth, 1)), startOfDay(minDate)) : false;
 
   return (
     <div ref={containerRef} className="relative inline-block text-left">
@@ -302,11 +310,14 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
           <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-700/30">
             <button
               type="button"
+              disabled={isPrevMonthDisabled}
               onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-              className={`p-1 rounded-lg border transition-colors cursor-pointer ${
-                isDark
-                  ? 'border-slate-700 hover:bg-slate-800 text-slate-300'
-                  : 'border-slate-200 hover:bg-slate-100 text-slate-600'
+              className={`p-1 rounded-lg border transition-colors ${
+                isPrevMonthDisabled
+                  ? 'opacity-20 cursor-not-allowed border-transparent text-slate-500'
+                  : isDark
+                  ? 'border-slate-700 hover:bg-slate-800 text-slate-300 cursor-pointer'
+                  : 'border-slate-200 hover:bg-slate-100 text-slate-600 cursor-pointer'
               }`}
               title="Previous month"
             >
@@ -369,6 +380,8 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
               const isStart = tempStart && isSameDay(day, tempStart);
               const isEnd = tempEnd && isSameDay(day, tempEnd);
               const isFuture = isAfter(startOfDay(day), startOfDay(effectiveMaxDate));
+              const isBeforeMin = minDate ? isBefore(startOfDay(day), startOfDay(minDate)) : false;
+              const isDisabledDay = isFuture || isBeforeMin;
 
               // Check if in range (either finalized or hover preview)
               const effectiveEnd = tempEnd || (tempStart && hoverDate && hoverDate >= tempStart ? hoverDate : null);
@@ -381,29 +394,29 @@ export const DateRangePicker: React.FC<DateRangePickerProps> = ({
                 <button
                   key={idx}
                   type="button"
-                  disabled={isFuture}
+                  disabled={isDisabledDay}
                   onClick={() => handleDateClick(day)}
                   onMouseEnter={() => {
-                    if (!isFuture && tempStart && !tempEnd) {
+                    if (!isDisabledDay && tempStart && !tempEnd) {
                       setHoverDate(day);
                     }
                   }}
                   className={`h-8 w-8 text-xs font-medium transition-all flex items-center justify-center relative mx-auto ${
-                    isFuture
+                    isDisabledDay
                       ? 'opacity-20 cursor-not-allowed pointer-events-none text-slate-500'
                       : !isCurrentMonthDay
                       ? 'text-slate-500 opacity-25'
                       : ''
                   } ${
-                    !isFuture && (isStart || isEnd)
+                    !isDisabledDay && (isStart || isEnd)
                       ? 'bg-gradient-to-r from-orange-500 to-rose-500 text-white font-bold rounded-lg shadow-md shadow-orange-500/30 z-10'
-                      : !isFuture && isInRange
+                      : !isDisabledDay && isInRange
                       ? isDark
                         ? 'bg-orange-500/20 text-orange-300 rounded-none'
                         : 'bg-orange-100 text-orange-800 rounded-none'
-                      : !isFuture && isDark
+                      : !isDisabledDay && isDark
                       ? 'hover:bg-slate-800 text-slate-200 rounded-lg cursor-pointer'
-                      : !isFuture
+                      : !isDisabledDay
                       ? 'hover:bg-slate-100 text-slate-700 rounded-lg cursor-pointer'
                       : ''
                   }`}

@@ -69,7 +69,6 @@ interface InvoiceSettings {
   startingNumber: number;
   defaultDueDays: number;
   defaultTaxRate: number;
-  defaultHistoryDays: number;
   showLogo: boolean;
   showWatermark: boolean;
   footerNote: string;
@@ -172,7 +171,6 @@ export const Settings: React.FC = () => {
     startingNumber: 1001,
     defaultDueDays: 30,
     defaultTaxRate: 15,
-    defaultHistoryDays: 10,
     showLogo: true,
     showWatermark: false,
     footerNote: 'Thank you for your business!',
@@ -186,13 +184,8 @@ export const Settings: React.FC = () => {
       if (stored) {
         setInvoiceSettings(prev => ({ ...prev, ...JSON.parse(stored) }));
       }
-      const rawDays = localStorage.getItem('hardware_invoice_history_days');
-      if (rawDays) {
-        const d = parseInt(rawDays, 10);
-        if (!isNaN(d) && d > 0) {
-          setInvoiceSettings(prev => ({ ...prev, defaultHistoryDays: d }));
-        }
-      }
+      // Clean up legacy history days key if present
+      localStorage.removeItem('hardware_invoice_history_days');
     } catch {}
   }, []);
 
@@ -286,7 +279,7 @@ export const Settings: React.FC = () => {
   const handleSave = () => {
     try {
       localStorage.setItem('hardware_invoice_settings', JSON.stringify(invoiceSettings));
-      localStorage.setItem('hardware_invoice_history_days', String(invoiceSettings.defaultHistoryDays || 10));
+      localStorage.removeItem('hardware_invoice_history_days');
     } catch {}
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -455,20 +448,6 @@ export const Settings: React.FC = () => {
               <div>
                 <label className={labelClass}>{t('settings.defaultTaxRate', 'Default Tax Rate (%)')}</label>
                 <input type="number" value={invoiceSettings.defaultTaxRate} onChange={(e) => setInvoiceSettings({ ...invoiceSettings, defaultTaxRate: parseFloat(e.target.value) || 0 })} className={inputClass} />
-              </div>
-              <div>
-                <label className={labelClass}>{t('settings.defaultHistoryDays', 'Default Invoice History Display (Days)')}</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={365}
-                  value={invoiceSettings.defaultHistoryDays}
-                  onChange={(e) => setInvoiceSettings({ ...invoiceSettings, defaultHistoryDays: parseInt(e.target.value) || 10 })}
-                  className={inputClass}
-                />
-                <p className={`text-xs mt-1 ${theme === 'dark' ? 'text-slate-500' : 'text-slate-400'}`}>
-                  {t('settings.defaultHistoryDaysDesc', 'Default day window for invoice listing (defaults to 10). Search queries automatically bypass this window.')}
-                </p>
               </div>
               <div className="md:col-span-2">
                 <label className={labelClass}>{t('settings.footerNote', 'Invoice Footer Note')}</label>

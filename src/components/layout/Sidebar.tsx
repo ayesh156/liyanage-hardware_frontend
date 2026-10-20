@@ -7,7 +7,7 @@ import { SidebarTooltip } from '../SidebarTooltip';
 import { 
   Package, FileText, Users, Settings, 
   ChevronLeft, ChevronRight, HelpCircle,
-  TrendingUp, FolderTree, Truck, Zap, Layers
+  FolderTree, Truck, Zap, Layers
 } from 'lucide-react';
 import { useIsMobile } from '../../hooks/use-mobile';
 
@@ -40,7 +40,6 @@ export const Sidebar: React.FC = () => {
     { path: '/customers', icon: Users, label: 'nav.customers', badge: '3' },
     { path: '/suppliers', icon: Truck, label: 'nav.suppliers', badge: null },
     { path: '/grn', icon: Layers, label: 'nav.grn', badge: null },
-    { path: '/financial-reports', icon: TrendingUp, label: 'nav.financialReports', badge: null },
   ];
 
   const bottomNavItems = [

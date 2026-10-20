@@ -24,7 +24,6 @@ import { BrandFullLoader } from "./components/ui/BrandFullLoader";
 const QuickCheckout = lazyWithRetry(() => import("./pages/QuickCheckout").then(m => ({ default: m.QuickCheckout })));
 const Invoices = lazyWithRetry(() => import("./pages/Invoices").then(m => ({ default: m.Invoices })));
 const BarcodeLabels = lazyWithRetry(() => import("./pages/BarcodeLabels").then(m => ({ default: m.BarcodeLabels })));
-const FinancialReports = lazyWithRetry(() => import("./pages/FinancialReports").then(m => ({ default: m.FinancialReports })));
 const Products = lazyWithRetry(() => import("./pages/Products").then(m => ({ default: m.Products })));
 const Categories = lazyWithRetry(() => import("./pages/Categories").then(m => ({ default: m.Categories })));
 const Suppliers = lazyWithRetry(() => import("./pages/Suppliers"));
@@ -159,10 +158,11 @@ const AppContent = () => {
                   </AdminLayout>
                 </ProtectedRoute>
               } />
+              {/* Decommissioned Route: /financial-reports redirects to default dashboard */}
               <Route path="/financial-reports" element={
                 <ProtectedRoute>
                   <AdminLayout>
-                    <FinancialReports />
+                    <Navigate to="/invoices" replace />
                   </AdminLayout>
                 </ProtectedRoute>
               } />
