@@ -4134,11 +4134,15 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                                               {item.storeQty}
                                             </span>
                                             <div className="min-w-0 flex-1">
-                                              <ProductNameTooltip name={item.name} nameSinhala={item.nameSinhala} nameSi={item.nameSi}>
-                                                <p className={`truncate text-[11px] font-semibold ${isFocusedRow ? (isDark ? 'text-white' : 'text-amber-900') : isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-                                                  {isSinhala ? (item.nameSinhala || item.nameSi || item.name) : item.name}
-                                                </p>
-                                              </ProductNameTooltip>
+                                              <ProductNameTooltip 
+  name={item.name} 
+  nameSinhala={item.nameSinhala?.length > 40 ? item.nameSinhala.substring(0, 40) + '...' : item.nameSinhala} 
+  nameSi={item.nameSi}
+>
+  <p className={`truncate text-[11px] font-semibold ${isFocusedRow ? (isDark ? 'text-white' : 'text-amber-900') : isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+    {isSinhala ? (item.nameSinhala || item.nameSi || item.name) : item.name}
+  </p>
+</ProductNameTooltip>
                                               <div className="mt-0.5 flex items-center gap-1.5">
                                                 <span className={`text-[8px] font-mono ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                                                   {item.searchKey}
@@ -4666,7 +4670,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
               sort() — the preview always mirrors the exact cart sequence.
           {/* CONTAINER VIEWPORT CONTRACT: h-[calc(100vh-140px)] bounds the preview
               to the viewport so internal overflow scrolls cleanly down to the footer. */}
-          <div className="hidden xl:block w-[420px] xl:w-[460px] 2xl:w-[480px] flex-shrink-0 sticky top-[52px] self-start min-w-0 h-[calc(100vh-140px)] max-h-[calc(100vh-140px)] flex flex-col">
+          <div className="xl:block w-[420px] xl:w-[460px] 2xl:w-[480px] flex-shrink-0 sticky top-[52px] self-start min-w-0 h-[calc(100vh-140px)] max-h-[calc(100vh-140px)] flex flex-col">
             <ThermalReceiptPreview
               items={items}
               discount={computedDiscount}
