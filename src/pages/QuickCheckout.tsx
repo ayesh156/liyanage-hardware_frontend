@@ -2758,8 +2758,8 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
         )}
 
         <div className="px-3 pb-4">
-          <div className={`rounded-xl border min-h-[150px] ${isDark ? 'bg-slate-800/30 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}>
-            <div className={`flex items-center justify-between px-3 py-2 border-b ${isDark ? 'border-slate-700/50' : 'border-slate-100'}`}>
+          <div className={`rounded-xl border flex flex-col min-h-[300px] ${isDark ? 'bg-slate-800/30 border-slate-700/50' : 'bg-white border-slate-200 shadow-sm'}`}>
+            <div className={`flex items-center justify-between px-3 py-2 border-b shrink-0 ${isDark ? 'border-slate-700/50' : 'border-slate-100'}`}>
               <h2 className={`font-bold flex items-center gap-1.5 text-sm ${isDark ? 'text-white' : 'text-slate-900'}`}>
                 <ShoppingCart className="w-4 h-4" />
                 {t('quickCheckout.cartItems')}
@@ -2773,7 +2773,7 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
             </div>
 
             {items.length === 0 ? (
-              <div className={`flex flex-col items-center justify-center py-8 px-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              <div className={`flex-1 flex flex-col items-center justify-center py-8 px-4 ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-3 ${isDark ? 'bg-slate-800' : 'bg-slate-100'}`}>
                   <ShoppingCart className="w-7 h-7 opacity-40" />
                 </div>
