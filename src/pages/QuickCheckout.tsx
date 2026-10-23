@@ -133,17 +133,10 @@ export const QuickCheckout: React.FC = () => {
   const [products] = useState<Product[]>(() => mockProducts);
   const flattenedProducts = useMemo(() => flattenProducts(products), [products]);
 
-  // Build a live search index from inventoryItems for newly added products
-  const inventorySearchIndex = useMemo(() => {
-    const idx = new Map<string, InventoryProduct>();
-    inventoryItems.forEach(item => {
-      const key = item.searchKey.toLowerCase().trim();
-      if (key) idx.set(key, item);
-      const nameKey = item.name.toLowerCase().trim();
-      if (nameKey) idx.set(nameKey, item);
-    });
-    return idx;
-  }, [inventoryItems]);
+  // ── ARCHITECTURAL SAFEGUARD: ──
+  // Never build a cache or dictionary keyed by product.searchKey (e.g. Map<searchKey, item>).
+  // Multiple distinct products legitimately share identical searchKeys (e.g. "UNU WATHURA BATA").
+  // Keying by searchKey will cause duplicate searchKey products to overwrite one another's names.
   // ── Conditional inline-edit tracking state ──
   const [editingCell, setEditingCell] = useState<{ itemId: string; field: 'salesPrice' | 'quantity' } | null>(null);
   const inlineEditInputRef = useRef<HTMLInputElement>(null);
@@ -235,9 +228,9 @@ export const QuickCheckout: React.FC = () => {
     const hydratedItems: QuickInvoiceItem[] = (editingInvoice.items || [])
       .filter((item: any) => Number(item.quantity) > 0)
       .map((item: any) => {
-        // 1. Live Catalog එකෙන් අදාළ Product එක සොයාගැනීම (ID එකෙන් හෝ නමින්)
+        // 1. Live Catalog එකෙන් අදාළ Product එක සොයාගැනීම (Strictly ID first, fallback to exact English name - NEVER searchKey)
         const matchedProduct = inventoryItems.find(
-          (inv) => inv.id === item.productId || inv.name.trim().toLowerCase() === String(item.productName || '').trim().toLowerCase()
+          (inv) => (item.productId && inv.id === item.productId) || inv.name.trim().toLowerCase() === String(item.productName || '').trim().toLowerCase()
         );
 
         const ourPrice = Number(item.unitPrice || item.salesPrice || 0);
@@ -250,11 +243,15 @@ export const QuickCheckout: React.FC = () => {
         // 3. සජීවී Store Quantity (Stock) අගය Catalog එකෙන් ලබාගැනීම
         const storeQtyVal = matchedProduct?.storeQty !== undefined ? Number(matchedProduct.storeQty) : undefined;
 
+        // Sinhala name resolution:
+        // Prioritize matchedProduct's updated nameSinhala over legacy nameSi or old invoice snapshot
+        const resolvedSinhala = matchedProduct?.nameSinhala || matchedProduct?.nameSi || item.productNameSi || item.productName;
+
         return {
           id: item.id,
           productId: item.productId || matchedProduct?.id,
           productName: item.productName,
-          productNameSi: item.productNameSi || matchedProduct?.nameSinhala || matchedProduct?.nameSi || item.productName,
+          productNameSi: resolvedSinhala,
           variantId: item.variantId,
           size: item.size,
           quantity: item.quantity,
@@ -4135,14 +4132,14 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                                             </span>
                                             <div className="min-w-0 flex-1">
                                               <ProductNameTooltip 
-  name={item.name} 
-  nameSinhala={item.nameSinhala?.length > 40 ? item.nameSinhala.substring(0, 40) + '...' : item.nameSinhala} 
-  nameSi={item.nameSi}
->
-  <p className={`truncate text-[11px] font-semibold ${isFocusedRow ? (isDark ? 'text-white' : 'text-amber-900') : isDark ? 'text-slate-200' : 'text-slate-700'}`}>
-    {isSinhala ? (item.nameSinhala || item.nameSi || item.name) : item.name}
-  </p>
-</ProductNameTooltip>
+                                                name={item.name} 
+                                                nameSinhala={item.nameSinhala} 
+                                                nameSi={item.nameSi}
+                                              >
+                                                <p className={`truncate text-[11px] font-semibold ${isFocusedRow ? (isDark ? 'text-white' : 'text-amber-900') : isDark ? 'text-slate-200' : 'text-slate-700'}`}>
+                                                  {isSinhala ? (item.nameSinhala || item.nameSi || item.name) : item.name}
+                                                </p>
+                                              </ProductNameTooltip>
                                               <div className="mt-0.5 flex items-center gap-1.5">
                                                 <span className={`text-[8px] font-mono ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
                                                   {item.searchKey}

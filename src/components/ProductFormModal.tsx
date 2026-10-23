@@ -383,11 +383,22 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
     // 🚀 CRITICAL FIX: Resolve categoryId from selected productCategory name
     const selectedCategoryId = form.productCategory ? categoryMap.get(form.productCategory) : undefined;
 
+    /**
+     * Synchronize nameSinhala and nameSi:
+     * When saving (create or edit), ensure both `nameSinhala` and `nameSi` are set to the
+     * exact same Sinhala string in both the API payload and local catalog state.
+     * This prevents stale legacy `nameSi` strings from persisting and causing tooltip mismatches.
+     * `searchKey` must never be used as a unique key for name resolution because multiple products
+     * can share the identical searchKey ("UNU WATHURA BATA").
+     */
+    const sinhalaString = form.nameSinhala?.trim() || undefined;
+
     const productData = {
       no: (form as any).no || undefined,
       searchKey: form.searchKey,
       name: form.name,
-      nameSinhala: form.nameSinhala || undefined,
+      nameSinhala: sinhalaString,
+      nameSi: sinhalaString,
       productCategory: form.productCategory,
       categoryId: selectedCategoryId || undefined,
       barcode: (form as any).barcode || undefined,
@@ -405,7 +416,12 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
         // POST to backend API — create new product. Use fullResponse to get syncCategories.
         const response: any = await api.post('/products', productData, true);
         const created = response?.data || response;
-        addInventoryItem(created);
+        const syncedCreated: InventoryProduct = {
+          ...created,
+          nameSinhala: sinhalaString || created.nameSinhala,
+          nameSi: sinhalaString || created.nameSi,
+        };
+        addInventoryItem(syncedCreated);
         // 🔄 Real-time category usage count update from server — zero extra HTTP calls
         if (response?.syncCategories && Array.isArray(response.syncCategories)) {
           syncCategoriesFromServer(response.syncCategories);
@@ -417,7 +433,12 @@ export const ProductFormModal: React.FC<ProductFormModalProps> = ({ isOpen, onCl
         if (existingId) {
           const response: any = await api.put(`/products/${existingId}`, productData, true);
           const updated = response?.data || response;
-          updateInventoryItem(existingId, updated);
+          const syncedUpdated: Partial<InventoryProduct> = {
+            ...updated,
+            nameSinhala: sinhalaString || updated.nameSinhala,
+            nameSi: sinhalaString || updated.nameSi,
+          };
+          updateInventoryItem(existingId, syncedUpdated);
           // 🔄 Real-time category usage count update from server — zero extra HTTP calls
           if (response?.syncCategories && Array.isArray(response.syncCategories)) {
             syncCategoriesFromServer(response.syncCategories);

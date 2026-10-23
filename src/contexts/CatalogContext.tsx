@@ -9,6 +9,29 @@ import { toast } from 'react-toastify';
 // ── Local fallback when API is unavailable ──
 let localInventoryItems: InventoryProduct[] = [];
 
+/**
+ * Synchronizes and normalizes an inventory product's Sinhala name fields upon hydration.
+ * 
+ * ARCHITECTURAL DESIGN & INVARIANTS:
+ * 1. `nameSinhala` takes strict precedence over legacy `nameSi`. If a product was updated
+ *    with a new Sinhala name, `nameSinhala` reflects the true current state while legacy `nameSi`
+ *    might contain stale or copy-pasted data. When normalizing, `nameSi` is synchronized to match `nameSinhala`.
+ * 2. NO SECONDARY NAME-MAPPING OR SEARCHKEY-INDEXED TRANSLATION CACHES:
+ *    `searchKey` (e.g. "UNU WATHURA BATA") is NOT a unique identifier — multiple products
+ *    (e.g., 1/2" and 3/4" water pipes) legitimately share the exact same searchKey.
+ *    Caching or resolving Sinhala translations via searchKey maps leads to catastrophic cross-product
+ *    overwrites where one product's Sinhala name displaces another's. Products must only be resolved
+ *    by their unique ID (`id`).
+ */
+const normalizeInventoryProduct = (item: InventoryProduct): InventoryProduct => {
+  const unifiedSinhala = (item.nameSinhala || item.nameSi || '').trim();
+  return {
+    ...item,
+    nameSinhala: unifiedSinhala || item.nameSinhala,
+    nameSi: unifiedSinhala || item.nameSi,
+  };
+};
+
 interface CatalogState {
   categories: Category[];
   inventoryItems: InventoryProduct[];
@@ -85,10 +108,11 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const data = await api.get<InventoryProduct[]>('/products', { perPage: 100000 });
 
       if (Array.isArray(data)) {
-        setInventoryItems(data as unknown as InventoryProduct[]);
-        localInventoryItems = data as unknown as InventoryProduct[];
+        const normalized = (data as unknown as InventoryProduct[]).map(normalizeInventoryProduct);
+        setInventoryItems(normalized);
+        localInventoryItems = normalized;
       } else if (data && typeof data === 'object' && 'data' in data) {
-        const paginatedData = (data as any).data as InventoryProduct[];
+        const paginatedData = ((data as any).data as InventoryProduct[]).map(normalizeInventoryProduct);
         setInventoryItems(paginatedData);
         localInventoryItems = paginatedData;
       }
@@ -99,7 +123,7 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
         console.warn('[Catalog] Backend API unavailable — falling back to local inventory data');
         try {
           const localData = await import('../data/inventoryData');
-          const items = localData.inventoryItems || [];
+          const items = (localData.inventoryItems || []).map(normalizeInventoryProduct);
           setInventoryItems(items);
           localInventoryItems = items;
           setInventoryError(null);
@@ -265,15 +289,23 @@ export const CatalogProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // from the response payload directly (zero extra HTTP calls).
 
   const addInventoryItem = useCallback(async (item: InventoryProduct) => {
-    setInventoryItems(prev => [item, ...prev]);
+    const normalized = normalizeInventoryProduct(item);
+    setInventoryItems(prev => [normalized, ...prev]);
   }, []);
 
   const updateInventoryItem = useCallback(async (id: string, data: Partial<InventoryProduct>) => {
+    let patch = { ...data };
+    if (patch.nameSinhala !== undefined || patch.nameSi !== undefined) {
+      const unified = (patch.nameSinhala || patch.nameSi || '').trim();
+      patch.nameSinhala = unified || patch.nameSinhala;
+      patch.nameSi = unified || patch.nameSi;
+    }
+
     setInventoryItems(prev =>
-      prev.map(item => (item.id === id ? { ...item, ...data } : item))
+      prev.map(item => (item.id === id ? { ...item, ...patch } : item))
     );
     localInventoryItems = localInventoryItems.map(item =>
-      item.id === id ? { ...item, ...data } : item
+      item.id === id ? { ...item, ...patch } : item
     );
   }, []);
 
