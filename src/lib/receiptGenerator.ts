@@ -36,6 +36,25 @@ function sanitizeCustomerPhone(phone: unknown): string {
 }
 
 /**
+ * 🌟 Helper: Detects whether a customer object or id corresponds to the Walk-in customer.
+ */
+export function isWalkInCustomer(c?: { id?: string; name?: string; phone?: string } | null): boolean {
+  if (!c) return true;
+  const id = (c.id || '').trim();
+  const name = (c.name || '').trim().toLowerCase();
+  const phone = (c.phone || '').trim();
+  return (
+    id === 'walk-in' ||
+    id === 'default-customer' ||
+    name === 'සාමාන්‍ය පාරිභෝගිකයා' ||
+    name === 'සාමාන්ය පාරිභෝගිකයා' ||
+    name === 'walk-in customer' ||
+    name === 'walk-in' ||
+    phone === '0000000000'
+  );
+}
+
+/**
  * Generates the complete 80mm thermal receipt HTML string.
  * Used by both the print executor (PrintInvoiceModal) and the
  * live ThermalReceiptPreview component — single source of truth.
@@ -46,42 +65,40 @@ export const generateReceiptHTML = (
   language: 'en' | 'si' = 'si',
   cashierName: string = 'Admin User'
 ): string => {
-  const finalDiscount = invoice.discount || 0;
-  const receivedAmount = invoice.receivedAmount || 0;
+  const finalDiscount = Number(invoice.discount || 0);
 
-  // DYNAMIC PAYMENT STATUS (Sinhala):
-  //   Pending Balance = Total Amount - Paid Amount
-  //   Condition 1: Paid <  Total  -> "ගෙවිය යුතු" (unpaid / partial)
-  //   Condition 2: Paid >= Total  -> "ගෙවා ඇත"   (fully paid / overpaid)
-  // Computed from amounts (NOT invoice.status) so the live preview and
-  // printed receipt update instantly as the user edits the payment input.
-  const pendingBalance = Number((invoice.total - receivedAmount).toFixed(2));
-  const isPaid = pendingBalance <= 0;
+  // ── CURRENT BILL PAYMENT BREAKDOWN (Runtime Computed) ──
+  // Fallback securely to 0 to prevent NaN renders
+  const rawTendered = invoice.receivedAmount !== undefined && invoice.receivedAmount !== null
+    ? Number(invoice.receivedAmount)
+    : 0;
+  const tendered = isNaN(rawTendered) || rawTendered < 0 ? 0 : rawTendered;
+  const currentTotal = Number(invoice.total || 0);
+  const currentDue = Math.max(0, currentTotal - tendered);
+  const currentChange = Math.max(0, tendered - currentTotal);
 
-  // Signed changeAmount: positive = change (surplus), negative = deficit (amount still due)
-  // If the backend stored a negative value, preserve it. Otherwise compute with sign.
-  const changeAmount =
-    invoice.changeAmount !== undefined
-      ? invoice.changeAmount
-      : (receivedAmount > 0 ? receivedAmount - invoice.total : 0);
-  const isDeficit = receivedAmount > 0 && changeAmount < 0;
-  const changeLabel = isDeficit ? 'හිග මුදල' : 'ඉතිරි මුදල';
-  const displayChangeValue = isDeficit ? Math.abs(changeAmount) : changeAmount;
+  // DYNAMIC PAYMENT STATUS (Sinhala Badge):
+  // Paid < Total -> "ගෙවිය යුතු" (unpaid / partial), Paid >= Total -> "ගෙවා ඇත"
+  const isPaid = currentDue <= 0;
 
   // Customer savings: Σ((displayPrice - salesPrice) × qty) + manual discount
   const totalItemDiscounts = invoice.items.reduce((sum, item) => {
     const ext = item as any;
-    const dp   = Number(ext.displayPrice ?? ext.originalPrice ?? item.unitPrice ?? 0);
-    const sp   = Number(ext.salesPrice   ?? ext.ourPrice      ?? ext.lastPrice ?? item.unitPrice ?? 0);
-    const gap  = (dp - sp) * item.quantity;
+    const dp = Number(ext.displayPrice ?? ext.originalPrice ?? item.unitPrice ?? 0);
+    const sp = Number(ext.salesPrice ?? ext.ourPrice ?? ext.lastPrice ?? item.unitPrice ?? 0);
+    const gap = (dp - sp) * item.quantity;
     return sum + (gap > 0 ? gap : 0);
   }, 0);
 
-  const isWalkIn = !customer || customer.id === 'walk-in';
+  const isWalkIn = !customer || isWalkInCustomer(customer);
   const customerName = customer?.name
     ? ((customer as any).nameSi || translateToSinhala(customer.name))
     : 'සාමාන්‍ය පාරිභෝගිකයා';
   const customerPhone = !isWalkIn ? sanitizeCustomerPhone(customer?.phone) : '';
+  const previousDebt = !isWalkIn && customer?.loanBalance !== undefined
+    ? Number(customer.loanBalance)
+    : (!isWalkIn && (customer as any)?.dueBalance !== undefined ? Number((customer as any).dueBalance) : 0);
+  const validPreviousDue = !isNaN(previousDebt) && previousDebt > 0 ? previousDebt : 0;
 
   const itemsHtml = invoice.items
     .map((item) => {
@@ -104,7 +121,7 @@ export const generateReceiptHTML = (
       const lineTotal = salesPrice * item.quantity;
       const showStrikethrough = salesPrice < displayPrice;
 
-       // CONDITIONAL SUPPRESSION: If salesPrice > displayPrice, render dash instead of numeric display price
+      // CONDITIONAL SUPPRESSION: If salesPrice > displayPrice, render dash instead of numeric display price
       const showDisplayPriceSuppressed = salesPrice > displayPrice;
       const displayPriceDisplay = showDisplayPriceSuppressed ? '-' : formatPrice(displayPrice);
 
@@ -288,10 +305,10 @@ export const generateReceiptHTML = (
 
   ${!isWalkIn ? `
   <!-- CUSTOMER -->
-  <div style="padding:3px 0;border-bottom:2px dashed #000;width:100%;box-sizing:border-box;">
-    <span style="font-size:11px;font-weight:700;">පාරිභෝගිකයා: </span>
-    <span style="font-size:13px;font-weight:800;">${customerName}</span>
-    ${customerPhone ? `<span style="float:right;font-size:12px;font-weight:700;">${customerPhone}</span>` : ''}
+  <div style="padding:3px 0;border-bottom:2px dashed #000;width:100% !important;max-width:100% !important;box-sizing:border-box !important;display:flex !important;align-items:baseline !important;white-space:nowrap !important;overflow:hidden !important;line-height:1.3 !important;">
+    <span style="font-size:11px;font-weight:700;flex-shrink:0;color:#000;">පාරිභෝගිකයා:&nbsp;</span>
+    <span style="font-size:12px;font-weight:800;color:#000;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${customerName}</span>
+    ${customerPhone ? `<span style="font-size:10.5px;font-weight:700;color:#000;flex-shrink:0;letter-spacing:0.2px;"> - ${customerPhone}</span>` : ''}
   </div>` : ''}
 
   <!-- ITEMS HEADER -->
@@ -316,6 +333,12 @@ export const generateReceiptHTML = (
       <span style="font-family:'Courier New',monospace;font-weight:800;">-${formatPrice(finalDiscount)}</span>
     </div>` : ''}
 
+    ${validPreviousDue > 0 ? `
+    <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:12.5px;font-weight:800;color:#000;width:100%;box-sizing:border-box;">
+      <span>පෙර හිඟ මුදල</span>
+      <span style="font-family:'Courier New',monospace;font-weight:800;">Rs. ${formatPrice(validPreviousDue)}</span>
+    </div>` : ''}
+
     <!-- GRAND TOTAL -->
     <div class="wb" style="background-color:#000000 !important;background-image:linear-gradient(#000000,#000000) !important;color:#ffffff !important;padding:6px;margin-top:4px;border-radius:3px;border:2px solid #000000;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;width:100%;box-sizing:border-box;">
       <div style="display:flex;justify-content:space-between;align-items:center;width:100%;box-sizing:border-box;">
@@ -335,28 +358,25 @@ export const generateReceiptHTML = (
       <span style="font-weight:900;">[${invoice.items.length}]</span>
     </div>
 
+    <!-- 🌟 CURRENT BILL PAYMENT BREAKDOWN (Above Profit Section) 🌟 -->
+    <div style="border-top:1px dashed #000;margin-top:4px;padding-top:4px;width:100%;box-sizing:border-box;">
+      <div style="font-size:12px;font-weight:700;display:flex;justify-content:space-between;padding:1px 0;color:#000;width:100%;box-sizing:border-box;">
+        <span>දුන් මුදල</span>
+        <span style="font-family:'Courier New',monospace;font-weight:800;">${formatPrice(tendered)}</span>
+      </div>
+      <div style="font-size:12px;font-weight:700;display:flex;justify-content:space-between;padding:1px 0;color:#000;width:100%;box-sizing:border-box;">
+        <span>${currentDue > 0 ? 'හිඟ මුදල' : 'ඉතිරි මුදල'}</span>
+        <span style="font-family:'Courier New',monospace;font-weight:800;">${formatPrice(currentDue > 0 ? currentDue : currentChange)}</span>
+      </div>
+    </div>
+
     ${totalSavings > 0 ? `
     <!-- SAVINGS -->
-    <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:15px;font-weight:800;border-top:2px dashed #000;margin-top:4px;width:100%;box-sizing:border-box;">
+    <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:15px;font-weight:800;border-top:1px dashed #000;margin-top:4px;width:100%;box-sizing:border-box;">
       <span>ඔබ ලැබූ ලාභය</span>
       <span style="font-family:'Courier New',monospace;font-weight:900;">${formatPrice(totalSavings)}</span>
     </div>` : ''}
   </div>
-
-  ${receivedAmount > 0 ? `
-  <!-- PAYMENT -->
-  <div style="border-top:2px dashed #000;margin-top:4px;padding-top:4px;width:100%;box-sizing:border-box;">
-    <div style="border:1px solid #000;padding:4px 6px;border-radius:3px;width:100%;box-sizing:border-box;">
-      <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:13px;font-weight:800;width:100%;box-sizing:border-box;">
-        <span>ගෙවූ මුදල</span>
-        <span style="font-family:'Courier New',monospace;font-weight:800;">${formatPrice(receivedAmount)}</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:2px 0;font-size:13px;font-weight:800;width:100%;box-sizing:border-box;">
-        <span>${changeLabel}</span>
-        <span style="font-family:'Courier New',monospace;font-weight:800;">${formatPrice(displayChangeValue)}</span>
-      </div>
-    </div>
-  </div>` : ''}
 
   <!-- CASHIER -->
   <div style="padding:3px 0;border-top:1px dashed #000;margin-top:3px;width:100%;box-sizing:border-box;">

@@ -587,7 +587,7 @@ const [liveSyncEnabled, setLiveSyncEnabled] = useState<boolean>(false);
     (async () => {
       setCustomersLoading(true);
       try {
-        const data = await api.get<any>('/customers', { perPage: 100 });
+        const data = await api.get<any>('/customers', { perPage: 500 });
         if (!cancelled) {
           const list = Array.isArray(data) ? data : ((data as any)?.data ?? []);
           setCustomers(list);
@@ -619,6 +619,80 @@ const [liveSyncEnabled, setLiveSyncEnabled] = useState<boolean>(false);
   
   const selectedCustomerObj = useMemo(() => findCustomerById(selectedCustomerId), [findCustomerById, selectedCustomerId]);
   const isCurrentCustomerWalkIn = useMemo(() => isWalkInCustomer(selectedCustomerObj || { id: selectedCustomerId }), [selectedCustomerObj, selectedCustomerId]);
+
+  /**
+   * 🌟 Context-Aware Historical Due Calculation (Edit Mode vs. Create Mode):
+   * 
+   * When creating a new invoice:
+   *   The customer's current `loanBalance` in the database reflects their exact historical
+   *   due balance prior to this new bill.
+   * 
+   * When editing an existing invoice (`editInvoiceId` present):
+   *   The customer's live `loanBalance` returned by the backend ALREADY includes the unpaid
+   *   debt of the specific invoice currently being edited.
+   *   Displaying the raw `customer.loanBalance` alongside the current invoice's total creates
+   *   an artificial "double-counting" illusion (historical debt + current bill's debt, where
+   *   the current bill's debt is already factored into the customer's total balance).
+   * 
+   * Mathematical Rectification:
+   *   If editing an unpaid/pending invoice belonging to this customer, we compute:
+   *     `editingInvoiceDue = Math.max(0, editingInvoice.total - editingInvoice.receivedAmount)`
+   *   and subtract it:
+   *     `truePreviousDue = Math.max(0, rawLoanBalance - editingInvoiceDue)`.
+   *   If creating a fresh invoice:
+   *     `truePreviousDue = rawLoanBalance`.
+   */
+  const previousDueBalance = useMemo(() => {
+    if (isCurrentCustomerWalkIn || !selectedCustomerObj) return 0;
+
+    const rawLoanBalance = Number(
+      (selectedCustomerObj as any).loanBalance ?? (selectedCustomerObj as any).dueBalance ?? 0
+    );
+    const safeLoanBalance = isNaN(rawLoanBalance) || rawLoanBalance <= 0 ? 0 : rawLoanBalance;
+
+    // In Edit mode, if editing an existing invoice belonging to this customer:
+    if (editInvoiceId && editingInvoice) {
+      const isSameCustomer = !editingInvoice.customerId || editingInvoice.customerId === selectedCustomerId;
+      const statusLower = String(editingInvoice.status || '').toLowerCase().trim();
+      const isPendingOrUnpaid = statusLower === 'pending' || statusLower === 'unpaid' || statusLower === 'partial' || statusLower === 'due';
+
+      if (isSameCustomer && isPendingOrUnpaid) {
+        const originalTotal = Number(editingInvoice.total || 0);
+        const originalReceived = Number(editingInvoice.receivedAmount || 0);
+        const editingInvoiceDue = Math.max(0, originalTotal - originalReceived);
+        return Math.max(0, safeLoanBalance - editingInvoiceDue);
+      }
+    }
+
+    return safeLoanBalance;
+  }, [isCurrentCustomerWalkIn, selectedCustomerObj, editInvoiceId, editingInvoice, selectedCustomerId]);
+
+  // 🌟 Dynamically fetch fresh customer record upon selection to ensure up-to-date customer loan balance
+  // (which feeds into the context-aware previousDueBalance computation)
+  useEffect(() => {
+    if (!selectedCustomerId || isCurrentCustomerWalkIn) return;
+    let active = true;
+    api.get<any>(`/customers/${selectedCustomerId}`)
+      .then((res) => {
+        if (!active) return;
+        const freshCust = res?.data ?? res;
+        if (freshCust && freshCust.id) {
+          setCustomers((prev) => {
+            const idx = prev.findIndex((c) => c.id === freshCust.id);
+            if (idx >= 0) {
+              const next = [...prev];
+              next[idx] = { ...next[idx], ...freshCust };
+              return next;
+            }
+            return [...prev, freshCust];
+          });
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to refresh selected customer due balance:', err);
+      });
+    return () => { active = false; };
+  }, [selectedCustomerId, isCurrentCustomerWalkIn]);
 
   const filteredCustomers = useMemo(
     () => customerSearch.trim()
@@ -1644,15 +1718,21 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
         const selectedCust = selectedCustomerId && !isWalkInCustomer({ id: selectedCustomerId })
           ? findCustomerById(selectedCustomerId)
           : dbWalkIn;
-        const resolvedPrintCust = selectedCust || dbWalkIn || {
-          id: 'default-customer',
-          name: isSinhala ? 'සාමාන්‍ය පාරිභෝගිකයා' : 'Walk-in Customer',
-          email: '',
-          phone: '0000000000',
-          address: '',
-          customerType: 'regular',
-          loanBalance: 0,
-        };
+        const resolvedPrintCust = (selectedCust && !isWalkInCustomer(selectedCust))
+          ? {
+              ...selectedCust,
+              loanBalance: previousDueBalance,
+              dueBalance: previousDueBalance,
+            }
+          : (dbWalkIn || {
+              id: 'default-customer',
+              name: isSinhala ? 'සාමාන්‍ය පාරිභෝගිකයා' : 'Walk-in Customer',
+              email: '',
+              phone: '0000000000',
+              address: '',
+              customerType: 'regular',
+              loanBalance: 0,
+            });
 
         try {
           const savedInvoiceNumber = resolvedInvoice?.invoiceNumber || 'N/A';
@@ -1748,16 +1828,22 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
       applyInstantStockSync(items);
       playBeep('success');
 
-      // 2. Print receipt with resolved database customer
-      const resolvedPrintCust: Customer = selectedCust || dbWalkIn || {
-        id: 'default-customer',
-        name: isSinhala ? 'සාමාන්‍ය පාරිභෝගිකයා' : 'Walk-in Customer',
-        email: '',
-        phone: '0000000000',
-        address: '',
-        customerType: 'regular',
-        loanBalance: 0,
-      };
+      // 2. Print receipt with resolved database customer (passing true context-aware previous due)
+      const resolvedPrintCust: Customer = (selectedCust && !isWalkInCustomer(selectedCust))
+        ? {
+            ...selectedCust,
+            loanBalance: previousDueBalance,
+            dueBalance: previousDueBalance,
+          }
+        : (dbWalkIn || {
+            id: 'default-customer',
+            name: isSinhala ? 'සාමාන්‍ය පාරිභෝගිකයා' : 'Walk-in Customer',
+            email: '',
+            phone: '0000000000',
+            address: '',
+            customerType: 'regular',
+            loanBalance: 0,
+          });
 
       try {
         await printInvoice(
@@ -2882,6 +2968,23 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                 >
                   {isSinhala ? 'Auto-fill Total' : 'Auto-fill Total'}
                 </button>
+              </div>
+            )}
+
+            {/* ── Mobile Customer Previous Due Balance ── */}
+            {previousDueBalance > 0 && (
+              <div className={`p-2 rounded-lg border flex items-center justify-between gap-1.5 ${
+                isDark ? 'bg-amber-500/10 border-amber-500/40 text-amber-300' : 'bg-amber-50 border-amber-300 text-amber-900'
+              }`}>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />
+                  <span className="text-[10px] font-bold truncate">
+                    පෙර හිඟ මුදල
+                  </span>
+                </div>
+                <span className="text-[11px] font-bold font-mono tabular-nums text-amber-500">
+                  Rs. {previousDueBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
               </div>
             )}
 
@@ -4353,6 +4456,20 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                       </div>
                     )}
 
+                    {previousDueBalance > 0 && (
+                      <div className={`flex justify-between items-center py-1.5 px-2.5 rounded-lg border text-xs ${
+                        isDark ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-amber-50 text-amber-800 border-amber-200'
+                      }`}>
+                        <span className="font-bold flex items-center gap-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          පෙර හිඟ මුදල
+                        </span>
+                        <span className="font-mono font-bold tabular-nums">
+                          Rs. {previousDueBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    )}
+
                     <div className={`pt-2 border-t ${isDark ? 'border-slate-700' : 'border-slate-200'}`}>
                       <div className="flex justify-between items-center">
                         <span className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
@@ -4480,12 +4597,36 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                           {customersLoading ? (
                             <div className="px-3 py-2 text-xs text-center text-slate-400">Loading customers...</div>
                           ) : (
-                            filteredCustomers.filter((c: any) => !isWalkInCustomer(c)).map((c: any) => (
-                              <button key={c.id} onClick={() => { setSelectedCustomerId(c.id); setCustomerSearch(c.name); setCustomerOpen(false); }}
-                                className={`w-full text-left px-3 py-1.5 text-xs font-medium transition-colors ${selectedCustomerId === c.id ? 'bg-orange-500/20 text-orange-400' : isDark ? 'text-slate-300 hover:bg-slate-700/50' : 'text-slate-700 hover:bg-slate-100'}`}>
-                                <span className="flex items-center gap-2"><Building2 className="w-3 h-3" />{isSinhala && c.nameSi ? c.nameSi : c.name}</span>
-                              </button>
-                            ))
+                            filteredCustomers.filter((c: any) => !isWalkInCustomer(c)).map((c: any) => {
+                              const custDue = Number(c.loanBalance ?? c.dueBalance ?? 0);
+                              return (
+                                <button
+                                  key={c.id}
+                                  onClick={() => {
+                                    setSelectedCustomerId(c.id);
+                                    setCustomerSearch(c.name);
+                                    setCustomerOpen(false);
+                                  }}
+                                  className={`w-full flex items-center justify-between px-3 py-1.5 text-xs font-medium transition-colors ${
+                                    selectedCustomerId === c.id
+                                      ? 'bg-orange-500/20 text-orange-400'
+                                      : isDark
+                                        ? 'text-slate-300 hover:bg-slate-700/50'
+                                        : 'text-slate-700 hover:bg-slate-100'
+                                  }`}
+                                >
+                                  <span className="flex items-center gap-2 truncate">
+                                    <Building2 className="w-3 h-3 flex-shrink-0" />
+                                    {isSinhala && c.nameSi ? c.nameSi : c.name}
+                                  </span>
+                                  {custDue > 0 && (
+                                    <span className="text-[10px] font-bold text-amber-500 tabular-nums ml-2 flex-shrink-0">
+                                      හිඟ: Rs. {custDue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })
                           )}
                           {!customersLoading && filteredCustomers.length === 0 && customerSearch && (
                             <div className={`px-3 py-1.5 text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>No customers found</div>
@@ -4514,29 +4655,58 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
                   {!isCurrentCustomerWalkIn && selectedCustomerId && (() => {
                     const c = findCustomerById(selectedCustomerId);
                     return c ? (
-                      <div className={`mt-2 p-2 rounded-lg border flex items-center justify-between text-xs transition-all ${
+                      <div className={`mt-2 p-2.5 rounded-xl border flex flex-col gap-2 text-xs transition-all ${
                         isDark ? 'bg-slate-700/40 border-slate-600/60' : 'bg-slate-100/90 border-slate-200'
                       }`}>
-                        <div className="flex items-center gap-2 min-w-0">
-                          <User className="w-3.5 h-3.5 flex-shrink-0 text-amber-500" />
-                          <div className="min-w-0">
-                            <span className="font-bold truncate block">{c.name}</span>
-                            {c.phone && <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>{c.phone}</span>}
+                        {/* Top Line: Customer Icon, Name + Phone on the same line, and Cleanly Aligned 'X' Button on Right Edge */}
+                        <div className="flex items-center justify-between gap-2 min-w-0">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <User className="w-3.5 h-3.5 flex-shrink-0 text-amber-500" />
+                            <div className="flex items-baseline gap-2 min-w-0 flex-1 overflow-hidden">
+                              <span
+                                className={`font-bold text-xs truncate ${isDark ? 'text-white' : 'text-slate-900'}`}
+                                title={c.name}
+                              >
+                                {isSinhala && c.nameSi ? c.nameSi : c.name}
+                              </span>
+                              {c.phone && (
+                                <span className={`text-[10px] font-mono flex-shrink-0 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                                  {c.phone}
+                                </span>
+                              )}
+                            </div>
                           </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const dbWalkIn = customers.find(cust => isWalkInCustomer(cust));
+                              setSelectedCustomerId(dbWalkIn?.id || 'default-customer');
+                              setCustomerSearch('');
+                              setCustomerOpen(false);
+                            }}
+                            className={`p-1 rounded-md transition-colors flex-shrink-0 ${
+                              isDark ? 'hover:bg-slate-600 text-slate-400 hover:text-rose-400' : 'hover:bg-slate-200 text-slate-400 hover:text-rose-500'
+                            }`}
+                            title="Clear Customer"
+                          >
+                            <X className="w-4 h-4 cursor-pointer" />
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const dbWalkIn = customers.find(cust => isWalkInCustomer(cust));
-                            setSelectedCustomerId(dbWalkIn?.id || 'default-customer');
-                            setCustomerSearch('');
-                            setCustomerOpen(false);
-                          }}
-                          className="p-1 rounded-md hover:bg-rose-500/10 transition-colors ml-2"
-                          title="Clear Customer"
-                        >
-                          <X className="w-4 h-4 text-slate-400 hover:text-rose-400 cursor-pointer" />
-                        </button>
+
+                        {/* Bottom Row: Warning Badge for Previous Due Balance DIRECTLY BELOW customer details */}
+                        {previousDueBalance > 0 && (
+                          <div className={`flex items-center justify-between py-1 px-2.5 rounded-lg border text-[11px] font-bold tabular-nums ${
+                            isDark ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' : 'bg-amber-50 text-amber-800 border-amber-200'
+                          }`}>
+                            <span className="flex items-center gap-1.5 font-semibold">
+                              <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                              පෙර හිඟ මුදල
+                            </span>
+                            <span className="font-mono font-bold">
+                              Rs. {previousDueBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     ) : null;
                   })()}
@@ -4676,8 +4846,12 @@ const formatCartPrice = (val: number | string | undefined | null): string => {
               subtotal={computedSubtotal}
               total={computedFinalTotal}
               customer={
-                selectedCustomerId !== 'walk-in'
-                  ? (findCustomerById(selectedCustomerId) ?? null)
+                !isCurrentCustomerWalkIn && selectedCustomerObj
+                  ? {
+                      ...selectedCustomerObj,
+                      loanBalance: previousDueBalance,
+                      dueBalance: previousDueBalance,
+                    }
                   : null
               }
               invoiceNumber={previewInvoiceNumber}
